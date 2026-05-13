@@ -1,0 +1,1 @@
+ALTER TABLE gate_events ADD COLUMN IF NOT EXISTS "FaceImageBase64" TEXT;

@@ -1,0 +1,172 @@
+import { authHeaders, clearToken, getApiKey } from "./auth";
+
+async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
+  const res = await fetch(url, options);
+  if (res.status === 401 && typeof window !== "undefined") {
+    clearToken();
+    window.location.href = "/login";
+  }
+  return res;
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+export interface GateEvent {
+  eventId: string;
+  personId: string | null;
+  personName: string;
+  confidence: number;
+  timestamp: string;
+  direction: "entry" | "exit";
+  status?: "Identified" | "NeedsReview" | "Unrecognized";
+  faceImageBase64?: string | null;
+  faceImageUrl?: string | null;
+}
+
+export interface Person {
+  id: string;
+  fullName: string;
+  department: string;
+  enrollmentStatus: "Pending" | "Active" | "Revoked" | "Suspended";
+  createdAt: string;
+  faceCount: number;
+}
+
+export async function fetchEvents(
+  page = 1,
+  limit = 50,
+  name?: string,
+  status?: string
+): Promise<{ items: GateEvent[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (name) params.set("name", name);
+  if (status) params.set("status", status);
+  const res = await apiFetch(`${API_BASE}/api/events?${params}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch events");
+  return res.json();
+}
+
+export async function fetchPersonsCount(): Promise<number> {
+  const res = await apiFetch(`${API_BASE}/api/persons/count`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch persons count");
+  const data = await res.json();
+  return data.count;
+}
+
+export async function fetchPersons(): Promise<Person[]> {
+  const res = await apiFetch(`${API_BASE}/api/persons`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch persons");
+  return res.json();
+}
+
+export async function createPerson(fullName: string, department: string) {
+  const res = await apiFetch(`${API_BASE}/api/persons`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ fullName, department }),
+  });
+  if (!res.ok) throw new Error("Failed to create person");
+  return res.json();
+}
+
+export async function updatePersonStatus(id: string, status: string) {
+  const res = await apiFetch(`${API_BASE}/api/persons/${id}/status`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ status }),
+  });
+  if (!res.ok) throw new Error("Failed to update status");
+  return res.json();
+}
+
+export async function enrollWithWebcam(
+  personId: string,
+  frames: string[]
+) {
+  const res = await fetch(`/vision/enroll/webcam`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personId, frames }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to enroll via webcam";
+    try {
+      const body = await res.json();
+      if (body?.detail) detail = body.detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function fetchEventStats(): Promise<{
+  todayEntries: number;
+  unknowns: number;
+  pendingReview: number;
+}> {
+  const res = await apiFetch(`${API_BASE}/api/events/stats`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch event stats");
+  return res.json();
+}
+
+export async function enrollFromSystemCamera(
+  personId: string
+): Promise<{ personId: string; accepted: number; rejected: { attempt: number; reason: string }[]; backend_result: unknown }> {
+  const res = await fetch(`/vision/enroll/capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personId }),
+  });
+  if (!res.ok) {
+    let detail = "System camera enrollment failed";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export interface FaceImage {
+  id: string;
+  image: string;
+}
+
+export async function fetchPersonFaces(personId: string): Promise<FaceImage[]> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}/faces`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch person faces");
+  return res.json();
+}
+
+export async function detectPose(
+  frame: string
+): Promise<{ detected: boolean; yaw: number; pitch: number }> {
+  try {
+    const res = await fetch(`/vision/pose`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ frame }),
+    });
+    if (!res.ok) return { detected: false, yaw: 0, pitch: 0 };
+    return res.json();
+  } catch {
+    return { detected: false, yaw: 0, pitch: 0 };
+  }
+}
+
+export function createEventStream(
+  onEvent: (event: GateEvent) => void,
+  onError?: (err: Event) => void
+): EventSource {
+  const token = getApiKey();
+  const url = token ? `${API_BASE}/api/events/stream?token=${encodeURIComponent(token)}` : `${API_BASE}/api/events/stream`;
+  const es = new EventSource(url);
+  es.onmessage = (msg) => {
+    try {
+      const data = JSON.parse(msg.data) as GateEvent;
+      onEvent(data);
+    } catch {
+      // skip parse errors
+    }
+  };
+  if (onError) es.onerror = onError;
+  return es;
+}

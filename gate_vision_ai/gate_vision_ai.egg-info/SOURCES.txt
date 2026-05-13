@@ -1,0 +1,7 @@
+pyproject.toml
+gate_vision_ai.egg-info/PKG-INFO
+gate_vision_ai.egg-info/SOURCES.txt
+gate_vision_ai.egg-info/dependency_links.txt
+gate_vision_ai.egg-info/entry_points.txt
+gate_vision_ai.egg-info/requires.txt
+gate_vision_ai.egg-info/top_level.txt
