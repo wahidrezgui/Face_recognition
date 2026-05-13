@@ -10,6 +10,7 @@ import {
   createEventStream,
   type GateEvent,
 } from "@/lib/api";
+import Link from "next/link";
 import { IconCamera, IconFace, IconTarget, IconChart, IconShield, IconUsers, IconDot } from "@/components/icons";
 import { PanelHeader, StatItem, CaptureThumb, EventCard } from "@/components/face-display";
 
@@ -54,11 +55,13 @@ export default function DashboardPage() {
   }, [initialData]);
 
   useEffect(() => {
-    const es = createEventStream((e) => { console.log("[SSE event]", e); setLiveEvents((prev) => [e, ...prev].slice(0, 100)); });
+    const es = createEventStream(
+      (e) => { setLiveEvents((prev) => [e, ...prev].slice(0, 100)); },
+      () => { setStreamError(true); },
+      () => { setStreamError(false); }
+    );
     return () => es.close();
   }, []);
-
-  useEffect(() => { console.log("[liveEvents]", liveEvents.length, liveEvents); }, [liveEvents]);
 
   // live clock
   useEffect(() => {
@@ -153,7 +156,7 @@ export default function DashboardPage() {
               {recentCaptures.length > 0 ? (
                 recentCaptures.map((e) => <CaptureThumb key={e.eventId} event={e} />)
               ) : (
-                <p className="text-xs text-gray-600 py-2">Waiting for detections…</p>
+                <p className="text-xs text-gray-600 py-2">No detections yet. Ensure the AI service is running and camera feed is active.</p>
               )}
             </div>
           </div>
@@ -219,10 +222,18 @@ export default function DashboardPage() {
           <div className="flex-1 overflow-y-auto pt-2" style={{ scrollbarWidth: "thin", scrollbarColor: "#1e2d4a transparent" }}>
             {matchedEvents.length > 0 ? (
               matchedEvents.slice(0, 50).map((e) => <EventCard key={e.eventId} event={e} />)
+            ) : enrolledCount === 0 ? (
+              <div className="flex flex-col items-center justify-center h-40 gap-2 px-4 text-center">
+                <IconTarget />
+                <p className="text-xs text-gray-600">No persons enrolled</p>
+                <Link href="/persons" className="text-xs text-blue-400 hover:text-blue-300 underline">
+                  Add and enroll persons to see matched events
+                </Link>
+              </div>
             ) : (
               <div className="flex flex-col items-center justify-center h-40 gap-2">
                 <IconTarget />
-                <p className="text-xs text-gray-600">Awaiting events…</p>
+                <p className="text-xs text-gray-600">{liveEvents.length > 0 ? "No known faces matched yet" : "Awaiting detections…"}</p>
               </div>
             )}
           </div>

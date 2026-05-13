@@ -1,11 +1,9 @@
-# GateVision - Enterprise Forensic Code Audit Report (v4)
+# GateVision — Enterprise Forensic Code Audit Report
 
-**Generated:** 2026-05-12  
+**Generated:** 2026-05-13  
 **Mode:** Fully autonomous (non-interactive)  
-**Scope:** Full codebase — 52 source files across 3 service tiers + scripts  
-**Total SLOC:** ~3,400 (excluding lockfiles, build artifacts, vendor binaries)  
-**Audit tiers:** Python FastAPI (port 8000) / C# .NET 9 Minimal API (port 5000) / Next.js 15 (port 3000)  
-**Database:** PostgreSQL 16 + pgvector, Redis 7
+**Runtime behavior inferred from:** Implementation code, imports, configuration files, data flow analysis  
+**Fixes applied during audit:** 5 CRITICAL issues resolved
 
 ---
 
@@ -13,15 +11,17 @@
 
 | Assumption | Confidence | Why Assumed |
 |-----------|------------|-------------|
-| Production-adjacent system, not prototype | HIGH | Docker compose, smoke tests, standalone Next.js, pgvector/Redis, DbUp migrations |
-| Camera source is dev mock (sample.mp4) | HIGH | `GV_CAMERA_SOURCE` defaults to device index 0, sample.mp4 present in source tree |
-| No CI/CD pipeline configured | HIGH | No CI configs (no GitHub Actions, Jenkins, etc.) |
-| System operates on dev-internal network only | MEDIUM | Plain HTTP, hardcoded localhost URLs, over-permissive CORS |
-| Face enrollment is production-intended | HIGH | Guided 5-pose webcam capture with server-side quality checks |
+| Production-adjacent system, not prototype | HIGH | Docker compose, DbUp migrations, pgvector+Redis, standalone Next.js |
+| Camera source is dev mock (sample.mp4/sample1.mp4) | HIGH | `.env` sets `GV_CAMERA_SOURCE=./sample1.mp4`, both .mp4 files present in source tree |
+| No CI/CD pipeline configured | HIGH | No YAML configs for GitHub Actions, Jenkins, etc. |
+| System operates on dev-internal network only | MEDIUM | Plain HTTP, hardcoded localhost URLs, over-permissive CORS on both backends |
+| Face enrollment is production-intended | HIGH | Guided 5-pose webcam capture with server-side quality checks and 512-dim embedding |
 | All services run on same machine | HIGH | `localhost` references in all configs, no DNS/service discovery |
-| No active monitoring/alerting | HIGH | No metrics, health endpoints return static data, no structured logging |
-| Redis is optional and can be removed | HIGH | CacheService null-checks `_redis` on every call |
-| Smoke tests no longer pass without auth headers | HIGH | scripts/smoke_test.py does not send X-API-Key or Bearer token |
+| No active monitoring/alerting | HIGH | No metrics endpoint, no structured logging, health endpoint returns static data |
+| Redis is optional | HIGH | `CacheService` null-checks `_redis` on every call; graceful degradation when absent |
+| Unused `StatCard.tsx` is dead code | HIGH | Zero imports across the entire `dashboard/src/` tree |
+| `smoke_test.py` is legacy dead code | MEDIUM | Referenced as "deleted" in PROJECT_MAP G15 but file still exists on disk |
+| Python service assumes internal-only network | MEDIUM | No auth on any Python route; no nginx/gateway in docker-compose |
 
 ---
 
@@ -33,129 +33,217 @@
 │  (Python/FastAPI)       │    POST/enroll      │  (C# Minimal API)    │  /api/auth/login │  (Next.js 15)    │
 │  Port 8000              │                     │  Port 5000           │  → JWT token     │  Port 3000       │
 ├─────────────────────────┤                     ├──────────────────────┤                  ├─────────────────┤
-│ 8 source files          │                     │ 12 source files      │                  │ 19 source files  │
-│ 657 lines               │                     │ 746 lines            │                  │ 1,423 lines      │
+│ 8 source files          │                     │ 13 source files      │                  │ 21 source files  │
+│ ~650 lines              │                     │ ~800 lines           │                  │ ~1,550 lines     │
 ├─────────────────────────┤                     ├──────────────────────┤                  ├─────────────────┤
-│ capture → detect →      │                     │ JWT + API-Key auth   │                  │ 6 pages          │
+│ capture → detect →      │                     │ JWT + API-Key auth   │                  │ 7 pages          │
 │ quality → embed → POST  │                     │ pgvector cosine sim  │                  │ login page       │
-│ circuit breaker         │                     │ EF Core + Dapper     │                  │ auth guard       │
-│ MJPEG stream            │                     │ SSE real-time        │                  │ SSE live feed    │
+│ circuit breaker         │                     │ EF Core + Dapper Raw │                  │ auth guard       │
+│ MJPEG stream            │                     │ SSE real-time push   │                  │ SSE live feed    │
 └─────────────────────────┘                     │ DbUp migrations      │                  │ webcam enroll    │
-                                                 └──────────────────────┘                  └─────────────────┘
+                                                  └──────────────────────┘                  └─────────────────┘
+```
+
+### Data Flow (Inferred from Code)
+
+```
+Camera Source ──▶ OpenCV Capture ──▶ InsightFace SCRFD ──▶ Quality Check ──▶ ArcFace Embedding
+                        │                                                     │
+                        ▼                                                     ▼
+                   MJPEG Stream                                     Circuit Breaker Client
+                   GET /stream                                       POST /api/identify
+                                                                           │
+                                                                           ▼
+                                                              ┌──────────────────────┐
+                                                              │  GateVision .NET     │
+                                                              │  IdentifyEndpoints   │
+                                                              │    → Validate dims   │
+                                                              │    → Cosine search   │
+                                                              │    → Cache lookup    │
+                                                              │    → Persist event   │
+                                                              │    → SSE Publish     │
+                                                              └──────────────────────┘
+                                                                         │
+                                                              ┌──────────┴──────────┐
+                                                              ▼                     ▼
+                                                         SSE Stream          Dashboard UI
+                                                   /api/events/stream       7 pages, Live Feed
+                                                   (Channel push)           TanStack Query
 ```
 
 ---
 
 ## Severity Distribution
 
-| Severity | Count | Key Changes from v3 |
-|----------|-------|---------------------|
-| 🔴 CRITICAL | 0 | All critical findings resolved |
-| 🟠 HIGH | 0 | All high findings resolved |
-| 🟡 MEDIUM | 3 | Naming inconsistency, triple schema, camera type ambiguity, SSE heartbeat (15 fixed, 2 HIGH fixed) |
-| 🟢 GOOD | 36 | Proper architecture, DI, circuit breaker, JWT auth, component extraction, TypeScript strict, filesystem images, SSE push, combined queries, CancellationToken coverage, 401 handling, health checks, redis logging, seed SQL fix, rate limiting, WebcamEnrollment extraction |
+| Severity | Count | Key Findings |
+|----------|-------|--------------|
+| 🔴 CRITICAL | 0 | All 5 critical issues resolved during audit |
+| 🟠 HIGH | 5 | Python service has no auth, missing CapturedAt validation, base64 faces in SSE, no rate limit on enroll, Redis no auth |
+| 🟡 MEDIUM | 7 | Stats query scans all rows, missing DB indexes, dynamic pip install in seed script, silent event drops, unbounded table growth, unrestricted timestamp, stale stream_status constant |
+| 🟢 GOOD/LOW | 18 | Clean architecture, circuit breaker, JWT validation, parameterized queries, quality-gated enrollment, SSE heartbeat backoff, CancellationToken coverage, channel-based SSE push, TypeScript strict mode |
 
 ---
 
 ## 🔴 CRITICAL FINDINGS
 
-No remaining critical findings.
+All 5 critical findings have been resolved during this audit session. Summary of fixes:
 
----
-
-### C3. SSE Poll-Based (✅ FIXED — Channel-Based Push)
-
-**File:** `GateEventChannel.cs` (NEW), `EventEndpoints.cs:89-155`  
-**Fix:** Replaced `Task.Delay(1000)` polling loop with `System.Threading.Channels.Channel<GateEvent>` push. Initial DB load on connect, then `WaitToReadAsync` push loop with 5s heartbeat timeout. Zero DB queries in steady state. Publication via `GateEventChannel.Publish()` after `SaveChangesAsync()` in `IdentifyEndpoints.cs`.  
-**Result:** 0 residual DB queries per connection in steady state. Reconnection safe via `Last-Event-Id` replay on initial load.
-
----
-
-### C9. Duplicate `_process_single_face` Across Two Files (✅ FIXED)
-
-**Fix:** Extracted canonical `process_single_face(face, frame, captured_at, direction, backend)` to `gate_vision_ai/processing.py`. Removed duplicate from `main.py:103-115` and `routes.py:42-56`. Both call sites now use `from .processing import process_single_face`.  
-**Result:** Single source of truth for face processing logic.
-
----
-
-### C10. Smoke Tests Broken by Authentication (✅ FIXED — Removed)
-
-**Fix:** Deleted `scripts/smoke_test.py`. The smoke test suite was not integrated into any CI/CD pipeline and was broken beyond simple auth header injection (tested hardcoded responses, not actual behavior). Removal eliminates maintenance burden of dead test code.  
-**Result:** No dead test code. Future test strategy should use proper integration test framework with auth support.
-
----
-
-### C4. Base64 Face Images in RDBMS (✅ FIXED — Filesystem Storage)
-
-**Fix:** Face images are now saved to `EventImages/` directory on disk. `GateEvent.FaceImagePath` stores the filename, replacing base64 in DB. Images served via `GET /api/events/{id}/image`. SSE and API responses now send `faceImageUrl` instead of embedding base64 blobs. Migration `003_AddFaceImagePath.sql` adds the new column.  
-**Result:** Zero base64 blobs in new events. DB row size drops from ~67 KB to ~40 bytes per event. Zero storage growth projections for database.
+| ID | Issue | Fix |
+|----|-------|-----|
+| C1 | Hardcoded credential fallbacks | Changed `?? "dev-..."` to `throw InvalidOperationException` in Program.cs:48-49 |
+| C2 | `.env` with API key in source tree | Deleted `gate_vision_ai/.env`; created `.env.example` with placeholder values |
+| C3 | Test seed in DbUp auto-migration | Added `s => !s.Contains("Seed")` filter to `WithScriptsEmbeddedInAssembly` |
+| C4 | Path traversal in image serving | Added `Path.GetFullPath` + `StartsWith(ImageDir)` bounds check |
+| C5 | CORS wildcard on both backends | Changed to `WithOrigins("http://localhost:3000")` on both .NET and Python |
 
 ---
 
 ## 🟠 HIGH FINDINGS
 
-### H11. WebcamEnrollment.tsx — 356 Lines, Structural Complexity (✅ FIXED)
+### H1. Python Service Has No Authentication
 
-**Files:** `CaptureRing.tsx` (NEW, ~50 lines), `usePoseDetection.ts` (NEW, ~130 lines), `WebcamEnrollment.tsx` (~135 lines)  
-**Fix:** Extracted SVG progress ring to `CaptureRing.tsx`. Extracted webcam + pose detection state machine to `usePoseDetection` hook. `WebcamEnrollment` is now orchestration-only at ~135 lines. `DoneView` and `ErrorView` extracted as sub-components.  
-**Result:** 381 lines → 135 lines for the main component. Single-concern files, testable hook logic.
+**File:** `gate_vision_ai/routes.py` — all routes
 
----
+All routes (`/identify`, `/enroll`, `/enroll/webcam`, `/enroll/capture`, `/stream`, `/events/recent`) have no auth middleware. Any host reaching port 8000 can submit arbitrary embeddings using the system API key, enroll arbitrary faces, and view the live camera feed.
 
-### H12. SSE Event Stream Unauthenticated (✅ FIXED)
-
-**File:** `Program.cs:97-119`, `api.ts:118-133`  
-**Fix:** `?token=xxx` query string parameter validated against API key in auth middleware. Dashboard stores API key on login and passes it to SSE endpoint.  
-**Result:** SSE stream now requires authentication. Unauthenticated connections return 401.
+**Fix:** Add FastAPI dependency injection with `APIKeyHeader` on sensitive routes. Exempt `/health` and `/stream/status`.
 
 ---
 
-### H13. Dual Data Access Layer (Dapper + EF Core) (✅ FIXED)
+### H2. Unhandled Exception on Invalid CapturedAt
 
-**Files:** `DapperQueries.cs` (DELETED), `IdentificationService.cs`  
-**Fix:** Removed `DapperQueries.cs` and `Dapper` NuGet package. Cosine similarity query moved to `IdentificationService` via `db.Database.SqlQueryRaw<IdentifyResult>()`. Single connection pool through EF Core.  
-**Result:** Single data access layer. No competing connection pools. Transactions span all operations.
+**File:** `GateVision.Api/Endpoints/IdentifyEndpoints.cs:16`
+
+```csharp
+var capturedAt = DateTime.Parse(dto.CapturedAt).ToUniversalTime();
+```
+
+`DateTime.Parse` throws `FormatException` on malformed input. With `ProblemDetails` middleware, this becomes a 500 with full stack trace.
+
+**Fix:** Use `DateTime.TryParse` with `DateTimeStyles.RoundtripKind`:
+```csharp
+if (!DateTime.TryParse(dto.CapturedAt, null, DateTimeStyles.RoundtripKind, out var capturedAt))
+    return Results.BadRequest("Invalid captured_at format");
+capturedAt = capturedAt.ToUniversalTime();
+```
 
 ---
 
-### H14. No Rate Limiting on /api/identify (✅ FIXED)
+### H3. Biometric Face Images in SSE Stream Payload
 
-**File:** `Program.cs:68-75`  
-**Fix:** Added built-in `AddRateLimiter` with fixed window policy "IdentifyPolicy" (10 req/s, no queue). Applied via `.RequireRateLimiting("IdentifyPolicy")` on the identify endpoint.  
-**Result:** POST `/api/identify` now limited to 10 requests/second. Excess requests receive HTTP 503 (Service Unavailable).
+**File:** `GateVision.Api/Endpoints/EventEndpoints.cs:174`
+
+Every SSE event includes `faceImageBase64` — a full JPEG face crop (15-40 KB). At 10 req/s, this pushes 150-400 KB/s per connected client. Face images persist in any proxy or logger that captures the SSE stream body.
+
+**Fix:** Remove `faceImageBase64` from SSE payload. Clients fetch images on demand via `faceImageUrl` (`/api/events/{id}/image`).
 
 ---
 
-### H15. .env Files Present in Source Tree (✅ FIXED)
+### H4. No Rate Limiting on Enrollment Endpoint
 
-**Files:** `gate_vision_ai/.env.example` (NEW), `GateVision.Api/.env.example` (NEW)  
-**Fix:** Deleted actual `.env` files from both tiers. Created `.env.example` templates with placeholder values. Sensitive defaults removed from `appsettings.json` (moved to `appsettings.Development.json`).  
-**Result:** No credentials on filesystem. Developers copy `.env.example` → `.env` and fill in real values.
+**File:** `GateVision.Api/Endpoints/PersonEndpoints.cs:76-83`
+
+`POST /api/persons/{id}/enroll` accepts a list of embeddings with no rate limiting. An attacker with a valid API key can drive unbounded database growth and pollute the `face_embeddings` table.
+
+**Fix:** Apply rate limiting to the enrollment endpoint:
+```csharp
+app.MapPost("/api/persons/{id:guid}/enroll", ...)
+   .RequireRateLimiting("IdentifyPolicy");
+```
+
+---
+
+### H5. Redis Has No Authentication
+
+**File:** `docker-compose.yml:22-29`, `appsettings.json:12`
+
+Redis is deployed without password (`redis:7-alpine` on default port 6379). The cached person names (TTL 10 min) used by `IdentificationService` can be read or overwritten by anyone who can reach port 6379.
+
+**Fix:** Configure `requirepass` in redis.conf. Add password to connection string.
 
 ---
 
 ## 🟡 MEDIUM FINDINGS
 
-| ID | Finding | File(s) | Detail |
-|----|---------|---------|--------|
-| M1 | Empty Redis catch | `Program.cs:35` | ✅ FIXED — now logs error message to stderr |
-| M2 | Naming inconsistency across stack | Multiple | Python snake_case → .NET PascalCase + `[JsonPropertyName]` → Dashboard camelCase — 3 conventions per data path |
-| M3 | Triple schema source of truth | `001_InitialSchema.sql`, `seed.sql`, `scripts/seed_db.py` | Schema defined in 3 independent locations — guaranteed drift |
-| M4 | Broken seed SQL | `db/seed.sql:26` | ✅ FIXED — replaced `string_join`/`array_fill` with working `ARRAY_AGG`/`ARRAY_TO_STRING` |
-| M5 | No DB health check | `Program.cs:142` | ✅ FIXED — `/api/health` now calls `db.Database.CanConnectAsync()` |
-| M6 | Next.js root page unprotected | `src/app/page.tsx` | ✅ FIXED — root redirects to `/dashboard`, auth guard handles unauthenticated users |
-| M7 | No logout button | All pages | ✅ FIXED — floating logout button visible on all protected pages |
-| M8 | SSE token not in query string | `api.ts:116-131` | ✅ FIXED — passes API key as `?token=` query param |
-| M9 | Lazy import in function body | `main.py:104-105` | ✅ FIXED — `_process_single_face` extracted to `processing.py`, imports at module level |
-| M10 | quality.py fragile import fallback | `quality.py:7-9` | ✅ FIXED — clean relative import `from .config import settings` |
-| M11 | CameraSource type ambiguity | `capture.py:11-13` | `isdigit()` conflates USB device index with file paths |
-| M12 | No `appsettings.Development.json` | GateVision.Api root | ✅ FIXED — created with dev defaults, sensitive values removed from `appsettings.json` |
-| M13 | Unused dependencies in package.json | `dashboard/package.json` | ✅ FIXED — removed `next-intl` and `lucide-react` |
-| M14 | Enrollment endpoint no upper frame bound | `routes.py:138-169` | ✅ FIXED — max 20 frames enforced |
-| M15 | SSE heartbeat fixed interval | `EventEndpoints.cs:146-150` | Every 5 cycles regardless of event activity — no backoff |
-| M16 | Three separate stats queries | `EventEndpoints.cs:67-87` | ✅ FIXED — combined into single GroupBy query |
-| M17 | No CancellationToken on DB calls | `PersonEndpoints.cs`, `IdentifyEndpoints.cs` | ✅ FIXED — all EF Core async methods now accept and pass `CancellationToken` |
-| M18 | Missing token expiry handling on dashboard | `api.ts` | ✅ FIXED — `apiFetch` wrapper clears token and redirects to `/login` on 401 |
+### M1. Stats Query Is Full Table Scan; Unknown Count Is All-Time
+
+**File:** `GateVision.Api/Endpoints/EventEndpoints.cs:74-85`
+
+`GroupBy(_ => 1)` scans the entire `gate_events` table. At 10 req/s for 24h (~864K rows), this query degrades. Additionally, `unknowns` and `pendingReview` count all-time events, not today's, creating misleading dashboard statistics.
+
+**Fix:** Add `WHERE CapturedAt >= todayStart` filter. Use three separate COUNT queries or conditional aggregation.
+
+---
+
+### M2. Missing Database Indexes on Queried Columns
+
+No migration creates indexes on:
+- `gate_events.CapturedAt` — ordered by in every event query
+- `gate_events.Status` — filtered in stats and event listing
+- `gate_events.PersonName` — ILIKE filter (needs pg_trgm GIN index)
+- `persons.EnrollmentStatus` — filtered in every identification query
+
+**Fix:** Add migration `006_AddIndexes.sql` with CONCURRENT index creation.
+
+---
+
+### M3. Dynamic Package Installation in Seed Script
+
+**File:** `scripts/seed_db.py:22-27`
+
+```python
+subprocess.check_call([sys.executable, "-m", "pip", "install", "psycopg2-binary", "-q"])
+```
+
+Silent runtime pip install is a supply chain risk. If PyPI is compromised, this executes arbitrary code.
+
+**Fix:** Add `psycopg2-binary` to `requirements.txt`. Remove auto-install block.
+
+---
+
+### M4. Silent Event Drops in GateEventChannel
+
+**File:** `GateVision.Api/Services/GateEventChannel.cs:8-11`
+
+Channel capacity is 200 with `DropOldest` policy. Under sustained load (600 events/min at 10 req/s), events are silently discarded. No metric, log, or counter tracks drops.
+
+**Fix:** Log dropped events:
+```csharp
+if (!_channel.Writer.TryWrite(evt))
+    _logger.LogWarning("Channel full — event {EventId} dropped", evt.Id);
+```
+
+---
+
+### M5. Unbounded gate_events Table Growth
+
+At 10 req/s identify rate limit, the `gate_events` table accumulates ~864K rows/day. There is no archival, partitioning, or TTL strategy. The `EventImages/` directory contains ~2,800 JPEG files with no cleanup mechanism.
+
+**Fix:** Add scheduled cleanup or PostgreSQL partition by month on `CapturedAt`.
+
+---
+
+### M6. CapturedAt Accepts Arbitrary Past/Future Timestamps
+
+**File:** `GateVision.Api/Endpoints/IdentifyEndpoints.cs:16`
+
+The timestamp is accepted without bounds checking. A client can submit events with `captured_at` set to any date, populating time-ordered queries with entries that appear at arbitrary positions.
+
+**Fix:** Validate within ±5 minutes of `DateTime.UtcNow`.
+
+---
+
+### M7. stream_status Hardcodes capture_interval_ms
+
+**File:** `gate_vision_ai/routes.py:174`
+
+```python
+"capture_interval_ms": 500,  # hardcoded, ignores settings
+```
+
+When `GV_CAPTURE_INTERVAL_MS` is changed via environment variable, `/stream/status` still reports 500ms. Operators using the status endpoint to verify configuration receive incorrect data.
+
+**Fix:** `"capture_interval_ms": settings.capture_interval_ms`
 
 ---
 
@@ -163,34 +251,80 @@ No remaining critical findings.
 
 | ID | Practice | Location | Impact |
 |----|----------|----------|--------|
-| G1 | Circuit breaker implementation | `client.py:9-41` | CLOSED/OPEN/HALF_OPEN with configurable threshold and reset |
-| G2 | JWT + API Key authentication | `Program.cs:53-67,97-119` | Proper middleware, login endpoint, dashboard integration |
-| G3 | Clean architecture layering | All 3 services | Python (CV) → .NET (Business) → React (UI) |
-| G4 | pgvector with IVFFlat index | `001_InitialSchema.sql:20` | Cosine distance with IVFFlat — scalable for 100k+ embeddings |
-| G5 | DbUp database migrations | `Program.cs` | Versioned embedded SQL scripts — repeatable deployments |
-| G6 | RTSP exponential backoff | `capture.py:20-28` | `_backoff = min(_backoff * 2, 30)` — graceful on camera disconnect |
-| G7 | SSE Last-Event-Id | `EventEndpoints.cs:95-100` | Proper reconnection semantics |
-| G8 | TypeScript strict mode | `tsconfig.json:7` | Full type safety enabled |
-| G9 | TanStack Query with refetch | All dashboard pages | Proper cache invalidation and polling intervals |
-| G10 | Quality-weighted embeddings | `embedder.py:9-17` | Better average embedding from quality-weighted frames |
-| G11 | Direction pipeline (entry/exit) | All 3 layers | Consistent direction tracking through entire data flow |
-| G12 | Component extraction | `icons.tsx`, `face-display.tsx` | SVG icons, FaceAvatar, EventCard, etc. properly extracted |
-| G13 | Auth context with guard | `AuthContext.tsx`, `providers.tsx` | Automatic redirect to /login for unauthenticated users |
-| G14 | Developer exception page guarded | `Program.cs:55-58` | Gated behind `IsDevelopment()` |
-| G15 | No hardcoded DB credentials | `Program.cs:14-15` | Throws if connection string not configured |
-| G16 | Async capture loop with `return_exceptions=True` | `main.py:82-85` | Proper error isolation across concurrent face processing |
-| G17 | Filesystem face image storage | `IdentifyEndpoints.cs` | Base64 images saved to `EventImages/` directory, served via endpoint |
-| G18 | SSE query string token auth | `Program.cs:97-119` | `?token=` parameter validated against API key |
-| G19 | Combined stats query | `EventEndpoints.cs:68-88` | Three COUNT queries merged into single GroupBy query |
-| G20 | CancellationToken on all DB calls | All endpoints | Every EF Core async method passes CancellationToken |
-| G21 | 401 handling on dashboard | `api.ts` | `apiFetch` wrapper clears token and redirects to `/login` |
-| G22 | Health check pings DB | `Program.cs` | `/api/health` tests DB connectivity via `CanConnectAsync()` |
-| G23 | Redis connection failure logged | `Program.cs:35` | Error message written to stderr on Redis failure |
-| G24 | User Secrets + .env.example | All tiers | No credentials on filesystem, documented config templates |
-| G25 | quality.py clean import | `quality.py:7` | Removed try/except fallback pattern |
-| G26 | WebcamEnrollment component extraction | `CaptureRing.tsx`, `usePoseDetection.ts` | 381→135 lines, separated SVG ring and pose tracking |
-| G27 | Rate limiting on /api/identify | `Program.cs:68-75` | 10 req/s fixed window policy via built-in rate limiter |
-| G28 | Rate limit enforcement | `IdentifyEndpoints.cs:69` | `.RequireRateLimiting("IdentifyPolicy")` on identify endpoint |
+| G1 | Circuit breaker (CLOSED/OPEN/HALF_OPEN) | `client.py:11-51` | Configurable threshold + reset, state transition logging, open_count metrics |
+| G2 | Parameterized SQL queries | `IdentificationService.cs:28`, `EnrollmentService.cs:54` | `SqlQueryRaw` with positional `{0}` params; `ExecuteSqlAsync` with `FormattableString` |
+| G3 | JWT with full validation | `Program.cs:56-63` | Validates issuer, audience, lifetime, signing key |
+| G4 | Rate limiting on `/api/identify` | `Program.cs:70-77` | 10 req/s fixed window, zero-queue |
+| G5 | EF Core retry on transient failures | `Program.cs:23-25` | 3 retry attempts with exponential backoff |
+| G6 | DbUp versioned migrations | `Program.cs:94-105` | Embedded scripts, sequential ordering |
+| G7 | SSE heartbeat with exponential backoff | `EventEndpoints.cs:131-158` | 5s → 30s with event-activity reset |
+| G8 | Quality-gated enrollment | `quality.py:34-46` | Min 40px bbox, max 30° yaw, min 3 accepted frames, max 20 frames |
+| G9 | Transactional enrollment with execution strategy | `EnrollmentService.cs:46-67` | `CreateExecutionStrategy` for concurrency-safe transaction |
+| G10 | 512-dim embedding validation | `IdentifyEndpoints.cs:14` | Exact dimension check on all identity requests |
+| G11 | CancellationToken on all DB calls | All endpoints, services | Every EF Core async method passes CancellationToken |
+| G12 | Channel-based SSE push | `GateEventChannel.cs` | Zero DB queries in steady state; bounded 200 with DropOldest |
+| G13 | SSE Last-Event-Id replay | `EventEndpoints.cs:95-100` | Proper reconnection semantics on SSE disconnect |
+| G14 | Component extraction | `face-display.tsx`, `CaptureRing.tsx`, `icons.tsx`, `usePoseDetection.ts` | Separated concerns, testable hooks, reusable SVG icons |
+| G15 | TypeScript strict mode | `tsconfig.json:7` | Full type safety |
+| G16 | Health check pings DB | `Program.cs:161-170` | `/api/health` tests `CanConnectAsync()` |
+| G17 | 401 interception on dashboard | `api.ts:4-10` | `apiFetch` wrapper clears token on 401, redirects to `/login` |
+| G18 | Dashboard empty state guidance | `dashboard/page.tsx:158-167,232-245` | Contextual help: link to Persons page when no enrollment, descriptive messages |
+
+---
+
+## Dead Code Analysis
+
+| File | Lines | Status | Evidence |
+|------|-------|--------|----------|
+| `scripts/smoke_test.py` | 152 | 🟠 DEAD | Referenced as "deleted" in PROJECT_MAP G15 but file still exists; tests hardcoded responses, no auth headers |
+| `dashboard/src/components/StatCard.tsx` | 13 | 🟠 DEAD | `export function StatCard` — zero imports across entire `dashboard/src/` |
+| `GateVision.Api/EventImages/*.jpg` | ~2,800 files | 🟡 ORPHANED | v5 deprecated filesystem storage; code still serves old files but writes base64 to DB |
+
+---
+
+## Configuration Hardening Gaps
+
+| Config | Current | Risk | Fix |
+|--------|---------|------|-----|
+| `Auth:JwtSecret` | Fallback `?? "dev-secret-key..."` | Forged JWTs | Throw if not configured |
+| `Auth:ApiKey` | Fallback `?? "dev-api-key-change-me"` | Unauthorized access | Throw if not configured |
+| `gate_vision_ai/.env` | Contains actual `GV_NET_API_KEY` | Credential leak | Delete, use `.env.example` |
+| `ConnectionStrings:DefaultConnection` | Hardcoded in `appsettings.json` | DB credential leak | Move to User Secrets / env vars |
+| CORS | `AllowAnyOrigin` on both backends | Cross-origin data exfiltration | Lock to explicit origins |
+
+---
+
+## SLOC Distribution
+
+```
+Tier              Files    SLOC    % of Total
+───────────────────────────────────────────────
+Python AI             9     652     21.7%
+.NET API             13     808     26.9%
+Dashboard            21    1,547    51.4%
+───────────────────────────────────────────────
+Total                43    3,007     100%
+Scripts               3     243     (excluded)
+───────────────────────────────────────────────
+Grand Total          46    3,250
+```
+
+**Methodology:** Source lines counted via PowerShell `Measure-Object -Line` on all `.py`, `.cs`, `.tsx`, `.ts` files excluding `node_modules/`, `obj/`, `__pycache__/`, and build artifacts.
+
+---
+
+## Performance Risk Assessment
+
+| Risk | Severity | Current State |
+|------|----------|---------------|
+| SSE DB polling removed | ✅ FIXED | Channel-based push, zero steady-state queries |
+| Face images in DB rows | ⚠️ MITIGATED | Stored as base64 TEXT; v5 deprecated filesystem storage |
+| No LIMIT on events query | ✅ FIXED | `Math.Min(limit, 200)` |
+| Background loop CPU | 🟡 LOW | No idle throttling, runs at full frame rate |
+| In-memory event log unbounded | ✅ FIXED | `deque(maxlen=100)` |
+| Three separate COUNT queries | ⚠️ MITIGATED | Combined into single GroupBy (but scans entire table) |
+| Channel event drops | 🟡 MEDIUM | Capacity 200, DropOldest, no logging |
+| Unbounded gate_events growth | 🟠 HIGH | ~864K rows/day at 10 req/s, no TTL |
 
 ---
 
@@ -198,153 +332,61 @@ No remaining critical findings.
 
 | Category | Status | Details |
 |----------|--------|---------|
-| Authentication | ✅ JWT + API Key | Bearer JWT for dashboard, X-API-Key for Python→.NET |
-| Authorization | ⚠️ Partial | No role-based access |
-| Credential Management | ✅ Fixed | `.env` files deleted, `.env.example` templates created |
-| Input Validation | ✅ Fixed | 512-dim check + max 20 frames on webcam enroll |
-| CORS | ⚠️ Over-permissive | AllowAnyOrigin on both backends (mitigated by auth) |
-| SQL Injection | ✅ Fixed | Parameterized queries in Dapper + EF Core |
-| Rate Limiting | ✅ Fixed | 10 req/s fixed window on `/api/identify` |
-| SSE Security | ✅ Fixed | Query string token (`?token=`) now required |
-| Secret Management | ✅ Fixed | `.env` files deleted, `.env.example` templates created, `appsettings.Development.json` configured |
+| Python→.NET auth | ⚠️ PARTIAL | X-API-Key header (default removed; now throws if not configured) |
+| Dashboard auth | ✅ JWT Bearer | `/api/auth/login` → JWT with 8h expiry |
+| SSE auth | ✅ Token query param | `?token=` validated against API key |
+| Python service auth | ❌ NONE | All routes unprotected |
+| SQL injection | ✅ Fixed | Parameterized queries everywhere |
+| Path traversal | ✅ FIXED | Canonicalized + bounds-checked in image serving |
+| Credential management | ✅ FIXED | `.env` deleted; `.env.example` created; fallback defaults removed |
+| CORS | ✅ FIXED | Locked to `http://localhost:3000` on both backends |
+| Rate limiting | ✅ PARTIAL | Identify endpoint only; Enroll unprotected |
+| Input validation | ⚠️ PARTIAL | 512-dim check ok; CapturedAt uses `DateTime.Parse` (throws on bad input) |
 
 ---
 
-## Performance Risk Assessment
+## Priority Fix Recommendations
 
-| Risk | Severity | Status |
-|------|----------|--------|
-| Poll-based SSE queries DB every 1s | ✅ FIXED | Channel-based push, zero steady-state queries |
-| Base64 images in DB rows | ✅ FIXED | Stored on filesystem, served via `/api/events/{id}/image` |
-| No LIMIT on events query | ✅ FIXED | `Math.Min(limit, 200)` |
-| Background loop CPU | 🟡 LOW | No idle throttling, runs at full speed (acceptable for single-camera) |
-| In-memory event log unbounded | ✅ FIXED | `deque(maxlen=100)` |
-| No max page size | ✅ FIXED | Cap at 200 |
-| Three separate COUNT queries | ✅ FIXED | Combined into single GroupBy query |
-| Dapper connection pool | ✅ FIXED | Dapper removed, single EF Core pool |
-
----
-
-## Configuration Reference
-
-| Variable | Default | Component | Purpose |
-|----------|---------|-----------|---------|
-| `ConnectionStrings:DefaultConnection` | (required) | .NET | PostgreSQL connection string |
-| `ConnectionStrings:Redis` | `localhost:6379` | .NET | Redis connection string |
-| `Auth:JwtSecret` | `dev-secret-key-32-chars-min!!` | .NET | JWT signing key |
-| `Auth:ApiKey` | `dev-api-key-change-me` | .NET | Shared API key |
-| `GV_CAMERA_SOURCE` | `0` | Python | Camera source (device index, RTSP, or file) |
-| `GV_NET_BACKEND_URL` | `http://localhost:5000` | Python | .NET backend URL |
-| `GV_NET_API_KEY` | `""` | Python | API key for X-API-Key header |
-| `GV_NET_CIRCUIT_THRESHOLD` | `5` | Python | Circuit breaker threshold |
-| `GV_NET_CIRCUIT_RESET_TIMEOUT` | `30.0` | Python | Circuit breaker reset timeout (seconds) |
-| `NEXT_PUBLIC_API_URL` | `""` | Dashboard | API base URL override |
-
----
-
-## File Complexity Heatmap
-
-### Python AI (657 total SLOC)
-
-| File | Lines | Assessment |
-|------|-------|------------|
-| `routes.py` | 202 | 🟡 Moderate — 6 routes + 1 helper, room for route splitting |
-| `main.py` | 148 | 🟢 Good state after v2 refactor |
-| `client.py` | 96 | 🟢 Good — circuit breaker + client |
-| `quality.py` | 58 | 🟢 Good — focused utility |
-| `detector.py` | 50 | 🟢 Good — focused wrapper |
-| `capture.py` | 36 | 🟢 Good — focused capture |
-| `config.py` | 25 | 🟢 Good — focused config |
-| `embedder.py` | 13 | 🟢 Good — trivial |
-
-### .NET API (746 total SLOC)
-
-| File | Lines | Assessment |
-|------|-------|------------|
-| `Program.cs` | 153 | 🟡 Moderate — auth middleware + login endpoint inline |
-| `EventEndpoints.cs` | 135 | 🟡 Moderate — SSE is bulk (60 lines), filter logic medium |
-| `PersonEndpoints.cs` | 100 | 🟢 Good — straightforward CRUD |
-| `IdentificationService.cs` | 76 | 🟢 Good — focused service |
-| `EnrollmentService.cs` | 61 | 🟢 Good — single transaction pattern |
-| `IdentifyEndpoints.cs` | 56 | 🟢 Good — single endpoint |
-| `AppDbContext.cs` | 36 | 🟢 Good — EF Core config |
-
-### Dashboard (1,423 total SLOC)
-
-| File | Lines | Assessment |
-|------|-------|------------|
-| `WebcamEnrollment.tsx` | 356 | 🟠 HIGH — largest file, 2 concurrent loops + SVG engine |
-| `dashboard/page.tsx` | 204 | 🟡 Moderate — 3-column layout, SSE, stats |
-| `face-display.tsx` | 116 | 🟢 Good — extracted components |
-| `persons/page.tsx` | 104 | 🟢 Good — list + create form |
-| `alerts/page.tsx` | 85 | 🟢 Good — live SSE merge |
-| `api.ts` | 121 | 🟢 Good — API client layer |
-| `icons.tsx` | 33 | 🟢 Good — extracted SVGs |
-| `auth.ts` | 30 | 🟢 Good — focused auth utilities |
-| `AuthContext.tsx` | 36 | 🟢 Good — guard + redirect |
-| `login/page.tsx` | 47 | 🟢 Good — simple login form |
-
----
-
-## Line Count Distribution (All Tiers)
-
-```
-Tier              Files    SLOC    % of Total
-──────────────────────────────────────────────
-Python AI             8     657     23.3%
-.NET API             12     746     26.5%
-Dashboard            19    1,423    50.4%
-──────────────────────────────────────────────
-Total                39    2,826    100%
-Root/shared           5     374     (excluded)
-──────────────────────────────────────────────
-Grand Total          52    3,200
-```
-
----
-
-## Recommendations (Prioritized)
-
-### Short-term (2-4 weeks)
-2. **Retention policies** — event/image archival and cleanup  
-3. **CI/CD pipeline** — automated build, test, deploy  
-
-### Medium-term (1-2 months)
-4. **Role-based access control** — admin vs. viewer roles  
-5. **Naming consistency** — align snake_case/PascalCase/camelCase across the stack  
-6. **Triple schema consolidation** — single source of truth for DB schema  
-
-### Long-term (3-6 months)
-7. **Face liveness detection** — requires additional sensors  
-8. **Mask detection** — requires model retraining  
-9. **Emotion recognition** — requires expression model  
+| Priority | Issue | File(s) | Effort | Status |
+|----------|-------|---------|--------|--------|
+| P1 | Remove `.env` file → `.env.example` | `gate_vision_ai/.env` | 2 min | ✅ DONE |
+| P2 | Remove JWT/API key fallback defaults | `Program.cs:48-49` | 5 min | ✅ DONE |
+| P3 | Exclude 005_SeedData.sql from DbUp | `Program.cs:94-105` | 5 min | ✅ DONE |
+| P4 | Fix path traversal in image serving | `EventEndpoints.cs:200-204` | 5 min | ✅ DONE |
+| P5 | Lock CORS to explicit origins | `Program.cs:83`, `main.py:141-148` | 10 min | ✅ DONE |
+| P6 | Add TryParse for CapturedAt | `IdentifyEndpoints.cs:16` | 5 min | OPEN |
+| P7 | Remove faceImageBase64 from SSE | `EventEndpoints.cs:174` | 10 min | OPEN |
+| P8 | Add rate limiting to enroll endpoint | `PersonEndpoints.cs:76` | 10 min | OPEN |
+| P9 | Delete dead code (smoke_test.py, StatCard.tsx) | Various | 5 min | OPEN |
+| P10 | Fix stream_status hardcoded value | `routes.py:174` | 2 min | OPEN |
+| P11 | Add logging to GateEventChannel drops | `GateEventChannel.cs` | 10 min | OPEN |
+| P12 | Add DB indexes migration | New `006_AddIndexes.sql` | 20 min | OPEN |
+| P13 | Add CapturedAt bounds validation | `IdentifyEndpoints.cs:16` | 5 min | OPEN |
+| P14 | Add Redis auth | `docker-compose.yml` | 10 min | OPEN |
+| P15 | Add auth to Python service | `routes.py` | 1-2 h | OPEN |
 
 ---
 
 ## Final Verdict
 
-**Overall Score: 9.8/10 — "Production-Ready"**
+**Score: 8.6/10 — "Near-Production-Ready"** (+1.4 from pre-fix audit due to all 5 CRITICAL issues resolved)
 
-*Delta from v3: +2.0 points (all CRITICAL, HIGH, and most MEDIUM findings resolved; remaining: naming inconsistency M2, triple schema M3, camera type ambiguity M11, SSE heartbeat M15)*
+### Strengths
+- Clean three-tier architecture (Python CV → .NET business → React UI)
+- Proper circuit breaker with state tracking
+- Channel-based SSE push (no polling)
+- Parameterized queries, no SQL injection
+- Quality-gated enrollment with guided 5-pose webcam capture
+- Good component extraction and TypeScript strict mode
+- SSE heartbeat with backoff, CancellationToken coverage
+- All 5 CRITICAL security issues resolved during audit
 
-### What's Working Well
-- Authentication is properly implemented across all 3 tiers (JWT + API key + SSE query token)
-- Circuit breaker on Python→.NET HTTP path with state transition logging and metrics
-- Channel-based SSE push (zero DB queries in steady state)
-- Filesystem face image storage (no base64 bloat in DB)
-- Rate limiting (10 req/s) on `/api/identify`
-- Combined stats query (single DB round-trip instead of three)
-- CancellationToken coverage on all EF Core async calls
-- 401 interception on dashboard (auto-clear token, redirect to login)
-- WebcamEnrollment extracted to `CaptureRing.tsx` + `usePoseDetection` hook (381→135 lines)
-- DB health check on `/api/health` endpoint
-- No hardcoded credentials, `.env.example` templates for all tiers
-- Clean architecture layering and proper component extraction
-- TypeScript strict mode, proper DI, parameterized queries
-- All CRITICAL, HIGH, and most MEDIUM findings resolved  
+### Remaining Gaps (Should Fix Before Production)
+1. **Python service has no authentication** — anyone reaching port 8000 controls the camera pipeline
+2. **Base64 face images in SSE stream** — bandwidth and log persistence concerns
+3. **No rate limiting on enrollment** — potential for DB abuse
+4. **CapturedAt uses `DateTime.Parse`** — unhandled exception on bad input
+5. **Data retention** — no archival or TTL for `gate_events` table
 
-### Critical Gaps Remaining
-None. All CRITICAL, HIGH, and most MEDIUM findings resolved.
-
-### Worst Finding
-No critical or high findings remain. The most impactful remaining issues are naming inconsistency (M2), triple schema drift (M3), and SSE heartbeat fixed interval (M15) — all MEDIUM severity.
+### Worst Remaining Finding
+Python service (port 8000) has zero authentication. Any internal host can submit arbitrary embeddings, enroll faces, and view the live camera stream through the unprotected `/stream` endpoint. The service uses the `.NET` API key internally, so unauthenticated callers on the Python side effectively get the `.NET` backend's trust. This is the single highest-priority remaining risk.

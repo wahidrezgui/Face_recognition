@@ -179,6 +179,27 @@ Proxied via dashboard/next.config.js
 - API proxy → `localhost:5000` (REST/SSE), `localhost:8000` (MJPEG + `/vision/:path*`)
 - Enrollment at `/persons/[id]`: webcam-based guided capture (5 poses) with countdown
 
+## [ORPHANS & PENDING]
+
+| ID | Gap | Priority | Status |
+|----|-----|----------|--------|
+| C1 | **Hardcoded credential fallbacks** — `Program.cs:48-49` | 🔴 CRITICAL | ✅ FIXED |
+| C2 | **`.env` file with API key** — `gate_vision_ai/.env` | 🔴 CRITICAL | ✅ FIXED |
+| C3 | **Test seed in DbUp** — `005_SeedData.sql` runs in production | 🔴 CRITICAL | ✅ FIXED |
+| C4 | **Path traversal in image serving** — `EventEndpoints.cs` | 🔴 CRITICAL | ✅ FIXED |
+| C5 | **CORS wildcard** — `AllowAnyOrigin` on both backends | 🔴 CRITICAL | ✅ FIXED |
+| H1 | **Python service has no auth** — All routes unprotected | 🟠 HIGH | OPEN |
+| H2 | **CapturedAt uses `DateTime.Parse`** — 500 on bad input | 🟠 HIGH | OPEN |
+| H3 | **Base64 face images in SSE payload** | 🟠 HIGH | OPEN |
+| H4 | **No rate limiting on enrollment endpoint** | 🟠 HIGH | OPEN |
+| H5 | **Redis no auth** in docker-compose | 🟠 HIGH | OPEN |
+| M1 | **Stats query full table scan** | 🟡 MEDIUM | OPEN |
+| M2 | **Missing DB indexes** on queried columns | 🟡 MEDIUM | OPEN |
+| M5 | **Unbounded gate_events growth** — no TTL | 🟡 MEDIUM | OPEN |
+| M7 | **stream_status hardcoded** `capture_interval_ms` | 🟡 MEDIUM | OPEN |
+| D1 | **Dead code: smoke_test.py** — 152 lines | 🟡 MEDIUM | OPEN |
+| D2 | **Dead code: StatCard.tsx** — unused component | 🟡 MEDIUM | OPEN |
+
 ### Architecture Rules (enforced)
 - Python is the ONLY component touching OpenCV, InsightFace, or any CV/ML library
 - Python→.NET data: `{ embedding, frame_quality, captured_at, direction }` only
@@ -198,7 +219,7 @@ Proxied via dashboard/next.config.js
 |----|------|--------|-------|
 | G1 | GateVision AI Service | ✅ VERIFIED | FastAPI, background capture, 14/14 smoke tests, circuit breaker |
 | G2 | GateVision .NET Backend | ✅ VERIFIED | JWT + API key auth, pgvector, SSE, Redis, no hardcoded creds |
-| G3 | GateVision Dashboard | ✅ VERIFIED | Login page, auth guard, 6 pages, TanStack Query, SSE live feed |
+| G3 | GateVision Dashboard | ✅ VERIFIED | Login page, auth guard, 7 pages, TanStack Query, SSE live feed |
 | G4 | Docker: Redis + pgvector | ✅ VERIFIED | Added to docker-compose.yml, verified running |
 | G5 | Live camera stream on dashboard | ✅ VERIFIED | MJPEG endpoint + Next.js proxy |
 | G6 | Webcam enrollment | ✅ VERIFIED | Browser webcam with head-pose guidance |
@@ -236,7 +257,22 @@ Proxied via dashboard/next.config.js
 | G38 | Low-confidence UNKNOWN | ✅ ADDED v5 | `IdentificationService.Identify` returns UNKNOWN with null PersonId when confidence < 0.35, eliminating random-person display for noise matches. |
 | G39 | Identify stores base64 in DB | ✅ ADDED v5 | `IdentifyEndpoints` no longer writes to `EventImages/` filesystem. FaceCrop is stored directly as `gateEvent.FaceImageBase64`. |
 | G40 | Skip persisting Unrecognized events | ✅ ADDED v5 | `IdentifyEndpoints` only persists + SSE-publishes GateEvent when `result.PersonId.HasValue`. UNKNOWN events (no match, low confidence) are still returned in the API response but not written to `gate_events` table or pushed via SSE. |
-| G40 | Dashboard: sidebar matched only, strip shows all | ✅ VERIFIED v5 | "Face Captures" strip (center top) shows all detected faces (`liveEvents`). "Target Analysis" sidebar (right) shows only matched events (`matchedEvents`). Employee cache loaded at startup via `fetchPersons` with 5min `staleTime`. `matchedEvents` derived via `useMemo` using a `Set` for O(1) lookup against known employee IDs. |
+| G41 | Dashboard: sidebar matched only, strip shows all | ✅ VERIFIED v5 | "Face Captures" strip (center top) shows all detected faces (`liveEvents`). "Target Analysis" sidebar (right) shows only matched events (`matchedEvents`). Employee cache loaded at startup via `fetchPersons` with 5min `staleTime`. `matchedEvents` derived via `useMemo` using a `Set` for O(1) lookup against known employee IDs. |
+| G42 | Missing /events page created | ✅ VERIFIED v6 | Created `dashboard/src/app/events/page.tsx` — name ILIKE + status filter, pagination, reuse EventRow component |
+| G42 | Triple schema drift fixed | ✅ VERIFIED v6 | Deleted orphaned `db/migrate_add_face_image.sql` and `db/seed.sql`. Created `005_SeedData.sql` as proper DbUp migration. Updated `scripts/seed_db.py` to avoid table creation. |
+| G43 | Triple schema drift fixed | ✅ VERIFIED v6 | Deleted orphaned `db/migrate_add_face_image.sql` and `db/seed.sql`. Created `005_SeedData.sql` as proper DbUp migration. Updated `scripts/seed_db.py` to avoid table creation. |
+| G44 | Camera source resolution order fixed | ✅ VERIFIED v6 | `capture.py:_resolve_source` now checks file paths before RTSP URLs before `isdigit()` device index |
+| G45 | SSE heartbeat with activity backoff | ✅ VERIFIED v6 | `EventEndpoints.cs` starts at 5s, +5s per idle cycle up to 30s, resets to 5s on event activity |
+| G46 | SSE error handling on dashboard | ✅ VERIFIED v6 | `createEventStream` passes `onError` callback to set `streamError` state on SSE failure; `onOpen` resets it on reconnect |
+| G47 | Dashboard empty state guidance | ✅ VERIFIED v6 | Face Captures strip and Target Analysis sidebar show contextual help: link to Persons page when no persons enrolled, descriptive messages when awaiting detections |
+| G48 | Debug console.log removed | ✅ VERIFIED v6 | Removed `[liveEvents]` debug logging from dashboard |
+| G49 | Full code audit report v6 | ✅ VERIFIED v6 | Generated non-interactive audit: 43 source files, 5 CRITICAL, 5 HIGH, 7 MEDIUM findings identified |
+| G50 | Orphan inventory documented | ✅ VERIFIED v6 | [ORPHANS & PENDING] updated with 16 open items across CRITICAL/HIGH/MEDIUM priorities |
+| G51 | C1: Remove credential fallback defaults | ✅ FIXED v6 | `Program.cs` throws `InvalidOperationException` if `Auth:JwtSecret` or `Auth:ApiKey` not configured |
+| G52 | C2: Delete .env with hardcoded API key | ✅ FIXED v6 | Deleted `gate_vision_ai/.env`; created `.env.example` with placeholder values |
+| G53 | C3: Exclude seed data from DbUp auto-migration | ✅ FIXED v6 | Added `s => !s.Contains("Seed")` filter to `WithScriptsEmbeddedInAssembly` |
+| G54 | C4: Fix path traversal in image serving | ✅ FIXED v6 | `Path.GetFullPath` + `StartsWith(ImageDir)` bounds check added |
+| G55 | C5: Lock CORS to explicit origins | ✅ FIXED v6 | Both backends: `WithOrigins("http://localhost:3000")` instead of `AllowAnyOrigin` |
 
 ## [CONFIGURATION]
 

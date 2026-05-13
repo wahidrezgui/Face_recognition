@@ -32,6 +32,8 @@ _events_log: deque = deque(maxlen=100)
 _stats = {"frames_captured": 0, "faces_detected": 0, "events_sent": 0, "rejected": 0, "backend_errors": 0, "circuit_open": False}
 _latest_frame_jpg: bytes | None = None
 
+_roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_width, "height": settings.roi_height}
+
 # Mutable container for route closures (captured by reference at import time)
 _state = {
     "capture": None,
@@ -40,6 +42,7 @@ _state = {
     "stats": _stats,
     "events_log": _events_log,
     "latest_frame_jpg": _latest_frame_jpg,
+    "roi": _roi,
 }
 
 
@@ -140,7 +143,7 @@ app = FastAPI(
     middleware=[
         Middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=["http://localhost:3000"],
             allow_methods=["*"],
             allow_headers=["*"],
         )

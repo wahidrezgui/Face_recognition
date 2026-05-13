@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     net_circuit_threshold: int = 5
     net_circuit_reset_timeout: float = 30.0
 
+    roi_x: int = 0
+    roi_y: int = 0
+    roi_width: int = 0
+    roi_height: int = 0
+
     log_level: str = "INFO"
 
     model_package: str = "buffalo_l"

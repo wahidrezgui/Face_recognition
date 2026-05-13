@@ -154,7 +154,8 @@ export async function detectPose(
 
 export function createEventStream(
   onEvent: (event: GateEvent) => void,
-  onError?: (err: Event) => void
+  onError?: (err: Event) => void,
+  onOpen?: () => void
 ): EventSource {
   const token = getApiKey();
   const url = token ? `${API_BASE}/api/events/stream?token=${encodeURIComponent(token)}` : `${API_BASE}/api/events/stream`;
@@ -168,5 +169,6 @@ export function createEventStream(
     }
   };
   if (onError) es.onerror = onError;
+  if (onOpen) es.onopen = onOpen;
   return es;
 }

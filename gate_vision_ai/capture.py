@@ -19,13 +19,13 @@ class CameraCapture:
 
     @staticmethod
     def _resolve_source(source: str):
-        if source.isdigit():
-            return int(source)
-        if source.startswith(("http://", "https://", "rtsp://", "rtmp://")):
-            return source
         maybe_path = os.path.normpath(os.path.join(_BASE, source.lstrip("./\\")))
         if os.path.isfile(maybe_path):
             return maybe_path
+        if source.startswith(("http://", "https://", "rtsp://", "rtmp://")):
+            return source
+        if source.isdigit():
+            return int(source)
         return source
 
     def _open(self) -> cv2.VideoCapture:

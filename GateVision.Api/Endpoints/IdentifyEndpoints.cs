@@ -20,24 +20,25 @@ public static class IdentifyEndpoints
                 ? Direction.Exit
                 : Direction.Entry;
 
+            var gateEvent = new GateEvent
+            {
+                Id = Guid.NewGuid(),
+                PersonId = result.PersonId,
+                PersonName = result.PersonName,
+                Confidence = result.Confidence,
+                Status = result.Status,
+                Direction = direction,
+                CapturedAt = capturedAt,
+                FaceImageBase64 = dto.FaceCrop,
+            };
+
             if (result.PersonId.HasValue)
             {
-                var gateEvent = new GateEvent
-                {
-                    Id = Guid.NewGuid(),
-                    PersonId = result.PersonId,
-                    PersonName = result.PersonName,
-                    Confidence = result.Confidence,
-                    Status = result.Status,
-                    Direction = direction,
-                    CapturedAt = capturedAt,
-                    FaceImageBase64 = dto.FaceCrop,
-                };
-
                 db.GateEvents.Add(gateEvent);
                 await db.SaveChangesAsync(ct);
-                GateEventChannel.Publish(gateEvent);
             }
+
+            GateEventChannel.Publish(gateEvent);
 
             return Results.Ok(new
             {

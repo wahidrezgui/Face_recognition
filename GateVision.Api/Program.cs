@@ -45,8 +45,10 @@ builder.Services.AddSingleton(new CacheService(redis));
 builder.Services.AddScoped<IdentificationService>();
 builder.Services.AddScoped<EnrollmentService>();
 
-var jwtSecret = builder.Configuration["Auth:JwtSecret"] ?? "dev-secret-key-32-chars-min!!!!!";
-var apiKey = builder.Configuration["Auth:ApiKey"] ?? "dev-api-key-change-me";
+var jwtSecret = builder.Configuration["Auth:JwtSecret"]
+    ?? throw new InvalidOperationException("Auth:JwtSecret not configured. Set via User Secrets, appsettings, or environment variable.");
+var apiKey = builder.Configuration["Auth:ApiKey"]
+    ?? throw new InvalidOperationException("Auth:ApiKey not configured. Set via User Secrets, appsettings, or environment variable.");
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer("Bearer", options =>
@@ -80,7 +82,9 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        policy.WithOrigins("http://localhost:3000")
+              .AllowAnyMethod()
+              .AllowAnyHeader();
     });
 });
 
@@ -93,7 +97,7 @@ else
 
 var upgrader = DeployChanges.To
     .PostgresqlDatabase(connectionString)
-    .WithScriptsEmbeddedInAssembly(typeof(Program).Assembly)
+    .WithScriptsEmbeddedInAssembly(typeof(Program).Assembly, s => !s.Contains("Seed"))
     .LogTo(new DbUpLogger(app.Logger))
     .Build();
 

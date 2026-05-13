@@ -128,10 +128,11 @@ public static class EventEndpoints
             await ctx.Response.Body.FlushAsync(ct);
 
             var channel = GateEventChannel.Reader;
+            var heartbeatInterval = 5000;
             while (!ct.IsCancellationRequested)
             {
                 var readTask = channel.WaitToReadAsync(ct).AsTask();
-                var heartbeatTask = Task.Delay(5000, CancellationToken.None);
+                var heartbeatTask = Task.Delay(heartbeatInterval, CancellationToken.None);
                 var done = await Task.WhenAny(readTask, heartbeatTask);
 
                 if (done == readTask)
@@ -139,6 +140,7 @@ public static class EventEndpoints
                     var hasItem = await readTask;
                     if (hasItem)
                     {
+                        heartbeatInterval = 5000;
                         while (channel.TryRead(out var evt))
                         {
                             if (evt.CapturedAt > lastTimestamp)
@@ -151,6 +153,7 @@ public static class EventEndpoints
                 }
                 else
                 {
+                    heartbeatInterval = Math.Min(heartbeatInterval + 5000, 30000);
                     await ctx.Response.WriteAsync(": heartbeat\n\n", ct);
                 }
 
@@ -196,7 +199,9 @@ internal static class ImageEndpoints
 
             if (evt.FaceImagePath is not null)
             {
-                var filePath = Path.Combine(ImageDir, evt.FaceImagePath);
+                var filePath = Path.GetFullPath(Path.Combine(ImageDir, evt.FaceImagePath));
+                if (!filePath.StartsWith(ImageDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
+                    return Results.NotFound();
                 if (File.Exists(filePath))
                     return Results.File(filePath, "image/jpeg");
             }
