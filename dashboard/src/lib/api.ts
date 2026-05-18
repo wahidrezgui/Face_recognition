@@ -1,4 +1,4 @@
-import { authHeaders, clearToken, getApiKey } from "./auth";
+import { authHeaders, clearToken, getToken } from "./auth";
 
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
   const res = await fetch(url, options);
@@ -21,6 +21,8 @@ export interface GateEvent {
   status?: "Identified" | "NeedsReview" | "Unrecognized";
   faceImageBase64?: string | null;
   faceImageUrl?: string | null;
+  welcomeMessage?: string | null;
+  department?: string | null;
 }
 
 export interface Person {
@@ -30,6 +32,7 @@ export interface Person {
   enrollmentStatus: "Pending" | "Active" | "Revoked" | "Suspended";
   createdAt: string;
   faceCount: number;
+  welcomeMessage?: string | null;
 }
 
 export async function fetchEvents(
@@ -66,6 +69,16 @@ export async function createPerson(fullName: string, department: string) {
     body: JSON.stringify({ fullName, department }),
   });
   if (!res.ok) throw new Error("Failed to create person");
+  return res.json();
+}
+
+export async function updateWelcomeMessage(id: string, welcomeMessage: string | null) {
+  const res = await apiFetch(`${API_BASE}/api/persons/${id}/welcome-message`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ welcomeMessage }),
+  });
+  if (!res.ok) throw new Error("Failed to update welcome message");
   return res.json();
 }
 
@@ -127,12 +140,31 @@ export async function enrollFromSystemCamera(
 
 export interface FaceImage {
   id: string;
-  image: string;
+  imageUrl: string;
 }
 
 export async function fetchPersonFaces(personId: string): Promise<FaceImage[]> {
   const res = await apiFetch(`${API_BASE}/api/persons/${personId}/faces`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Failed to fetch person faces");
+  return res.json();
+}
+
+export async function uploadFace(
+  personId: string,
+  file: File
+): Promise<{ imageUrl: string }> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}/upload-face`, {
+    method: "POST",
+    headers: authHeaders(),
+    body: formData,
+  });
+  if (!res.ok) {
+    let detail = "Failed to upload face image";
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -152,12 +184,55 @@ export async function detectPose(
   }
 }
 
+export interface Roi {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export interface StreamStatus {
+  roi: Roi;
+  frame_size: { width: number; height: number };
+  camera_open: boolean;
+  detector_loaded: boolean;
+  capture_interval_ms: number;
+}
+
+export async function fetchStreamStatus(): Promise<StreamStatus> {
+  const res = await fetch("/vision/stream/status");
+  if (!res.ok) return { roi: { x: 0, y: 0, width: 0, height: 0 }, frame_size: { width: 0, height: 0 }, camera_open: false, detector_loaded: false, capture_interval_ms: 500 };
+  return res.json();
+}
+
+export async function setVideoSource(cameraSource: string): Promise<{ status: string; message?: string; camera_source: string }> {
+  const res = await apiFetch(`${API_BASE}/api/config/video-source`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ cameraSource }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to set video source";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function setRoi(roi: Roi): Promise<void> {
+  await fetch("/vision/roi", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(roi),
+  });
+}
+
 export function createEventStream(
   onEvent: (event: GateEvent) => void,
   onError?: (err: Event) => void,
   onOpen?: () => void
 ): EventSource {
-  const token = getApiKey();
+  const token = getToken();
   const url = token ? `${API_BASE}/api/events/stream?token=${encodeURIComponent(token)}` : `${API_BASE}/api/events/stream`;
   const es = new EventSource(url);
   es.onmessage = (msg) => {

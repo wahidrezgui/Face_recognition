@@ -10,12 +10,16 @@
 - Package structure: `pyproject.toml`, relative imports (`from .quality import ...`)
 
 ### GateVision .NET Backend
-- .NET 9, ASP.NET Core Minimal API, port 5000
+- .NET 10, ASP.NET Core Minimal API, port 5000
 - Dapper + pgvector (cosine distance `<=>` operator)
 - EF Core for Person + GateEvent entities
 - Redis caching (localhost:6379)
 - SSE at `/api/events/stream`
-- **Authentication:** JWT bearer + X-API-Key middleware
+- **Authentication:** JWT bearer + `AuthMiddleware` class (`Infrastructure/Middleware/AuthMiddleware.cs`)
+  - JWT from `Authorization: Bearer` header (standard)
+  - JWT from `?token=` query param via `JwtBearerEvents.OnMessageReceived` (for SSE)
+  - API key from `X-API-Key` header, `?token=`, or `?api_key=` query params
+  - `ILogger<AuthMiddleware>` logs auth successes (Debug) and failures (Information)
 - **Login:** `POST /api/auth/login` returns JWT from API key
 
 ### Dashboard
@@ -44,7 +48,7 @@
                 │                                                                             │
                 │ Python → .NET:   X-API-Key header (GV_NET_API_KEY)                         │
                 │ Dashboard → .NET: Bearer JWT (from /api/auth/login)                        │
-                │ SSE:             ?token= query param (API key)                             │
+                │ SSE:             ?token= query param (API key or JWT)                      │
                 │ Exempt:          /api/health                                                │
                └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -99,7 +103,7 @@ POST /api/auth/login
 
 ### .NET → Dashboard: SSE Event Stream (JWT or API key via `?token=`)
 ```
-GET /api/events/stream?token=xxx
+GET /api/events/stream?token=<JWT_or_API_key>
 data: { "eventId": "uuid", "personName": "John Doe", "confidence": 0.92, "status": "Identified", "timestamp": "...", "faceImageUrl": "/api/events/{id}/image" }
 ```
 
@@ -112,19 +116,23 @@ Proxied via dashboard/next.config.js
 ### GateVision .NET Endpoints (port 5000)
 | Endpoint | Auth | Description |
 |----------|------|-------------|
-| POST /api/identify | JWT/API Key | Identify person by embedding (accepts `direction`). Only persists + SSE-publishes events for known persons (`PersonId` is not null). Unrecognized events are still returned in the response but not stored. |
+| POST /api/identify | JWT/API Key | Identify person by embedding (accepts `direction`). Buffers all detections in `EventBufferService` keyed by `track_id`. Highest-confidence detection per track is saved to `gate_events` when the track expires (3s of no updates). SSE-publishes every detection immediately for real-time display. Track IDs assigned by Python via bbox IoU tracker. |
+| POST /api/config/video-source | JWT/API Key | Set video source (webcam index, file path, or RTSP URL). Atomically writes `config/video_source.json` (temp+rename), POSTs source directly in body to Python `/restart`, then polls `/health` up to 10×300ms to confirm camera is live. |
 | POST /api/auth/login | None | Exchange API key for JWT |
 | GET /api/health | None | Health check |
 | GET /api/persons/count | JWT/API Key | Total enrolled persons count |
 | POST /api/persons | JWT/API Key | Create person |
 | GET /api/persons | JWT/API Key | List persons |
 | GET /api/persons/{id} | JWT/API Key | Get person details |
-| GET /api/persons/{id}/faces | JWT/API Key | Get enrolled face images (base64) for person |
-| POST /api/persons/{id}/enroll | JWT/API Key | Enroll embedding for person |
+| GET /api/persons/{id}/faces | JWT/API Key | Get enrolled face image URLs for person |
+| GET /api/persons/{id}/face-image/{faceId} | JWT/API Key | Serve enrolled face image file |
+| GET /api/persons/{id}/profile-image | JWT/API Key | Serve uploaded profile picture |
+| POST /api/persons/{id}/enroll | JWT/API Key | Enroll embedding for person (face images saved to `FaceImages/{personId}/` as files, path stored in `FaceImage` column) |
+| POST /api/persons/{id}/upload-face | JWT/API Key | Upload a profile picture (multipart form, .jpg/.jpeg/.png) |
 | PATCH /api/persons/{id}/status | JWT/API Key | Update person status |
 | GET /api/events | JWT/API Key | Event history (name ILIKE + status filter) |
 | GET /api/events/stats | JWT/API Key | Today entries, unknowns, pending review |
-| GET /api/events/stream | Token (qs) | SSE real-time stream (`?token=`) |
+| GET /api/events/stream | Token (qs) | SSE real-time stream (`?token=` accepts API key or JWT) |
 
 ### GateVision AI Endpoints (port 8000)
 - GET /health - Health check
@@ -136,6 +144,8 @@ Proxied via dashboard/next.config.js
 - GET /stream/status - Stream status
 - POST /pose - Estimate head pose from base64 frame
 - GET /events/recent - Recent events log
+- POST /restart - Accept `{ "source": "..." }` in body, open new CameraCapture, warm-up with test frame, swap atomically, persist config (atomic temp+rename), release old capture. Returns 502 if camera opens but delivers no frames.
+- GET /cameras - Probe camera indices 0..9, return available with friendly names (Windows: via WMI PowerShell query)
 
 ### Confidence Thresholds
 - `>= 0.85` → Identified (confirmed match)
@@ -145,12 +155,12 @@ Proxied via dashboard/next.config.js
 ## [GATEVISION SYSTEM DETAILS]
 
 ### GateVision AI Microservice (`gate_vision_ai/`)
-- `main.py` — FastAPI lifespan, background capture loop with circuit breaker tracking, state dict for route closures
-- `capture.py` — OpenCV video source (reads `GV_CAMERA_SOURCE` — mp4, RTSP, or device index)
+- `main.py` — FastAPI lifespan, background capture loop with circuit breaker tracking, state dict for route closures. On startup reads `config/video_source.json` to override `GV_CAMERA_SOURCE`. Assigns `track_id` per face via bbox-IoU tracker (`_bbox_iou`, `_next_track_id`) — same face keeps same ID across frames, new face gets incremented ID.
+- `capture.py` — OpenCV video source (reads `GV_CAMERA_SOURCE` — mp4, RTSP, or device index). Accepts optional `source` param for runtime re-initialization.
 - `detector.py` — InsightFace SCRFD detector wrapper with age/gender recognition
 - `embedder.py` — ArcFace 512-dim extraction + embedding averaging
 - `quality.py` — pose estimation (yaw/pitch), quality checking, face crop, base64 decode
-- `routes.py` — all route handlers via `register_routes(app, state: dict)` pattern
+- `routes.py` — all route handlers via `register_routes(app, state: dict)` pattern. `POST /restart` accepts source in body, warm-up test frame before swap, atomic config write via `os.replace()`.
 - `client.py` — httpx client with circuit breaker (CLOSED/OPEN/HALF_OPEN), failure counting, error differentiation
 - `config.py` — pydantic-settings, prefix `GV_` (includes `net_api_key`, `net_circuit_threshold`, `net_circuit_reset_timeout`)
 - `processing.py` — shared `process_single_face()` extracted from main.py/routes.py duplicates
@@ -160,12 +170,13 @@ Proxied via dashboard/next.config.js
 ### GateVision .NET Backend (`GateVision.Api/`)
 - ASP.NET Core 9 Minimal API, port 5000
 - Own pgvector DB `gatevision` on port 6667
-- FaceEmbedding entity: `Id`, `PersonId`, `Vector` (pgvector 512), `QualityScore`, `CreatedAt`, `FaceImage` (TEXT, base64 JPEG)
+- FaceEmbedding entity: `Id`, `PersonId`, `Vector` (pgvector 512), `QualityScore`, `CreatedAt`, `FaceImage` (TEXT, file path relative to `FaceImages/` dir)
 - Dapper for vector similarity (parameterized queries)
 - EF Core for Person + GateEvent entities
-- Redis caching at `localhost:6379` for person name lookups
+- Redis caching at `localhost:6379` for person metadata. Combined key `person:{id}` (Name, Department, WelcomeMessage) — 1 read instead of 3 round-trips.
 - `Services/GateEventChannel.cs` — static `Channel<GateEvent>` (bounded 200, DropOldest) for push-based SSE
-- JWT bearer authentication + X-API-Key header middleware
+- `Services/EventBufferService.cs` — `ConcurrentDictionary<int, BufferedTrack>` buffers detections by `track_id`. `BufferOrUpdate()` keeps highest-confidence detection per track. Background `FlushExpiredAsync()` persists tracks idle >3s to `gate_events`. Registered as singleton.
+- JWT bearer authentication + X-API-Key header middleware (`Infrastructure/Middleware/AuthMiddleware.cs`)
 - `POST /api/auth/login` returns JWT from shared API key
 - Developer exception page gated behind `IsDevelopment()`
 - Connection string from config/env/User Secrets (no hardcoded fallback)
@@ -188,7 +199,7 @@ Proxied via dashboard/next.config.js
 | C3 | **Test seed in DbUp** — `005_SeedData.sql` runs in production | 🔴 CRITICAL | ✅ FIXED |
 | C4 | **Path traversal in image serving** — `EventEndpoints.cs` | 🔴 CRITICAL | ✅ FIXED |
 | C5 | **CORS wildcard** — `AllowAnyOrigin` on both backends | 🔴 CRITICAL | ✅ FIXED |
-| H1 | **Python service has no auth** — All routes unprotected | 🟠 HIGH | OPEN |
+ 
 | H2 | **CapturedAt uses `DateTime.Parse`** — 500 on bad input | 🟠 HIGH | OPEN |
 | H3 | **Base64 face images in SSE payload** | 🟠 HIGH | OPEN |
 | H4 | **No rate limiting on enrollment endpoint** | 🟠 HIGH | OPEN |
@@ -196,9 +207,16 @@ Proxied via dashboard/next.config.js
 | M1 | **Stats query full table scan** | 🟡 MEDIUM | OPEN |
 | M2 | **Missing DB indexes** on queried columns | 🟡 MEDIUM | OPEN |
 | M5 | **Unbounded gate_events growth** — no TTL | 🟡 MEDIUM | OPEN |
-| M7 | **stream_status hardcoded** `capture_interval_ms` | 🟡 MEDIUM | OPEN |
+| M7 | **stream_status hardcoded** `capture_interval_ms` | 🟡 MEDIUM | ✅ FIXED |
 | D1 | **Dead code: smoke_test.py** — 152 lines | 🟡 MEDIUM | OPEN |
 | D2 | **Dead code: StatCard.tsx** — unused component | 🟡 MEDIUM | OPEN |
+
+| H6 | **3 Redis round-trips per identify call** — combined into 1 key `person:{id}` | 🟡 MEDIUM | ✅ FIXED |
+| H7 | **SSE instant invalidate floods API** — debounced 2s + `setQueryData` direct cache update | 🟡 MEDIUM | ✅ FIXED |
+| H8 | **Dashboard re-renders all on every SSE event** — `React.memo` on `EventCard` + `CaptureThumb` | 🟡 MEDIUM | ✅ FIXED |
+| M8 | **Unconditional JPEG encode every frame** — now lazy: encodes only when stream connections > 0 | 🟢 LOW | ✅ FIXED |
+| M9 | **Config restart file-as-IPC race** — source passed in POST body, atomic write, warm-up frame, health poll | 🟠 HIGH | ✅ FIXED |
+| M10 | **Config path resolution fragile** — `request.PathBase` → `IWebHostEnvironment.ContentRootPath` | 🟠 HIGH | ✅ FIXED |
 
 ### Architecture Rules (enforced)
 - Python is the ONLY component touching OpenCV, InsightFace, or any CV/ML library
@@ -207,6 +225,7 @@ Proxied via dashboard/next.config.js
 - .NET→React data: `{ eventId, personId, personName, confidence, timestamp, direction }` only
 - .NET backend never imports any vision library
 - Dashboard users authenticate via `/api/auth/login` → JWT → Bearer header
+- SSE `?token=` query param accepts both JWT (validated by JWT Bearer middleware via `OnMessageReceived`) and API key (validated by `AuthMiddleware` as fallback)
 
 ## [FUTURE ENHANCEMENTS]
 - Face liveness detection — requires additional sensors
@@ -273,6 +292,21 @@ Proxied via dashboard/next.config.js
 | G53 | C3: Exclude seed data from DbUp auto-migration | ✅ FIXED v6 | Added `s => !s.Contains("Seed")` filter to `WithScriptsEmbeddedInAssembly` |
 | G54 | C4: Fix path traversal in image serving | ✅ FIXED v6 | `Path.GetFullPath` + `StartsWith(ImageDir)` bounds check added |
 | G55 | C5: Lock CORS to explicit origins | ✅ FIXED v6 | Both backends: `WithOrigins("http://localhost:3000")` instead of `AllowAnyOrigin` |
+| G56 | ROI frame overlay + cropped detection | ✅ ADDED v6 | Configurable ROI via `GV_ROI_X/Y/WIDTH/HEIGHT` env vars or `POST /roi` API. Detection limited to ROI region; green rectangle drawn on MJPEG stream |
+| G57 | SSE publishes all detections | ✅ FIXED v6 | Unknown faces now published via SSE (not persisted), so Face Captures strip shows all detected faces |
+| G58 | M7: stream_status hardcoded value fixed | ✅ FIXED v6 | `capture_interval_ms` now reads from `settings.capture_interval_ms` instead of hardcoded 500 |
+| G59 | Interactive ROI editor on dashboard | ✅ ADDED v6 | `RoiEditor` component: drag to move, corner/edge handles to resize. ROI saved to localStorage + sent to Python `/roi`. Survives service restart via localStorage replay on page load. |
+| G60 | Face images saved as files instead of base64 in DB | ✅ ADDED v7 | `EnrollmentService.Enroll()` decodes base64 face crop, saves to `FaceImages/{personId}/{embeddingId}.jpg`. `FaceImage` column now stores relative file path. `GET /api/persons/{id}/faces` returns `imageUrl` instead of inline base64. New `GET /api/persons/{id}/face-image/{faceId}` endpoint serves files with path traversal protection. |
+| G61 | Profile picture upload | ✅ ADDED v7 | `POST /api/persons/{id}/upload-face` accepts multipart file upload (.jpg/.jpeg/.png). Saves as `FaceImages/{personId}/profile.ext`. Served via `GET /api/persons/{id}/profile-image`. Frontend person detail page shows circular avatar with upload button. |
+| G62 | Sidebar dedup: same person within 5s | ✅ ADDED v8 | `page.tsx` SSE handler deduplicates matched events by `personId` within a 5-second window (using event timestamps). When a new SSE event arrives for a known personId and a prior event exists within 5s, the old entry is **replaced** in-place instead of appended. Unknown persons (`personId === null`) are never deduped, preserving the "Face Captures" strip showing all detections. |
+| G63 | Proper auth middleware extracted | ✅ ADDED v9 | Inline auth middleware in `Program.cs` extracted to `Infrastructure/Middleware/AuthMiddleware.cs`. `?token=` query param now validates BOTH API key (plaintext) and JWT (HMAC-SHA256). `OnMessageReceived` event on JWT Bearer handler forwards `?token=` from SSE requests into the Bearer pipeline. Frontend `createEventStream` prefers JWT token over API key for SSE connections. |
+| G64 | Video source config on the fly | ✅ ADDED v10 → REFACTORED v12 | Dashboard Config page allows switching between webcam (`0`), sample video (`sample.mp4`), or RTSP URL. v12: Source passed directly in POST body (no file-as-IPC race). Atomic config write (temp+rename). Warm-up test frame before swap. Health poll after restart. Broken `request.PathBase` path resolution replaced with `IWebHostEnvironment.ContentRootPath`. |
+| G65 | Persist only Identified events | 🔄 REPLACED v11 | Superseded by G66 — buffered approach now saves all detections once per crossing. |
+| G66 | Buffered track-based event persistence | ✅ ADDED v11 | `EventBufferService` buffers detections by `track_id`, keeps highest confidence per track. Background flush at 1s interval persists expired tracks (3s idle) to `gate_events`. Python assigns `track_id` via bbox IoU overlap (>0.3 = same track). SSE still publishes every detection in real-time. |
+| G70 | Redis: 3 keys → 1 combined key | ✅ ADDED v12 | `PersonCacheData` record. `CacheService.GetPersonAsync/SetPersonAsync/RemovePersonAsync`. All 13 cache references across 3 files migrated. |
+| G71 | SSE: debounced invalidate + direct cache | ✅ ADDED v12 | `setQueryData` prepends events directly into cache. Background refresh debounced to 2s window. `refetchInterval: 30s` for consistency. `useRef` cleanup on unmount. |
+| G72 | React.memo on dashboard cards | ✅ ADDED v12 | `EventCard` + `CaptureThumb` wrapped with `React.memo`. Custom comparator checks `eventId` + `confidence` to skip unnecessary re-renders. |
+| G73 | Lazy JPEG encoding | ✅ ADDED v12 | MJPEG stream only encodes JPEG when `stream_connections > 0`. Counter tracks active viewers via `finally` block. Saves ~2-5ms CPU per frame when dashboard is closed. |
 
 ## [CONFIGURATION]
 
@@ -296,8 +330,14 @@ Proxied via dashboard/next.config.js
 - `Auth__JwtSecret` - JWT signing key
 - `Auth__ApiKey` - Shared API key
 
+### Shared Config File (`config/video_source.json`)
+- Written atomically by .NET `POST /api/config/video-source` (temp+rename, no partial read risk). Written again by Python `/restart` for persistence.
+- Format: `{ "camera_source": "0" | "sample.mp4" | "rtsp://..." }`
+- Persists across service restarts; Python startup reads it to override `GV_CAMERA_SOURCE`
+- **`/restart`** does NOT re-read this file — source is passed directly in POST body from .NET
+
 ### Python .env (GV_ prefix)
-- `GV_CAMERA_SOURCE` - Camera source (default: "0")
+- `GV_CAMERA_SOURCE` - Camera source (default: "0", overridden by `config/video_source.json` if present)
 - `GV_NET_BACKEND_URL` - .NET backend URL (default: "http://localhost:5000")
 - `GV_NET_API_KEY` - API key for X-API-Key header
 - `GV_NET_CIRCUIT_THRESHOLD` - Circuit breaker failure threshold (default: 5)
@@ -313,34 +353,45 @@ Proxied via dashboard/next.config.js
 
 ### Start Infrastructure
 ```bash
+# One-time: create the shared Docker network
+docker network create devnet
+
 docker compose up -d
 ```
 
-### Setup GateVision AI
+### Setup GateVision AI (port 8000)
 ```bash
 cd gate_vision_ai
 pip install -e .
-# Set GV_NET_API_KEY in .env or environment
+# GPU not available? Replace onnxruntime-gpu with onnxruntime in pyproject.toml before installing
+
+# Copy env template and set the API key (must match Auth:ApiKey in .NET config)
+cp .env.example .env
+# Edit .env → set GV_NET_API_KEY=dev-api-key-change-me (or your custom key)
+
 python -m gate_vision_ai
-# Port 8000
 ```
 
-### Setup .NET Backend
+### Setup .NET Backend (port 5000)
+`appsettings.Development.json` already has working defaults for local dev — no secrets needed:
 ```bash
 cd GateVision.Api
 dotnet restore
-dotnet user-secrets init
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=localhost;Port=6667;Database=gatevision;Username=gatevision;Password=localdev"
-dotnet user-secrets set "Auth:JwtSecret" "your-32-char-min-secret-key!!"
-dotnet user-secrets set "Auth:ApiKey" "dev-api-key-change-me"
 dotnet run
-# Port 5000
 ```
 
-### Setup Dashboard
+For production or non-dev environments, override via User Secrets or environment variables:
+```bash
+dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=...;Port=6667;Database=gatevision;Username=gatevision;Password=..."
+dotnet user-secrets set "Auth:JwtSecret" "your-32-char-min-secret-key!!"
+dotnet user-secrets set "Auth:ApiKey" "your-api-key"
+```
+
+### Setup Dashboard (port 3000)
 ```bash
 cd dashboard
 npm install
 npm run dev
-# Port 3000 — navigate to /login to authenticate
+# Navigate to http://localhost:3000/login
+# Login with API key: dev-api-key-change-me (default from appsettings.Development.json)
 ```

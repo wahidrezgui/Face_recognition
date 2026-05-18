@@ -23,6 +23,7 @@ public class AppDbContext : DbContext
             e.Property(p => p.EnrollmentStatus)
                 .HasConversion<string>()
                 .HasMaxLength(20);
+            e.Property(p => p.WelcomeMessage).HasMaxLength(500);
         });
 
         modelBuilder.Entity<GateEvent>(e =>
@@ -38,6 +39,8 @@ public class AppDbContext : DbContext
                 .HasMaxLength(10);
             e.Property(g => g.FaceImageBase64).HasColumnName("FaceImageBase64");
             e.Property(g => g.FaceImagePath).HasColumnName("FaceImagePath");
+            e.Property(g => g.WelcomeMessage).HasMaxLength(500);
+            e.Property(g => g.Department).HasMaxLength(100);
         });
     }
 }

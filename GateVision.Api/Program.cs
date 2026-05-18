@@ -9,6 +9,7 @@ using Microsoft.IdentityModel.Tokens;
 using GateVision.Api.Endpoints;
 using GateVision.Api.Infrastructure.Db;
 using GateVision.Api.Infrastructure.Redis;
+using GateVision.Api.Infrastructure.Middleware;
 using GateVision.Api.Services;
 using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
@@ -42,6 +43,7 @@ if (!string.IsNullOrEmpty(redisConnection))
 }
 
 builder.Services.AddSingleton(new CacheService(redis));
+builder.Services.AddSingleton<EventBufferService>();
 builder.Services.AddScoped<IdentificationService>();
 builder.Services.AddScoped<EnrollmentService>();
 
@@ -62,6 +64,19 @@ builder.Services.AddAuthentication("Bearer")
             ValidIssuer = "GateVision",
             ValidAudience = "GateVision",
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+        };
+        options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+        {
+            OnMessageReceived = ctx =>
+            {
+                var token = ctx.Request.Query["token"].FirstOrDefault();
+                if (!string.IsNullOrEmpty(token) &&
+                    ctx.Request.Path.StartsWithSegments("/api/events/stream"))
+                {
+                    ctx.Token = token;
+                }
+                return Task.CompletedTask;
+            }
         };
     });
 builder.Services.AddAuthorization();
@@ -113,36 +128,13 @@ app.UseCors();
 app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.Use(async (ctx, next) =>
-{
-    if (ctx.Request.Path.StartsWithSegments("/api/health") || ctx.Request.Path.StartsWithSegments("/api/auth/login"))
-    {
-        await next();
-        return;
-    }
-    if (ctx.User.Identity?.IsAuthenticated == true)
-    {
-        await next();
-        return;
-    }
-    var providedKey = ctx.Request.Headers["X-API-Key"].FirstOrDefault();
-    if (string.IsNullOrEmpty(providedKey))
-        providedKey = ctx.Request.Query["token"].FirstOrDefault();
-    if (!string.IsNullOrEmpty(providedKey) && providedKey == apiKey)
-    {
-        ctx.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, "api")], "ApiKey"));
-        await next();
-        return;
-    }
-    ctx.Response.StatusCode = 401;
-    await ctx.Response.WriteAsync("{\"error\":\"unauthorized\"}");
-});
+app.UseMiddleware<AuthMiddleware>();
 
 app.MapIdentifyEndpoints();
 app.MapPersonEndpoints();
 app.MapEventEndpoints();
 app.MapImageEndpoints();
+app.MapConfigEndpoints();
 
 app.MapPost("/api/auth/login", (LoginDto dto, HttpRequest request, ILogger<Program> logger) =>
 {
@@ -171,6 +163,27 @@ app.MapGet("/api/health", async (AppDbContext db) =>
     }
     catch { }
     return Results.Ok(new { status = "ok", db = dbOk });
+});
+
+_ = Task.Run(async () =>
+{
+    var buffer = app.Services.GetRequiredService<EventBufferService>();
+    var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
+    while (await timer.WaitForNextTickAsync(app.Lifetime.ApplicationStopping))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var flushed = await buffer.FlushExpiredAsync(db);
+            if (flushed > 0)
+                app.Logger.LogInformation("Flushed {Count} expired tracks to gate_events", flushed);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Track flush error");
+        }
+    }
 });
 
 app.Run();

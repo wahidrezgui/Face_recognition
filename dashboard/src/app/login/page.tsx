@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { login } from "@/lib/auth";
 
-const API_KEY_STORAGE_KEY = "gv_api_key";
-
 export default function LoginPage() {
   const [apiKey, setApiKey] = useState("");
   const [error, setError] = useState("");
@@ -18,7 +16,6 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(apiKey);
-      localStorage.setItem(API_KEY_STORAGE_KEY, apiKey);
       router.push("/dashboard");
     } catch {
       setError("Invalid API key");

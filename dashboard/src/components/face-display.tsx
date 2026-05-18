@@ -1,8 +1,9 @@
+import React from "react";
 import type { GateEvent } from "@/lib/api";
-import { getApiKey } from "@/lib/auth";
+import { getToken } from "@/lib/auth";
 
 function apiImageSrc(url: string): string {
-  const key = typeof window !== "undefined" ? getApiKey() : null;
+  const key = typeof window !== "undefined" ? getToken() : null;
   return key ? `${url}?token=${encodeURIComponent(key)}` : url;
 }
 
@@ -61,7 +62,7 @@ export function FaceAvatar({ event, size = "w-14 h-14", textSize = "text-base" }
   );
 }
 
-export function CaptureThumb({ event }: { event: GateEvent }) {
+export const CaptureThumb = React.memo(function CaptureThumb({ event }: { event: GateEvent }) {
   const s = statusStyle(event.status);
   return (
     <div className="flex flex-col items-center gap-1 shrink-0">
@@ -72,9 +73,9 @@ export function CaptureThumb({ event }: { event: GateEvent }) {
       <span className="text-[10px] text-gray-500 leading-none">{fmtTime(event.timestamp)}</span>
     </div>
   );
-}
+}, (prev, next) => prev.event.eventId === next.event.eventId && prev.event.confidence === next.event.confidence);
 
-export function EventCard({ event }: { event: GateEvent }) {
+export const EventCard = React.memo(function EventCard({ event }: { event: GateEvent }) {
   const s = statusStyle(event.status);
   const pct = Math.round(event.confidence * 100);
   return (
@@ -110,7 +111,7 @@ export function EventCard({ event }: { event: GateEvent }) {
       </div>
     </div>
   );
-}
+}, (prev, next) => prev.event.eventId === next.event.eventId && prev.event.confidence === next.event.confidence);
 
 export function PanelHeader({ icon, title, count }: { icon: React.ReactNode; title: string; count?: number }) {
   return (

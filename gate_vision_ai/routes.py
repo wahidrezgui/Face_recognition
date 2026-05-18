@@ -1,4 +1,8 @@
+import json
 import logging
+import os
+import platform
+import subprocess
 import asyncio
 from datetime import datetime, timezone
 
@@ -8,6 +12,8 @@ from fastapi import HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from .config import settings
+from .capture import CameraCapture
 from .processing import process_single_face
 from .quality import check_quality, crop_face_b64, estimate_pose_from_kps, decode_base64_frame
 from .embedder import extract_embedding, average_embeddings
@@ -38,6 +44,17 @@ class EnrollWebcamRequest(BaseModel):
 
 class PoseRequest(BaseModel):
     frame: str
+
+
+class RoiRequest(BaseModel):
+    x: int
+    y: int
+    width: int
+    height: int
+
+
+class RestartRequest(BaseModel):
+    source: str
 
 
 def register_routes(app, state: dict):
@@ -99,11 +116,23 @@ def register_routes(app, state: dict):
 
     @app.post("/enroll/capture")
     async def enroll_capture(req: EnrollCaptureRequest):
+        # Release main capture to free camera device (Windows CAP_DSHOW locks)
+        old = s["capture"]
+        s["capture"] = None
+        if old:
+            await asyncio.to_thread(old.release)
+        cap = await asyncio.to_thread(CameraCapture, "0")
         try:
-            result = await _run_enrollment_from_camera(req.personId, s["capture"], s["detector"], s["backend"])
+            result = await _run_enrollment_from_camera(req.personId, cap, s["detector"], s["backend"])
             return result
         except RuntimeError as e:
             raise HTTPException(400, str(e))
+        finally:
+            await asyncio.to_thread(cap.release)
+            try:
+                s["capture"] = await asyncio.to_thread(CameraCapture, settings.camera_source)
+            except RuntimeError:
+                s["capture"] = None
 
     @app.post("/pose")
     async def get_pose(req: PoseRequest):
@@ -167,28 +196,114 @@ def register_routes(app, state: dict):
     @app.get("/stream/status")
     def stream_status():
         cap = s["capture"]
+        roi = s.get("roi", {})
         return {
             "camera_open": cap is not None and cap.cap.isOpened() if cap else False,
             "detector_loaded": s["detector"] is not None,
-            "capture_interval_ms": 500,
+            "capture_interval_ms": settings.capture_interval_ms,
+            "camera_source": settings.camera_source,
             "stats": s["stats"],
+            "roi": roi,
+            "frame_size": s.get("frame_size", {"width": 0, "height": 0}),
         }
+
+    @app.post("/roi")
+    def set_roi(req: RoiRequest):
+        if req.width < 0 or req.height < 0 or req.x < 0 or req.y < 0:
+            raise HTTPException(400, "ROI coordinates must be non-negative")
+        s["roi"] = {"x": req.x, "y": req.y, "width": req.width, "height": req.height}
+        logger.info("ROI updated: x=%d y=%d w=%d h=%d", req.x, req.y, req.width, req.height)
+        return {"status": "ok", "roi": s["roi"]}
 
     @app.get("/stream")
     async def stream():
         if s["capture"] is None:
             raise HTTPException(503, "camera not available")
+        s["stream_connections"] += 1
         async def generate():
-            while True:
-                frame = s["latest_frame_jpg"]
-                if frame is not None:
-                    yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                await asyncio.sleep(0.05)
+            try:
+                while True:
+                    frame = s["latest_frame_jpg"]
+                    if frame is not None:
+                        yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
+                    await asyncio.sleep(0.05)
+            finally:
+                s["stream_connections"] = max(0, s["stream_connections"] - 1)
         return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")
 
     @app.get("/events/recent")
     def recent_events(limit: int = 20):
         return list(reversed(list(s["events_log"])[-limit:]))
+
+    @app.get("/cameras")
+    def list_cameras():
+        # Probe indices 0..9 for available cameras
+        available = []
+        dshow = getattr(cv2, "CAP_DSHOW", 700)
+        for i in range(10):
+            try:
+                cap = cv2.VideoCapture(i, dshow)
+                ok = cap.isOpened()
+                cap.release()
+                if ok:
+                    available.append(i)
+            except Exception:
+                pass
+
+        # Try to get friendly names on Windows via PowerShell
+        friendly = {}
+        if platform.system() == "Windows":
+            try:
+                script = 'Get-CimInstance -Namespace root/cimv2 -ClassName Win32_PnPEntity | Where-Object {$_.PNPClass -eq "Camera" -or $_.PNPClass -eq "Image"} | Select-Object FriendlyName | ConvertTo-Json -Compress'
+                r = subprocess.run(["powershell", "-NoProfile", "-Command", script], capture_output=True, text=True, timeout=5)
+                if r.returncode == 0 and r.stdout.strip():
+                    names = json.loads(r.stdout)
+                    if isinstance(names, dict):
+                        names = [names]
+                    for idx, dev in enumerate(names):
+                        if idx < len(available) and dev.get("FriendlyName"):
+                            friendly[available[idx]] = dev["FriendlyName"]
+            except Exception:
+                pass
+
+        return [
+            {"index": idx, "name": friendly.get(idx, f"Camera {idx}")}
+            for idx in available
+        ]
+
+    @app.post("/restart")
+    async def restart(req: RestartRequest):
+        source = req.source
+        if not source:
+            raise HTTPException(400, "source is required")
+        logger.info("Restarting capture with source: %s", source)
+
+        # Open and warm-up new capture before touching old one
+        new_cap = await asyncio.to_thread(CameraCapture, source)
+        test_frame = await asyncio.to_thread(new_cap.read_frame)
+        if test_frame is None:
+            await asyncio.to_thread(new_cap.release)
+            raise HTTPException(502, f"Camera opened but first frame read failed for source: {source}")
+
+        # Persist source to config (atomic write via temp + rename)
+        config_path = settings.video_source_config_path
+        tmp_path = config_path + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump({"camera_source": source}, f)
+            os.replace(tmp_path, config_path)  # atomic on Linux
+        except OSError as e:
+            await asyncio.to_thread(new_cap.release)
+            raise HTTPException(500, f"Failed to persist config: {e}")
+
+        # Swap atomically
+        old = s["capture"]
+        s["capture"] = new_cap
+        settings.camera_source = source
+        if old:
+            await asyncio.to_thread(old.release)
+
+        return {"status": "ok", "camera_source": source}
 
 
 async def _run_enrollment_from_camera(person_id: str, capture, detector, backend):

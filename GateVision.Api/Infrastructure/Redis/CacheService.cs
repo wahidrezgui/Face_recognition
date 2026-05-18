@@ -1,3 +1,4 @@
+using GateVision.Api.Domain;
 using StackExchange.Redis;
 using System.Text.Json;
 
@@ -35,4 +36,15 @@ public class CacheService
         var db = _redis.GetDatabase();
         await db.KeyDeleteAsync(key);
     }
+
+    // ── Combined person metadata (1 key instead of 3) ──────────
+
+    public async Task<PersonCacheData?> GetPersonAsync(Guid personId)
+        => await GetAsync<PersonCacheData>($"person:{personId}");
+
+    public async Task SetPersonAsync(Guid personId, string name, string? department, string? welcomeMessage)
+        => await SetAsync($"person:{personId}", new PersonCacheData(name, department, welcomeMessage));
+
+    public async Task RemovePersonAsync(Guid personId)
+        => await RemoveAsync($"person:{personId}");
 }

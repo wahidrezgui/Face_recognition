@@ -48,6 +48,8 @@ public class IdentificationService
         }
 
         var confidence = (float)result.Confidence;
+        if (float.IsNaN(confidence) || float.IsInfinity(confidence))
+            confidence = 0f;
 
         if (confidence < 0.35f)
         {
@@ -61,7 +63,7 @@ public class IdentificationService
         }
         EventStatus status;
 
-        if (confidence >= 0.85f)
+        if (confidence >= 0.80f)
         {
             status = EventStatus.Identified;
         }
@@ -74,17 +76,27 @@ public class IdentificationService
             status = EventStatus.Unrecognized;
         }
 
-        var personName = await _cache.GetAsync<string>($"person_name:{result.PersonId}");
-        if (personName is null)
+        // Single cache read — 1 key instead of 3 separate round-trips
+        var cached = await _cache.GetPersonAsync(result.PersonId);
+        string personName;
+        string? welcomeMessage;
+        string? department;
+
+        if (cached is not null)
+        {
+            personName = cached.Name;
+            department = cached.Department;
+            welcomeMessage = cached.WelcomeMessage;
+        }
+        else
         {
             var person = await _db.Persons.AsNoTracking()
-             
                 .FirstOrDefaultAsync(p => p.Id == result.PersonId);
             personName = person?.FullName ?? "UNKNOWN";
+            welcomeMessage = person?.WelcomeMessage;
+            department = person?.Department;
             if (person is not null)
-            {
-                await _cache.SetAsync($"person_name:{result.PersonId}", personName);
-            }
+                await _cache.SetPersonAsync(result.PersonId, personName, department, welcomeMessage);
         }
 
         return new IdentifyResponse
@@ -93,6 +105,8 @@ public class IdentificationService
             PersonName = personName,
             Confidence = confidence,
             Status = status,
+            WelcomeMessage = string.IsNullOrEmpty(welcomeMessage) ? null : welcomeMessage,
+            Department = string.IsNullOrEmpty(department) ? null : department,
         };
     }
 }
@@ -109,4 +123,6 @@ public class IdentifyResponse
     public string PersonName { get; set; } = "UNKNOWN";
     public float Confidence { get; set; }
     public EventStatus Status { get; set; }
+    public string? WelcomeMessage { get; set; }
+    public string? Department { get; set; }
 }

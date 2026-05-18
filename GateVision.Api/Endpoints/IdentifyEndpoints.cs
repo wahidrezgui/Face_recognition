@@ -9,7 +9,7 @@ public static class IdentifyEndpoints
 {
     public static void MapIdentifyEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/identify", async (IdentifyRequestDto dto, IdentificationService svc, AppDbContext db, CancellationToken ct) =>
+        app.MapPost("/api/identify", async (IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (dto.Embedding.Length != 512)
                 return Results.BadRequest($"Embedding must have exactly 512 dimensions, got {dto.Embedding.Length}");
@@ -19,6 +19,22 @@ public static class IdentifyEndpoints
             var direction = string.Equals(dto.Direction, "exit", StringComparison.OrdinalIgnoreCase)
                 ? Direction.Exit
                 : Direction.Entry;
+
+            buffer.BufferOrUpdate(new BufferedTrack
+            {
+                TrackId = dto.TrackId,
+                PersonId = result.PersonId,
+                PersonName = result.PersonName,
+                Confidence = result.Confidence,
+                Status = result.Status,
+                Direction = direction,
+                CapturedAt = capturedAt,
+                FaceImageBase64 = dto.FaceCrop,
+                WelcomeMessage = result.WelcomeMessage,
+                Department = result.Department,
+            });
+
+            logger.LogDebug("Track {TrackId} buffered ({Person}, conf={Confidence})", dto.TrackId, result.PersonName, result.Confidence);
 
             var gateEvent = new GateEvent
             {
@@ -30,13 +46,9 @@ public static class IdentifyEndpoints
                 Direction = direction,
                 CapturedAt = capturedAt,
                 FaceImageBase64 = dto.FaceCrop,
+                WelcomeMessage = result.WelcomeMessage,
+                Department = result.Department,
             };
-
-            if (result.PersonId.HasValue)
-            {
-                db.GateEvents.Add(gateEvent);
-                await db.SaveChangesAsync(ct);
-            }
 
             GateEventChannel.Publish(gateEvent);
 
@@ -67,4 +79,7 @@ public class IdentifyRequestDto
 
     [JsonPropertyName("face_crop")]
     public string? FaceCrop { get; set; }
+
+    [JsonPropertyName("track_id")]
+    public int TrackId { get; set; }
 }

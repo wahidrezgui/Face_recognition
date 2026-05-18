@@ -24,4 +24,6 @@ public class GateEvent
     public DateTime CapturedAt { get; set; }
     public string? FaceImageBase64 { get; set; }
     public string? FaceImagePath { get; set; }
+    public string? WelcomeMessage { get; set; }
+    public string? Department { get; set; }
 }

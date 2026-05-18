@@ -15,4 +15,7 @@ public class Person
     public string Department { get; set; } = string.Empty;
     public EnrollmentStatus EnrollmentStatus { get; set; } = EnrollmentStatus.Pending;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public string? WelcomeMessage { get; set; }
 }
+
+public record PersonCacheData(string Name, string? Department, string? WelcomeMessage);

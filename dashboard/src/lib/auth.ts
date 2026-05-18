@@ -18,11 +18,6 @@ export function isAuthenticated(): boolean {
   return !!getToken();
 }
 
-export function getApiKey(): string | null {
-  if (typeof window === "undefined") return null;
-  return localStorage.getItem("gv_api_key");
-}
-
 export async function login(apiKey: string): Promise<string> {
   const res = await fetch(`${API_BASE}/api/auth/login`, {
     method: "POST",

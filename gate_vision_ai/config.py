@@ -2,6 +2,8 @@ import os
 from pydantic_settings import BaseSettings
 from typing import Literal
 
+_PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+
 
 class Settings(BaseSettings):
     camera_source: str = "0"
@@ -36,6 +38,10 @@ class Settings(BaseSettings):
     class Config:
         env_prefix = "GV_"
         env_file = os.path.join(os.path.dirname(__file__), ".env")
+
+    @property
+    def video_source_config_path(self) -> str:
+        return os.path.join(_PROJECT_ROOT, "config", "video_source.json")
 
 
 settings = Settings()

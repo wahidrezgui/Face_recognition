@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { fetchPersons, createPerson, type Person } from "@/lib/api";
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
 function statusBadge(status: string) {
   switch (status) {
     case "Active":
@@ -17,6 +19,24 @@ function statusBadge(status: string) {
     default:
       return "bg-gray-800 text-gray-300";
   }
+}
+
+function PersonAvatar({ personId, fullName }: { personId: string; fullName: string }) {
+  const [error, setError] = useState(false);
+  const url = `${API_BASE}/api/persons/${personId}/profile-image`;
+  if (error) {
+    return (
+      <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-500 shrink-0">
+        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+        </svg>
+      </div>
+    );
+  }
+  return (
+    <img src={url} alt={fullName} onError={() => setError(true)}
+      className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" />
+  );
 }
 
 export default function PersonsPage() {
@@ -91,11 +111,12 @@ export default function PersonsPage() {
           <Link
             key={person.id}
             href={`/persons/${person.id}`}
-            className="flex items-center justify-between px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
+            className="flex items-center gap-3 px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
           >
-            <div>
-              <p className="font-medium">{person.fullName}</p>
-              <p className="text-sm text-gray-400">{person.department}</p>
+            <PersonAvatar personId={person.id} fullName={person.fullName} />
+            <div className="flex-1 min-w-0">
+              <p className="font-medium truncate">{person.fullName}</p>
+              <p className="text-sm text-gray-400 truncate">{person.department}</p>
             </div>
             <span
               className={`text-xs px-2 py-1 rounded ${statusBadge(person.enrollmentStatus)}`}

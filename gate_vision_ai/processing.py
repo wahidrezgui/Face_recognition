@@ -3,7 +3,7 @@ from .quality import check_quality, crop_face_b64
 from .embedder import extract_embedding
 
 
-async def process_single_face(face: dict, frame: np.ndarray, captured_at: str, direction: str, backend) -> dict:
+async def process_single_face(face: dict, frame: np.ndarray, captured_at: str, direction: str, backend, track_id: int = 0) -> dict:
     ok, reason = check_quality(face)
     if not ok:
         return {"quality": ok, "reason": reason}
@@ -12,5 +12,5 @@ async def process_single_face(face: dict, frame: np.ndarray, captured_at: str, d
         return {"quality": False, "reason": "no_embedding"}
     confidence = face["confidence"]
     face_crop_b64 = crop_face_b64(frame, face["bbox"])
-    result = await backend.identify(embedding, confidence, captured_at, direction, face_crop_b64) if backend else None
+    result = await backend.identify(embedding, confidence, captured_at, direction, face_crop_b64, track_id) if backend else None
     return {"quality": True, "embedding": embedding.tolist(), "match": result}

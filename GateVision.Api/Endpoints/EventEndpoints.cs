@@ -175,6 +175,8 @@ public static class EventEndpoints
             status = evt.Status.ToString(),
             faceImageUrl = evt.FaceImagePath is not null ? $"/api/events/{evt.Id}/image" : null,
             faceImageBase64 = evt.FaceImagePath is null ? evt.FaceImageBase64 : null,
+            welcomeMessage = evt.WelcomeMessage,
+            department = evt.Department,
         }, JsonOpts);
         await ctx.Response.WriteAsync($"id: {evt.CapturedAt:O}\ndata: {payload}\n\n", ct);
     }

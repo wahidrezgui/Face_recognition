@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchEvents,
@@ -8,17 +8,25 @@ import {
   fetchPersonsCount,
   fetchEventStats,
   createEventStream,
+  setRoi,
   type GateEvent,
+  type Roi,
 } from "@/lib/api";
 import Link from "next/link";
 import { IconCamera, IconFace, IconTarget, IconChart, IconShield, IconUsers, IconDot } from "@/components/icons";
 import { PanelHeader, StatItem, CaptureThumb, EventCard } from "@/components/face-display";
+import { RoiEditor } from "@/components/RoiEditor";
+
+const ROI_STORAGE_KEY = "gv_roi";
 
 // ── page ──────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [liveEvents, setLiveEvents] = useState<GateEvent[]>([]);
   const [streamError, setStreamError] = useState(false);
   const [now, setNow] = useState(new Date());
+  const [roiEditing, setRoiEditing] = useState(false);
+  const [roi, setRoiState] = useState<Roi | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
 
   const { data: initialData } = useQuery({
     queryKey: ["events", 1],
@@ -39,10 +47,13 @@ export default function DashboardPage() {
 
   const employeeIds = useMemo(() => new Set(persons.map((p) => p.id)), [persons]);
 
-  const matchedEvents = useMemo(
-    () => liveEvents.filter((e) => e.personId && employeeIds.has(e.personId)),
-    [liveEvents, employeeIds],
-  );
+  const matchedEvents = useMemo(() => {
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    return liveEvents.filter(
+      (e) => e.personId && employeeIds.has(e.personId) && new Date(e.timestamp) >= todayStart,
+    );
+  }, [liveEvents, employeeIds]);
 
   const { data: stats } = useQuery({
     queryKey: ["eventStats"],
@@ -56,7 +67,31 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const es = createEventStream(
-      (e) => { setLiveEvents((prev) => [e, ...prev].slice(0, 100)); },
+      (e) => {
+        setLiveEvents((prev) => {
+          const exactIdx = prev.findIndex((p) => p.eventId === e.eventId);
+          if (exactIdx !== -1) {
+            const updated = [...prev];
+            updated[exactIdx] = e;
+            return updated;
+          }
+          if (e.personId) {
+            const newTime = new Date(e.timestamp).getTime();
+            const dupIdx = prev.findIndex(
+              (p) => p.personId === e.personId && (newTime - new Date(p.timestamp).getTime()) <= 5000,
+            );
+            if (dupIdx !== -1) {
+              if (e.confidence > prev[dupIdx].confidence) {
+                const updated = [...prev];
+                updated[dupIdx] = e;
+                return updated;
+              }
+              return prev;
+            }
+          }
+          return [e, ...prev].slice(0, 100);
+        });
+      },
       () => { setStreamError(true); },
       () => { setStreamError(false); }
     );
@@ -67,6 +102,33 @@ export default function DashboardPage() {
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(t);
+  }, []);
+
+  const handleSaveRoi = useCallback(async () => {
+    if (!roi) return;
+    try {
+      localStorage.setItem(ROI_STORAGE_KEY, JSON.stringify(roi));
+      await setRoi(roi);
+    } catch {}
+  }, [roi]);
+
+  const handleResetRoi = useCallback(async () => {
+    localStorage.removeItem(ROI_STORAGE_KEY);
+    setRoiState(null);
+    try { await setRoi({ x: 0, y: 0, width: 0, height: 0 }); } catch {}
+  }, []);
+
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(ROI_STORAGE_KEY);
+      if (saved) {
+        const parsed: Roi = JSON.parse(saved);
+        if (parsed.width > 0) {
+          setRoiState(parsed);
+          setRoi(parsed);
+        }
+      }
+    } catch {}
   }, []);
 
   const recentCaptures = liveEvents.slice(0, 6);
@@ -143,7 +205,7 @@ export default function DashboardPage() {
 
           {/* Footer */}
           <div className="px-4 py-3 text-[10px] text-gray-700 border-t border-[#111f33]">
-            Confidence thresholds: ≥85% Identified · 65–84% Review · &lt;65% Unknown
+            Confidence thresholds: ≥80% Identified · 65–79% Review · &lt;65% Unknown
           </div>
         </aside>
 
@@ -164,16 +226,42 @@ export default function DashboardPage() {
           {/* Live camera feed */}
           <div className="shrink-0 border-b" style={{ borderColor: "#1a2640" }}>
             <PanelHeader icon={<IconCamera />} title="Live View" />
+            <button
+              onClick={() => {
+                if (!roiEditing && !roi && imageRef.current) {
+                  const nw = imageRef.current.naturalWidth;
+                  const nh = imageRef.current.naturalHeight;
+                  if (nw > 0 && nh > 0) {
+                    const margin = 0.2;
+                    setRoiState({ x: Math.round(nw * margin), y: Math.round(nh * margin), width: Math.round(nw * (1 - 2 * margin)), height: Math.round(nh * (1 - 2 * margin)) });
+                  }
+                }
+                setRoiEditing((v) => !v);
+              }}
+              className={`ml-auto text-[10px] px-2 py-0.5 rounded border transition-colors ${roiEditing ? "bg-green-700/40 text-green-300 border-green-600/40" : "bg-gray-700/30 text-gray-400 border-gray-600/30"} `}
+              style={{ marginTop: -24, marginRight: 8 }}
+            >
+              {roiEditing ? "ROI Active" : "ROI Off"}
+            </button>
           </div>
 
           <div className="relative flex-1 overflow-hidden bg-black">
             {!streamError ? (
               <>
                 <img
+                  ref={imageRef}
                   src="/stream"
                   alt="Live camera feed"
                   className="w-full h-full object-contain"
                   onError={() => setStreamError(true)}
+                />
+                <RoiEditor
+                  roi={roi}
+                  onChange={setRoiState}
+                  onSave={handleSaveRoi}
+                  onReset={handleResetRoi}
+                  editing={roiEditing}
+                  imageRef={imageRef}
                 />
                 {/* Timestamp overlay */}
                 <div className="absolute top-3 left-3 font-mono text-xs text-white/70 bg-black/50 px-2 py-1 rounded" suppressHydrationWarning>

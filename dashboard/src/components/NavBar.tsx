@@ -8,14 +8,14 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/persons",   label: "Persons" },
   { href: "/events",    label: "Events" },
-  { href: "/alerts",    label: "Alerts" },
+  { href: "/config",    label: "Config" },
 ];
 
 export default function NavBar() {
   const pathname = usePathname();
   const router = useRouter();
 
-  if (pathname === "/login") return null;
+  if (pathname === "/login" || pathname.startsWith("/kiosk")) return null;
 
   function handleLogout() {
     clearToken();
