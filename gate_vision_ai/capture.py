@@ -32,8 +32,19 @@ class CameraCapture:
 
     def _open(self) -> cv2.VideoCapture:
         if self._is_camera_index:
-            # Windows MSMF has issues with many USB webcams; DSHOW is more reliable.
+            # Windows MSMF has issues with many USB webcams; DSHOW is more reliable,
+            # but if DSHOW fails to read frames, fall back to default backend.
             cap = cv2.VideoCapture(self._source, cv2.CAP_DSHOW)
+            if cap.isOpened():
+                # Quick frame test — DSHOW may warn but still open; test if it actually reads
+                ret, _ = cap.read()
+                if ret:
+                    logger.info("Camera opened: %s -> %s (backend=DSHOW)", self._raw_source, self._source)
+                    self._backoff = 1
+                    return cap
+                logger.warning("DSHOW opened camera %s but read failed, falling back to default backend", self._source)
+                cap.release()
+            cap = cv2.VideoCapture(self._source)
         else:
             cap = cv2.VideoCapture(self._source)
         if not cap.isOpened():

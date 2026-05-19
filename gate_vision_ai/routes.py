@@ -55,6 +55,7 @@ class RoiRequest(BaseModel):
 
 class RestartRequest(BaseModel):
     source: str
+    direction: str = "entry"
 
 
 def register_routes(app, state: dict):
@@ -202,6 +203,7 @@ def register_routes(app, state: dict):
             "detector_loaded": s["detector"] is not None,
             "capture_interval_ms": settings.capture_interval_ms,
             "camera_source": settings.camera_source,
+            "direction": settings.direction,
             "stats": s["stats"],
             "roi": roi,
             "frame_size": s.get("frame_size", {"width": 0, "height": 0}),
@@ -276,7 +278,10 @@ def register_routes(app, state: dict):
         source = req.source
         if not source:
             raise HTTPException(400, "source is required")
-        logger.info("Restarting capture with source: %s", source)
+        direction = req.direction
+        if direction not in ("entry", "exit"):
+            raise HTTPException(400, "direction must be 'entry' or 'exit'")
+        logger.info("Restarting capture with source=%s direction=%s", source, direction)
 
         # Open and warm-up new capture before touching old one
         new_cap = await asyncio.to_thread(CameraCapture, source)
@@ -285,12 +290,12 @@ def register_routes(app, state: dict):
             await asyncio.to_thread(new_cap.release)
             raise HTTPException(502, f"Camera opened but first frame read failed for source: {source}")
 
-        # Persist source to config (atomic write via temp + rename)
+        # Persist source + direction to config (atomic write via temp + rename)
         config_path = settings.video_source_config_path
         tmp_path = config_path + ".tmp"
         try:
             with open(tmp_path, "w") as f:
-                json.dump({"camera_source": source}, f)
+                json.dump({"camera_source": source, "direction": direction}, f)
             os.replace(tmp_path, config_path)  # atomic on Linux
         except OSError as e:
             await asyncio.to_thread(new_cap.release)
@@ -300,10 +305,11 @@ def register_routes(app, state: dict):
         old = s["capture"]
         s["capture"] = new_cap
         settings.camera_source = source
+        settings.direction = direction
         if old:
             await asyncio.to_thread(old.release)
 
-        return {"status": "ok", "camera_source": source}
+        return {"status": "ok", "camera_source": source, "direction": direction}
 
 
 async def _run_enrollment_from_camera(person_id: str, capture, detector, backend):

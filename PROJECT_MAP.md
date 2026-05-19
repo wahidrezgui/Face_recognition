@@ -127,11 +127,14 @@ Proxied via dashboard/next.config.js
 | GET /api/persons/{id}/faces | JWT/API Key | Get enrolled face image URLs for person |
 | GET /api/persons/{id}/face-image/{faceId} | JWT/API Key | Serve enrolled face image file |
 | GET /api/persons/{id}/profile-image | JWT/API Key | Serve uploaded profile picture |
+| DELETE /api/persons/{id} | JWT/API Key | Delete person, face embeddings, profile images, nullify gate event links |
 | POST /api/persons/{id}/enroll | JWT/API Key | Enroll embedding for person (face images saved to `FaceImages/{personId}/` as files, path stored in `FaceImage` column) |
 | POST /api/persons/{id}/upload-face | JWT/API Key | Upload a profile picture (multipart form, .jpg/.jpeg/.png) |
 | PATCH /api/persons/{id}/status | JWT/API Key | Update person status |
 | GET /api/events | JWT/API Key | Event history (name ILIKE + status filter) |
 | GET /api/events/stats | JWT/API Key | Today entries, unknowns, pending review |
+| DELETE /api/events/{id} | JWT/API Key | Delete a gate event |
+| POST /api/events/{id}/review | JWT/API Key | Link event to a person (sets PersonId, updates status to Identified) |
 | GET /api/events/stream | Token (qs) | SSE real-time stream (`?token=` accepts API key or JWT) |
 
 ### GateVision AI Endpoints (port 8000)
@@ -185,6 +188,7 @@ Proxied via dashboard/next.config.js
 ### GateVision Dashboard (`dashboard/`)
 - Next.js 15 App Router, TanStack Query, Tailwind CSS
 - Pages: `/login`, `/dashboard`, `/persons`, `/persons/[id]`, `/events`, `/alerts`
+- Components: `ReviewEventModal` — review/resolve modal for events (link/create/delete + face enrollment) at `events/ReviewEventModal.tsx`
 - Auth: login page → JWT in localStorage → Bearer token on all API calls
 - Auth guard in `AuthContext.tsx` — redirects to `/login` if not authenticated
 - API proxy → `localhost:5000` (REST/SSE), `localhost:8000` (MJPEG + `/vision/:path*`)
@@ -215,6 +219,8 @@ Proxied via dashboard/next.config.js
 | H7 | **SSE instant invalidate floods API** — debounced 2s + `setQueryData` direct cache update | 🟡 MEDIUM | ✅ FIXED |
 | H8 | **Dashboard re-renders all on every SSE event** — `React.memo` on `EventCard` + `CaptureThumb` | 🟡 MEDIUM | ✅ FIXED |
 | M8 | **Unconditional JPEG encode every frame** — now lazy: encodes only when stream connections > 0 | 🟢 LOW | ✅ FIXED |
+| H9 | **Event review modal** — Accept button opens `ReviewEventModal` with Link/Create/Delete tabs + enrollment via Python `/enroll/webcam` | 🟠 HIGH | ✅ ADDED v13 |
+| H10 | **Person delete endpoint** — `DELETE /api/persons/{id}` removes person, face embeddings, profile images, nullifies gate event links. Dashboard has Delete button with confirmation | 🟠 HIGH | ✅ ADDED v13 |
 | M9 | **Config restart file-as-IPC race** — source passed in POST body, atomic write, warm-up frame, health poll | 🟠 HIGH | ✅ FIXED |
 | M10 | **Config path resolution fragile** — `request.PathBase` → `IWebHostEnvironment.ContentRootPath` | 🟠 HIGH | ✅ FIXED |
 

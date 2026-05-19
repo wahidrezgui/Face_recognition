@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     roi_width: int = 0
     roi_height: int = 0
 
+    direction: str = "entry"
+
     log_level: str = "INFO"
 
     model_package: str = "buffalo_l"

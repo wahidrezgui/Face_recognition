@@ -169,6 +169,36 @@ public static class PersonEndpoints
             });
         });
 
+        app.MapDelete("/api/persons/{id:guid}", async (Guid id, AppDbContext db, CacheService cache, ILogger<Program> logger, CancellationToken ct) =>
+        {
+            var person = await db.Persons.FindAsync([id], ct);
+            if (person is null)
+                return Results.NotFound(new { error = "Person not found" });
+
+            // Delete face embeddings (raw SQL — no EF Core entity for this table)
+            await db.Database.ExecuteSqlAsync(
+                $"""DELETE FROM face_embeddings WHERE "PersonId" = {id}""", ct);
+
+            // Nullify person references in gate events — preserve audit trail
+            await db.Database.ExecuteSqlAsync(
+                $"""UPDATE gate_events SET "PersonId" = NULL, "PersonName" = 'UNKNOWN', "Status" = 'Unrecognized' WHERE "PersonId" = {id}""", ct);
+
+            // Remove person record
+            db.Persons.Remove(person);
+            await db.SaveChangesAsync(ct);
+
+            // Remove face images from disk
+            var personDir = Path.Combine(FaceImagesDir, id.ToString());
+            if (Directory.Exists(personDir))
+                Directory.Delete(personDir, true);
+
+            // Clear Redis cache
+            await cache.RemovePersonAsync(id);
+
+            logger.LogInformation("Person {PersonId} ({Name}) deleted", id, person.FullName);
+            return Results.Ok(new { status = "deleted" });
+        }).RequireAuthorization();
+
         app.MapPatch("/api/persons/{id:guid}/welcome-message", async (Guid id, UpdateWelcomeMessageDto dto, AppDbContext db, CacheService cache, CancellationToken ct) =>
         {
             var person = await db.Persons.FindAsync([id], ct);

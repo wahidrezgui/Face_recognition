@@ -34,6 +34,9 @@ if os.path.isfile(_config_path):
         if "camera_source" in _cfg:
             settings.camera_source = str(_cfg["camera_source"])
             logger.info("Loaded camera_source from config: %s", settings.camera_source)
+        if "direction" in _cfg:
+            settings.direction = str(_cfg["direction"])
+            logger.info("Loaded direction from config: %s", settings.direction)
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to read config file %s: %s", _config_path, e)
 
@@ -167,7 +170,7 @@ async def _capture_loop():
             _track_best_conf[tid] = best_face["confidence"]
             if tid % 50 == 0:
                 _track_best_conf = {k: v for k, v in _track_best_conf.items() if k >= tid - 10}
-            r = await process_single_face(best_face, frame, now_iso, "entry", backend, track_id=tid)
+            r = await process_single_face(best_face, frame, now_iso, settings.direction, backend, track_id=tid)
             if isinstance(r, Exception):
                 logger.error("Face processing error: %s", r)
             elif r.get("circuit_open"):

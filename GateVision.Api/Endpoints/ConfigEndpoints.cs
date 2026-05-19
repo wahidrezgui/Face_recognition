@@ -22,20 +22,22 @@ public static class ConfigEndpoints
             if (string.IsNullOrWhiteSpace(req.CameraSource))
                 return Results.BadRequest("camera_source is required");
 
+            var direction = string.Equals(req.Direction, "exit", StringComparison.OrdinalIgnoreCase) ? "exit" : "entry";
+
             var configDir = GetConfigDirPath(env);
             Directory.CreateDirectory(configDir);
             var configPath = Path.Combine(configDir, "video_source.json");
 
             // Atomic write: temp file → rename
             var tmpPath = configPath + ".tmp";
-            var config = new { camera_source = req.CameraSource };
+            var config = new { camera_source = req.CameraSource, direction };
             var json = JsonSerializer.Serialize(config, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(tmpPath, json);
             File.Move(tmpPath, configPath, overwrite: true);
-            logger.LogInformation("Video source config written: {Source}", req.CameraSource);
+            logger.LogInformation("Video source config written: {Source}, direction: {Direction}", req.CameraSource, direction);
 
-            // Pass source directly in POST body (no file-as-IPC)
-            var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource), _jsonOpts);
+            // Pass source + direction directly in POST body (no file-as-IPC)
+            var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource, direction), _jsonOpts);
             var content = new StringContent(body, Encoding.UTF8, "application/json");
 
             try
@@ -80,8 +82,9 @@ public static class ConfigEndpoints
 public class VideoSourceRequest
 {
     public string CameraSource { get; set; } = "";
+    public string? Direction { get; set; }
 }
 
-internal record RestartRequestBody(string Source);
+internal record RestartRequestBody(string Source, string? Direction = null);
 
 internal record HealthResponse(string Status, bool Camera);

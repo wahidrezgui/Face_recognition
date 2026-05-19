@@ -1,0 +1,57 @@
+/* ── Google Fonts ────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;600;700;800;900&display=swap');
+
+/* ── Grid pan ────────────────────────────────────────────────── */
+@keyframes pan-grid {
+  0%   { background-position: 0 0; }
+  100% { background-position: 50px 50px; }
+}
+
+/* ── Pulse ring (scan rings) ─────────────────────────────────── */
+@keyframes pulse-ring {
+  0%, 100% { opacity: 0.4; transform: scale(1); }
+  50%      { opacity: 1;   transform: scale(1.04); }
+}
+
+/* ── Ping slow (dot indicator) ───────────────────────────────── */
+@keyframes ping-slow {
+  75%, 100% { transform: scale(2); opacity: 0; }
+}
+
+/* ── Halo pulse (avatar glow) ────────────────────────────────── */
+@keyframes halo-pulse {
+  0%, 100% { transform: scale(1);   opacity: 0.15; }
+  50%      { transform: scale(1.12); opacity: 0.4; }
+}
+
+/* ── Ring pulse variants ─────────────────────────────────────── */
+@keyframes ring-pulse-cyan {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 20px rgba(0,255,255,0.3); }
+  50%      { transform: scale(1.04); box-shadow: 0 0 50px rgba(0,255,255,0.7); }
+}
+
+@keyframes ring-pulse-amber {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 20px rgba(251,191,36,0.3); }
+  50%      { transform: scale(1.04); box-shadow: 0 0 50px rgba(251,191,36,0.7); }
+}
+
+@keyframes ring-pulse-red {
+  0%, 100% { transform: scale(1);    box-shadow: 0 0 20px rgba(248,113,113,0.3); }
+  50%      { transform: scale(1.04); box-shadow: 0 0 50px rgba(248,113,113,0.7); }
+}
+
+/* ── Entrance animations ─────────────────────────────────────── */
+@keyframes fade-in-up {
+  0%   { opacity: 0; transform: translateY(40px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  0%   { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slide-up {
+  0%   { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}

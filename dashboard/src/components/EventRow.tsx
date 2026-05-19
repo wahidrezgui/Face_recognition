@@ -16,8 +16,6 @@ function statusBadge(status: string | undefined) {
       return "bg-emerald-900 text-emerald-300";
     case "NeedsReview":
       return "bg-amber-900 text-amber-300";
-    case "Unrecognized":
-      return "bg-red-900 text-red-300";
     default:
       return "bg-gray-800 text-gray-300";
   }

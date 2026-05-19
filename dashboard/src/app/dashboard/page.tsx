@@ -28,7 +28,7 @@ export default function DashboardPage() {
   const [roi, setRoiState] = useState<Roi | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
-  const { data: initialData } = useQuery({
+  const { data: initialData, refetch: refetchEvents } = useQuery({
     queryKey: ["events", 1],
     queryFn: () => fetchEvents(1, 30),
   });
@@ -131,6 +131,14 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
+  const handleClearCaptures = useCallback(() => {
+    setLiveEvents([]);
+  }, []);
+
+  const handleRefreshAnalysis = useCallback(() => {
+    refetchEvents();
+  }, [refetchEvents]);
+
   const recentCaptures = liveEvents.slice(0, 6);
 
   return (
@@ -178,7 +186,6 @@ export default function DashboardPage() {
 
           <StatItem label="Today's Entries"  value={stats?.todayEntries ?? 0} color="text-blue-400"    icon={<IconCamera />} />
           <StatItem label="Pending Review"   value={stats?.pendingReview ?? 0} color="text-amber-400"  icon={<IconShield />} />
-          <StatItem label="Unrecognized"     value={stats?.unknowns ?? 0}      color="text-red-400"    icon={<IconFace />} />
           <StatItem label="Total Enrolled"   value={enrolledCount}             color="text-emerald-400" icon={<IconUsers />} />
 
           {/* Camera list */}
@@ -205,7 +212,7 @@ export default function DashboardPage() {
 
           {/* Footer */}
           <div className="px-4 py-3 text-[10px] text-gray-700 border-t border-[#111f33]">
-            Confidence thresholds: ≥80% Identified · 65–79% Review · &lt;65% Unknown
+            Confidence thresholds: ≥80% Identified · &lt;80% Review
           </div>
         </aside>
 
@@ -213,7 +220,21 @@ export default function DashboardPage() {
         <main className="flex flex-col overflow-hidden" style={{ background: "#080d19" }}>
           {/* Face captures strip */}
           <div className="shrink-0 border-b" style={{ borderColor: "#1a2640" }}>
-            <PanelHeader icon={<IconFace />} title="Face Captures" count={liveEvents.length} />
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e2d4a] bg-[#0a1020]">
+              <span className="text-blue-400"><IconFace /></span>
+              <span className="text-xs font-semibold tracking-widest uppercase text-gray-300">Face Captures</span>
+              {liveEvents.length > 0 && (
+                <button
+                  onClick={handleClearCaptures}
+                  className="text-[10px] px-1.5 py-0.5 rounded border border-red-800/30 text-red-400 hover:bg-red-950/50 transition-colors"
+                >
+                  Clear
+                </button>
+              )}
+              <span className="ml-auto text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5">
+                {liveEvents.length}
+              </span>
+            </div>
             <div className="flex gap-3 px-4 py-2.5 overflow-x-auto">
               {recentCaptures.length > 0 ? (
                 recentCaptures.map((e) => <CaptureThumb key={e.eventId} event={e} />)
@@ -305,7 +326,19 @@ export default function DashboardPage() {
           className="flex flex-col overflow-hidden"
           style={{ background: "#080e1b" }}
         >
-          <PanelHeader icon={<IconTarget />} title="Target Analysis" count={matchedEvents.length} />
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e2d4a] bg-[#0a1020]">
+            <span className="text-blue-400"><IconTarget /></span>
+            <span className="text-xs font-semibold tracking-widest uppercase text-gray-300">Target Analysis</span>
+            <button
+              onClick={handleRefreshAnalysis}
+              className="ml-2 text-[10px] px-1.5 py-0.5 rounded border border-blue-700/30 text-blue-400 hover:bg-blue-950/50 transition-colors"
+            >
+              Refresh
+            </button>
+            <span className="ml-auto text-xs bg-blue-500/20 text-blue-300 border border-blue-500/30 rounded px-1.5 py-0.5">
+              {matchedEvents.length}
+            </span>
+          </div>
 
           <div className="flex-1 overflow-y-auto pt-2" style={{ scrollbarWidth: "thin", scrollbarColor: "#1e2d4a transparent" }}>
             {matchedEvents.length > 0 ? (

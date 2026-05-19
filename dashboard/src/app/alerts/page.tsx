@@ -10,8 +10,8 @@ export default function AlertsPage() {
   const [alerts, setAlerts] = useState<GateEvent[]>([]);
 
   const { data } = useQuery({
-    queryKey: ["events", 1, "", "Unrecognized,NeedsReview"],
-    queryFn: () => fetchEvents(1, 100, undefined, "Unrecognized,NeedsReview"),
+    queryKey: ["events", 1, "", "NeedsReview"],
+    queryFn: () => fetchEvents(1, 100, undefined, "NeedsReview"),
   });
 
   useEffect(() => {
@@ -20,7 +20,7 @@ export default function AlertsPage() {
 
   useEffect(() => {
     const es = createEventStream((event) => {
-      if (event.status === "Unrecognized" || event.status === "NeedsReview") {
+      if (event.status === "NeedsReview") {
         setAlerts((prev) => [event, ...prev].slice(0, 200));
       }
     });

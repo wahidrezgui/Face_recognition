@@ -114,11 +114,52 @@ export async function enrollWithWebcam(
 
 export async function fetchEventStats(): Promise<{
   todayEntries: number;
-  unknowns: number;
   pendingReview: number;
 }> {
   const res = await apiFetch(`${API_BASE}/api/events/stats`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Failed to fetch event stats");
+  return res.json();
+}
+
+export async function deletePerson(personId: string): Promise<unknown> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) throw new Error("Failed to delete person");
+  return res.json();
+}
+
+export async function deleteEvent(eventId: string): Promise<unknown> {
+  const res = await apiFetch(`${API_BASE}/api/events/${eventId}`, {
+    method: "DELETE",
+    headers: { ...authHeaders() },
+  });
+  if (!res.ok) throw new Error("Failed to delete event");
+  return res.json();
+}
+
+export async function enrollFaceFromBase64(personId: string, faceImageBase64: string): Promise<unknown> {
+  const res = await fetch(`/vision/enroll/webcam`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personId, frames: [faceImageBase64, faceImageBase64, faceImageBase64] }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to enroll face";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function reviewEvent(eventId: string, personId: string): Promise<unknown> {
+  const res = await apiFetch(`${API_BASE}/api/events/${eventId}/review`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ personId }),
+  });
+  if (!res.ok) throw new Error("Failed to review event");
   return res.json();
 }
 
@@ -205,11 +246,11 @@ export async function fetchStreamStatus(): Promise<StreamStatus> {
   return res.json();
 }
 
-export async function setVideoSource(cameraSource: string): Promise<{ status: string; message?: string; camera_source: string }> {
+export async function setVideoSource(cameraSource: string, direction?: string): Promise<{ status: string; message?: string; camera_source: string; direction?: string }> {
   const res = await apiFetch(`${API_BASE}/api/config/video-source`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ cameraSource }),
+    body: JSON.stringify({ cameraSource, direction }),
   });
   if (!res.ok) {
     let detail = "Failed to set video source";

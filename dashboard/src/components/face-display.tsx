@@ -23,7 +23,6 @@ function statusStyle(status?: string) {
   switch (status) {
     case "Identified":   return { dot: "bg-emerald-400", badge: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40", label: "Identified" };
     case "NeedsReview":  return { dot: "bg-amber-400",   badge: "bg-amber-500/20  text-amber-300  border-amber-500/40",  label: "Review"     };
-    case "Unrecognized": return { dot: "bg-red-400",     badge: "bg-red-500/20    text-red-300    border-red-500/40",    label: "Unknown"    };
     default:             return { dot: "bg-gray-500",    badge: "bg-gray-700/50   text-gray-300   border-gray-600",      label: "—"          };
   }
 }

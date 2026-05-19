@@ -76,14 +76,56 @@ public static class EventEndpoints
                 .Select(g => new
                 {
                     todayEntries = g.Count(e => e.CapturedAt >= todayStart && e.CapturedAt < todayEnd),
-                    unknowns = g.Count(e => e.Status == EventStatus.Unrecognized),
-                    pendingReview = g.Count(e => e.Status == EventStatus.NeedsReview),
+                    pendingReview = g.Count(e => e.Status == EventStatus.NeedsReview || e.Status == EventStatus.Unrecognized),
                 })
                 .OrderByDescending(_ => _.todayEntries)
                 .FirstOrDefaultAsync(ct);
 
-            return Results.Ok(stats ?? new { todayEntries = 0, unknowns = 0, pendingReview = 0 });
+            return Results.Ok(stats ?? new { todayEntries = 0, pendingReview = 0 });
         });
+
+        app.MapPost("/api/events/{id:guid}/review", async (Guid id, ReviewEventDto dto, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
+        {
+            var evt = await db.GateEvents.FindAsync([id], ct);
+            if (evt is null)
+                return Results.NotFound(new { error = "Event not found" });
+
+            var person = await db.Persons.FindAsync([dto.PersonId], ct);
+            if (person is null)
+                return Results.NotFound(new { error = "Person not found" });
+
+            evt.Status = EventStatus.Identified;
+            evt.PersonId = dto.PersonId;
+            evt.PersonName = person.FullName;
+            evt.Department = person.Department;
+            evt.WelcomeMessage = person.WelcomeMessage;
+
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Event {EventId} reviewed and linked to person {PersonId}", id, dto.PersonId);
+
+            return Results.Ok(new
+            {
+                eventId = evt.Id,
+                personId = evt.PersonId.ToString(),
+                personName = evt.PersonName,
+                status = evt.Status.ToString(),
+                department = evt.Department,
+                welcomeMessage = evt.WelcomeMessage,
+            });
+        }).RequireAuthorization();
+
+        app.MapDelete("/api/events/{id:guid}", async (Guid id, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
+        {
+            var evt = await db.GateEvents.FindAsync([id], ct);
+            if (evt is null)
+                return Results.NotFound(new { error = "Event not found" });
+
+            db.GateEvents.Remove(evt);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Event {EventId} deleted", id);
+
+            return Results.Ok(new { status = "deleted" });
+        }).RequireAuthorization();
 
         app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, CancellationToken ct) =>
         {
@@ -221,4 +263,9 @@ internal static class ImageEndpoints
             return Results.NotFound();
         });
     }
+}
+
+public class ReviewEventDto
+{
+    public Guid PersonId { get; set; }
 }

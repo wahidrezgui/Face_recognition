@@ -43,7 +43,7 @@ public class IdentificationService
                 PersonId = null,
                 PersonName = "UNKNOWN",
                 Confidence = 0,
-                Status = EventStatus.Unrecognized,
+                Status = EventStatus.NeedsReview,
             };
         }
 
@@ -58,7 +58,7 @@ public class IdentificationService
                 PersonId = null,
                 PersonName = "UNKNOWN",
                 Confidence = confidence,
-                Status = EventStatus.Unrecognized,
+                Status = EventStatus.NeedsReview,
             };
         }
         EventStatus status;
@@ -67,13 +67,9 @@ public class IdentificationService
         {
             status = EventStatus.Identified;
         }
-        else if (confidence >= 0.65f)
-        {
-            status = EventStatus.NeedsReview;
-        }
         else
         {
-            status = EventStatus.Unrecognized;
+            status = EventStatus.NeedsReview;
         }
 
         // Single cache read — 1 key instead of 3 separate round-trips

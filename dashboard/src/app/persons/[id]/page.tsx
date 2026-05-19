@@ -2,8 +2,8 @@
 
 import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "next/navigation";
-import { fetchPersons, updatePersonStatus, fetchPersonFaces, uploadFace, updateWelcomeMessage, type FaceImage } from "@/lib/api";
+import { useParams, useRouter } from "next/navigation";
+import { fetchPersons, updatePersonStatus, fetchPersonFaces, uploadFace, updateWelcomeMessage, deletePerson, type FaceImage } from "@/lib/api";
 import WebcamEnrollment from "@/components/WebcamEnrollment";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -11,6 +11,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 export default function PersonDetailPage() {
   const { id } = useParams<{ id: string }>();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const welcomeInitRef = useRef(false);
   const [profileError, setProfileError] = useState(false);
@@ -39,6 +40,17 @@ export default function PersonDetailPage() {
   const welcomeMutation = useMutation({
     mutationFn: (msg: string) => updateWelcomeMessage(id, msg.trim() || null),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["persons"] }),
+  });
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const deleteMutation = useMutation({
+    mutationFn: () => deletePerson(id),
+    onSuccess: () => {
+      setShowDeleteConfirm(false);
+      queryClient.invalidateQueries({ queryKey: ["persons"] });
+      router.push("/persons");
+    },
   });
 
   useEffect(() => {
@@ -146,6 +158,23 @@ export default function PersonDetailPage() {
           className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 rounded-lg transition-colors">
           Revoke
         </button>
+        <span className="w-px h-8 self-center bg-gray-800" />
+        <button
+          onClick={() => setShowDeleteConfirm(true)}
+          disabled={deleteMutation.isPending}
+          className="px-4 py-2 text-sm rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5"
+          style={{ background: "rgba(220,38,38,0.12)", color: "#ef4444", border: "1px solid rgba(220,38,38,0.25)" }}
+          title="Permanently delete person and all associated data"
+        >
+          {deleteMutation.isPending ? (
+            <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
+          ) : (
+            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+          )}
+          Delete
+        </button>
       </div>
 
       <div className="mb-8">
@@ -182,6 +211,96 @@ export default function PersonDetailPage() {
       </div>
 
       <WebcamEnrollment personId={id} onComplete={() => { queryClient.invalidateQueries({ queryKey: ["persons"] }); queryClient.refetchQueries({ queryKey: ["persons"] }); }} />
+
+      {showDeleteConfirm && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center"
+          style={{ background: "rgba(0,0,0,0.7)" }}
+          onClick={() => setShowDeleteConfirm(false)}
+        >
+          <div
+            className="relative w-full max-w-sm rounded-xl overflow-hidden"
+            style={{
+              background: "#0a1020",
+              border: "1px solid #1a2640",
+              boxShadow: "0 0 40px rgba(0,0,0,0.6)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* ── icon + heading ── */}
+            <div className="flex flex-col items-center pt-8 pb-2 px-6">
+              <div
+                className="w-12 h-12 rounded-full flex items-center justify-center mb-4"
+                style={{ background: "rgba(239,68,68,0.12)" }}
+              >
+                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="#ef4444" strokeWidth={1.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <h3
+                className="text-sm font-semibold text-center"
+                style={{ color: "#f1f5f9", fontFamily: "'Oxanium', monospace" }}
+              >
+                Delete Person
+              </h3>
+              <p className="text-xs text-center mt-2 leading-relaxed" style={{ color: "#94a3b8" }}>
+                Permanently delete <span className="font-semibold" style={{ color: "#e2e8f0" }}>{person.fullName}</span> and all associated data:
+              </p>
+            </div>
+
+            {/* ── consequences ── */}
+            <div className="px-6 pb-4 space-y-1.5">
+              {[
+                "Face embeddings and enrolled images",
+                "Profile picture",
+                "Gate event links (events preserved as unknown)",
+              ].map((text) => (
+                <div key={text} className="flex items-start gap-2 text-xs" style={{ color: "#64748b" }}>
+                  <span className="mt-0.5 shrink-0 w-1 h-1 rounded-full bg-red-500/60" />
+                  {text}
+                </div>
+              ))}
+            </div>
+
+            {/* ── buttons ── */}
+            <div className="flex gap-2 px-6 pb-6">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleteMutation.isPending}
+                className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: "transparent",
+                  border: "1px solid #1a2640",
+                  color: "#64748b",
+                  fontFamily: "'Oxanium', monospace",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => deleteMutation.mutate()}
+                disabled={deleteMutation.isPending}
+                className="flex-1 px-4 py-2 rounded-lg text-xs font-semibold transition-all disabled:opacity-40 flex items-center justify-center gap-1.5"
+                style={{
+                  background: "rgba(239,68,68,0.12)",
+                  color: "#ef4444",
+                  border: "1px solid rgba(239,68,68,0.25)",
+                  fontFamily: "'Oxanium', monospace",
+                }}
+              >
+                {deleteMutation.isPending ? (
+                  <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
+                ) : (
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                  </svg>
+                )}
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

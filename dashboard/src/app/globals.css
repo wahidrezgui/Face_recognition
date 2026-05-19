@@ -2,6 +2,12 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Import shared animations & kiosk/desk font */
+@import "@/styles/animations.css";
+
+/* Events page font (Oxanium + Outfit) */
+@import url('https://fonts.googleapis.com/css2?family=Oxanium:wght@400;500;600;700&family=Outfit:wght@400;500;600&display=swap');
+
 body {
   font-family: system-ui, -apple-system, sans-serif;
 }

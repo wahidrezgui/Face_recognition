@@ -30,10 +30,11 @@ export default function ConfigPage() {
   const [useCustom, setUseCustom] = useState(false);
   const [videoPath, setVideoPath] = useState("sample.mp4");
   const [rtspUrl, setRtspUrl] = useState("");
+  const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
 
-  // Load current camera source on mount
+  // Load current camera source and direction on mount
   useEffect(() => {
     (async () => {
       try {
@@ -41,21 +42,24 @@ export default function ConfigPage() {
         if (!res.ok) return;
         const data = await res.json();
         const src: string = data.camera_source || "";
-        if (!src) return;
-
-        const kind = inferSourceType(src);
-        setSourceType(kind);
-        switch (kind) {
-          case "webcam":
-            setSelectedCam(src);
-            setUseCustom(false);
-            break;
-          case "video":
-            setVideoPath(src);
-            break;
-          case "rtsp":
-            setRtspUrl(src);
-            break;
+        if (src) {
+          const kind = inferSourceType(src);
+          setSourceType(kind);
+          switch (kind) {
+            case "webcam":
+              setSelectedCam(src);
+              setUseCustom(false);
+              break;
+            case "video":
+              setVideoPath(src);
+              break;
+            case "rtsp":
+              setRtspUrl(src);
+              break;
+          }
+        }
+        if (data.direction === "exit" || data.direction === "entry") {
+          setDirection(data.direction);
         }
       } catch {
         // service not reachable — keep defaults
@@ -93,8 +97,9 @@ export default function ConfigPage() {
     setSaving(true);
     setResult(null);
     try {
-      const res = await setVideoSource(getCameraSource());
-      setResult({ ok: true, message: `Source set to "${res.camera_source}"${res.message ? ". " + res.message : ""}` });
+      const res = await setVideoSource(getCameraSource(), direction);
+      const dirMsg = `direction: ${res.direction ?? direction}`;
+      setResult({ ok: true, message: `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}` });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setResult({ ok: false, message: msg });
@@ -222,6 +227,31 @@ export default function ConfigPage() {
               <p className="text-[10px] text-gray-600">Full RTSP URL including protocol and credentials if needed.</p>
             </div>
           )}
+
+          {/* Direction selector */}
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-gray-400">Gate Direction</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { value: "entry" as const, label: "Entry", desc: "People entering (default)" },
+                { value: "exit" as const, label: "Exit", desc: "People leaving" },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setDirection(opt.value)}
+                  className={`p-3 rounded border text-left transition-colors ${
+                    direction === opt.value
+                      ? "bg-emerald-700/30 border-emerald-600/40 text-emerald-300"
+                      : "bg-[#0d1a2f] border-[#1a2640] text-gray-400 hover:border-gray-600"
+                  }`}
+                >
+                  <div className="text-xs font-medium">{opt.label}</div>
+                  <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Submit */}
           <button
