@@ -19,8 +19,10 @@ export default function WebcamEnrollment({ personId, onComplete }: { personId: s
   const isError = phase === "error";
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-      <h2 className="text-base font-semibold text-gray-200 mb-5">Face Enrollment</h2>
+    <div className="rounded-xl border border-gv-border bg-gv-panel p-4 sm:p-6">
+      <h2 className="mb-5 font-display text-xs font-semibold uppercase tracking-widest text-gray-300">
+        Face enrollment
+      </h2>
       <canvas ref={canvasRef} className="hidden" />
 
       {phase === "idle" && (
@@ -43,7 +45,7 @@ export default function WebcamEnrollment({ personId, onComplete }: { personId: s
       )}
 
       {isActive && (
-      <div className="flex flex-col items-center gap-3">
+        <div className="flex flex-col items-center gap-3">
           <div className="relative" style={{ width: WRAP_SIZE, height: WRAP_SIZE }}>
             <div className="absolute rounded-full overflow-hidden"
               style={{ width: VIDEO_SIZE, height: VIDEO_SIZE, top: PADDING, left: PADDING }}>
@@ -60,22 +62,20 @@ export default function WebcamEnrollment({ personId, onComplete }: { personId: s
             <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex gap-1.5">
               {ZONES.map((z, zi) => (
                 <div key={z.id}
-                  className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${
-                    zi < zoneIdx ? "bg-emerald-500" :
-                    zi === zoneIdx ? (inZone ? "bg-emerald-400 animate-pulse" : "bg-gray-500") :
-                    "bg-gray-700"
-                  }`}
+                  className={`w-1.5 h-1.5 rounded-full transition-colors duration-300 ${zi < zoneIdx ? "bg-emerald-500" :
+                      zi === zoneIdx ? (inZone ? "bg-emerald-400 animate-pulse" : "bg-gray-500") :
+                        "bg-gray-700"
+                    }`}
                 />
               ))}
             </div>
           </div>
 
           {/* Face detection status */}
-          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${
-            faceDetected
+          <div className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium transition-all ${faceDetected
               ? inZone ? "bg-emerald-900/60 text-emerald-300 border border-emerald-700" : "bg-gray-800 text-gray-300 border border-gray-700"
               : "bg-amber-900/40 text-amber-400 border border-amber-800"
-          }`}>
+            }`}>
             <span className={`w-1.5 h-1.5 rounded-full ${faceDetected ? (inZone ? "bg-emerald-400" : "bg-gray-400") : "bg-amber-400 animate-pulse"}`} />
             {faceDetected ? (inZone ? "Hold position" : "Face detected") : "Looking for face\u2026"}
           </div>
@@ -100,7 +100,7 @@ export default function WebcamEnrollment({ personId, onComplete }: { personId: s
               </span>
             ))}
           </div>
-      </div>
+        </div>
       )}
 
       {isProcessing && (

@@ -1,7 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { setVideoSource } from "@/lib/api";
+import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
+import { setVideoSource, fetchTrainingMode, setTrainingMode } from "@/lib/api";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Separator } from "@/components/ui/separator";
 
 /** Infer source type from a camera_source string */
 function inferSourceType(source: string): SourceType {
@@ -22,6 +28,7 @@ interface CameraInfo {
 }
 
 export default function ConfigPage() {
+  const queryClient = useQueryClient();
   const [sourceType, setSourceType] = useState<SourceType>("webcam");
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [camLoading, setCamLoading] = useState(true);
@@ -33,6 +40,9 @@ export default function ConfigPage() {
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [saving, setSaving] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [trainingMode, setTrainingModeState] = useState(false);
+  const [trainingLoaded, setTrainingLoaded] = useState(false);
+  const [trainingSaving, setTrainingSaving] = useState(false);
 
   // Load current camera source and direction on mount
   useEffect(() => {
@@ -63,6 +73,20 @@ export default function ConfigPage() {
         }
       } catch {
         // service not reachable — keep defaults
+      }
+    })();
+  }, []);
+
+  // Load training mode on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { enabled } = await fetchTrainingMode();
+        setTrainingModeState(enabled);
+      } catch {
+        // endpoint not available — keep default
+      } finally {
+        setTrainingLoaded(true);
       }
     })();
   }, []);
@@ -99,20 +123,41 @@ export default function ConfigPage() {
     try {
       const res = await setVideoSource(getCameraSource(), direction);
       const dirMsg = `direction: ${res.direction ?? direction}`;
-      setResult({ ok: true, message: `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}` });
+      const msg = `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}`;
+      setResult({ ok: true, message: msg });
+      toast.success("Video source updated");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
       setResult({ ok: false, message: msg });
+      toast.error(msg);
     } finally {
       setSaving(false);
     }
   }
 
+  async function handleTrainingToggle(checked: boolean) {
+    setTrainingSaving(true);
+    try {
+      const { enabled } = await setTrainingMode(checked);
+      setTrainingModeState(enabled);
+      queryClient.invalidateQueries({ queryKey: ["training-mode"] });
+      toast.success(enabled ? "Training mode enabled" : "Training mode disabled");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update training mode");
+    } finally {
+      setTrainingSaving(false);
+    }
+  }
+
   return (
-    <div className="flex-1 overflow-y-auto" style={{ background: "#07090f", color: "#e2e8f0" }}>
-      <div className="max-w-xl mx-auto p-6">
-        <h1 className="text-lg font-bold mb-1 tracking-wide">Video Source Configuration</h1>
-        <p className="text-xs text-gray-500 mb-6">Change the camera input source. The AI service will restart automatically.</p>
+    <div className="flex min-h-[calc(100vh-44px)] flex-col overflow-y-auto bg-gv-bg text-gv-text">
+      <PageHeader
+        title="Configuration"
+        subtitle="Video source, gate direction, and training mode"
+      />
+      <div className="mx-auto w-full max-w-xl flex-1 p-6">
+        <h2 className="mb-1 text-sm font-bold tracking-wide">Video Source</h2>
+        <p className="mb-6 text-xs text-gv-muted">Change the camera input source. The AI service will restart automatically.</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {/* Source type selector */}
@@ -128,11 +173,10 @@ export default function ConfigPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setSourceType(opt.value)}
-                  className={`p-3 rounded border text-left transition-colors ${
-                    sourceType === opt.value
+                  className={`p-3 rounded border text-left transition-colors ${sourceType === opt.value
                       ? "bg-blue-700/30 border-blue-600/40 text-blue-300"
                       : "bg-[#0d1a2f] border-[#1a2640] text-gray-400 hover:border-gray-600"
-                  }`}
+                    }`}
                 >
                   <div className="text-xs font-medium">{opt.label}</div>
                   <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
@@ -240,11 +284,10 @@ export default function ConfigPage() {
                   key={opt.value}
                   type="button"
                   onClick={() => setDirection(opt.value)}
-                  className={`p-3 rounded border text-left transition-colors ${
-                    direction === opt.value
+                  className={`p-3 rounded border text-left transition-colors ${direction === opt.value
                       ? "bg-emerald-700/30 border-emerald-600/40 text-emerald-300"
                       : "bg-[#0d1a2f] border-[#1a2640] text-gray-400 hover:border-gray-600"
-                  }`}
+                    }`}
                 >
                   <div className="text-xs font-medium">{opt.label}</div>
                   <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
@@ -253,28 +296,51 @@ export default function ConfigPage() {
             </div>
           </div>
 
-          {/* Submit */}
-          <button
+          <Button
             type="submit"
+            className="w-full"
             disabled={saving || (sourceType === "rtsp" && !rtspUrl)}
-            className="w-full py-2.5 rounded text-xs font-semibold transition-colors bg-blue-700 hover:bg-blue-600 disabled:opacity-40 disabled:cursor-not-allowed text-white"
           >
             {saving ? "Applying..." : "Apply & Restart"}
-          </button>
+          </Button>
         </form>
 
         {/* Result feedback */}
         {result && (
           <div
-            className={`mt-4 p-3 rounded border text-xs ${
-              result.ok
+            className={`mt-4 p-3 rounded border text-xs ${result.ok
                 ? "bg-emerald-900/30 border-emerald-700/40 text-emerald-300"
                 : "bg-red-900/30 border-red-700/40 text-red-300"
-            }`}
+              }`}
           >
             {result.message}
           </div>
         )}
+
+        <Separator className="my-8 bg-gv-border" />
+        <section>
+          <h2 className="mb-1 text-sm font-bold tracking-wide">Training Mode</h2>
+          <p className="mb-4 text-xs text-gv-muted">
+            When enabled, <strong className="text-gray-400">all</strong> detected faces are stored in the event log,
+            including unrecognized ones. Use this to collect data for building your face database.
+            When disabled, only identified persons are persisted.
+          </p>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="training-mode"
+              checked={trainingMode}
+              disabled={trainingSaving || !trainingLoaded}
+              onCheckedChange={handleTrainingToggle}
+            />
+            <label htmlFor="training-mode" className="text-xs text-gray-400">
+              {trainingLoaded
+                ? trainingMode
+                  ? "ON — storing all detections"
+                  : "OFF — storing only identified"
+                : "Loading..."}
+            </label>
+          </div>
+        </section>
       </div>
     </div>
   );

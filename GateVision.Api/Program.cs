@@ -43,6 +43,7 @@ if (!string.IsNullOrEmpty(redisConnection))
 }
 
 builder.Services.AddSingleton(new CacheService(redis));
+builder.Services.AddSingleton<TrainingModeService>();
 builder.Services.AddSingleton<EventBufferService>();
 builder.Services.AddScoped<IdentificationService>();
 builder.Services.AddScoped<EnrollmentService>();

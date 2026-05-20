@@ -1,4 +1,4 @@
-import { authHeaders, clearToken, getToken } from "./auth";
+import { authHeaders, clearToken } from "./auth";
 
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
   const res = await fetch(url, options);
@@ -112,7 +112,7 @@ export async function enrollWithWebcam(
     try {
       const body = await res.json();
       if (body?.detail) detail = body.detail;
-    } catch {}
+    } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -153,7 +153,7 @@ export async function enrollFaceFromBase64(personId: string, faceImageBase64: st
   });
   if (!res.ok) {
     let detail = "Failed to enroll face";
-    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -180,7 +180,7 @@ export async function enrollWithFrames(personId: string, frames: string[], repla
   });
   if (!res.ok) {
     let detail = "Failed to enroll face";
-    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -197,7 +197,7 @@ export async function enrollFromEventFace(personId: string, faceImageBase64: str
   });
   if (!res.ok) {
     let detail = "Failed to enroll from event face";
-    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -211,7 +211,7 @@ export async function reviewEvent(eventId: string, personId: string): Promise<un
   });
   if (!res.ok) {
     let detail = "Failed to review event";
-    try { const b = await res.json(); if (b?.error) detail = b.error; } catch {}
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -227,7 +227,7 @@ export async function enrollFromSystemCamera(
   });
   if (!res.ok) {
     let detail = "System camera enrollment failed";
-    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -257,7 +257,7 @@ export async function uploadFace(
   });
   if (!res.ok) {
     let detail = "Failed to upload face image";
-    try { const b = await res.json(); if (b?.error) detail = b.error; } catch {}
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch { }
     throw new Error(detail);
   }
   return res.json();
@@ -333,9 +333,25 @@ export async function setVideoSource(cameraSource: string, direction?: string): 
   });
   if (!res.ok) {
     let detail = "Failed to set video source";
-    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
+  return res.json();
+}
+
+export async function fetchTrainingMode(): Promise<{ enabled: boolean }> {
+  const res = await apiFetch(`${API_BASE}/api/config/training-mode`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch training mode");
+  return res.json();
+}
+
+export async function setTrainingMode(enabled: boolean): Promise<{ enabled: boolean }> {
+  const res = await apiFetch(`${API_BASE}/api/config/training-mode`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error("Failed to set training mode");
   return res.json();
 }
 
@@ -345,25 +361,4 @@ export async function setRoi(roi: Roi): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(roi),
   });
-}
-
-export function createEventStream(
-  onEvent: (event: GateEvent) => void,
-  onError?: (err: Event) => void,
-  onOpen?: () => void
-): EventSource {
-  const token = getToken();
-  const url = token ? `${API_BASE}/api/events/stream?token=${encodeURIComponent(token)}` : `${API_BASE}/api/events/stream`;
-  const es = new EventSource(url);
-  es.onmessage = (msg) => {
-    try {
-      const data = JSON.parse(msg.data) as GateEvent;
-      onEvent(data);
-    } catch {
-      // skip parse errors
-    }
-  };
-  if (onError) es.onerror = onError;
-  if (onOpen) es.onopen = onOpen;
-  return es;
 }

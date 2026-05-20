@@ -1,41 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
+import { toast } from "sonner";
 import { fetchPersons, createPerson, type Person } from "@/lib/api";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { statusBadgeClass } from "@/lib/person-status";
+import { cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
-function statusBadge(status: string) {
-  switch (status) {
-    case "Active":
-      return "bg-emerald-900 text-emerald-300";
-    case "Pending":
-      return "bg-amber-900 text-amber-300";
-    case "Revoked":
-    case "Suspended":
-      return "bg-red-900 text-red-300";
-    default:
-      return "bg-gray-800 text-gray-300";
-  }
-}
+const STATUS_FILTERS = ["All", "Active", "Pending", "Revoked", "Suspended"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 function PersonAvatar({ personId, fullName }: { personId: string; fullName: string }) {
   const [error, setError] = useState(false);
   const url = `${API_BASE}/api/persons/${personId}/profile-image`;
   if (error) {
     return (
-      <div className="w-10 h-10 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-gray-500 shrink-0">
-        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gv-border bg-gv-panel text-gray-500">
+        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
         </svg>
       </div>
     );
   }
   return (
-    <img src={url} alt={fullName} onError={() => setError(true)}
-      className="w-10 h-10 rounded-full object-cover border border-gray-700 shrink-0" />
+    <img
+      src={url}
+      alt={fullName}
+      onError={() => setError(true)}
+      className="h-10 w-10 shrink-0 rounded-full border border-gv-border object-cover"
+    />
   );
 }
 
@@ -44,15 +45,22 @@ export default function PersonsPage() {
   const [name, setName] = useState("");
   const [dept, setDept] = useState("");
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
 
   const { data: persons = [], isLoading } = useQuery({
     queryKey: ["persons"],
     queryFn: fetchPersons,
   });
 
-  const filtered = persons.filter((p: Person) =>
-    !search || p.fullName.toLowerCase().includes(search.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    return persons.filter((p: Person) => {
+      const matchesSearch =
+        !search || p.fullName.toLowerCase().includes(search.toLowerCase());
+      const matchesStatus =
+        statusFilter === "All" || p.enrollmentStatus === statusFilter;
+      return matchesSearch && matchesStatus;
+    });
+  }, [persons, search, statusFilter]);
 
   const createMutation = useMutation({
     mutationFn: () => createPerson(name, dept),
@@ -60,76 +68,115 @@ export default function PersonsPage() {
       queryClient.invalidateQueries({ queryKey: ["persons"] });
       setName("");
       setDept("");
+      toast.success("Person created");
     },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to create person"),
   });
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Persons</h1>
-
-      <input
-        placeholder="Search by name..."
-        className="bg-gray-800 border border-gray-700 rounded px-3 py-1.5 text-sm w-full mb-4"
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
+    <div className="flex min-h-[calc(100vh-44px)] flex-col bg-gv-bg">
+      <PageHeader
+        title="Persons"
+        subtitle={isLoading ? "—" : `${persons.length} enrolled`}
       />
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          createMutation.mutate();
-        }}
-        className="flex gap-3 mb-8"
-      >
-        <input
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 flex-1"
-          placeholder="Full Name"
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          required
-        />
-        <input
-          className="bg-gray-800 border border-gray-700 rounded px-3 py-2 w-40"
-          placeholder="Department"
-          value={dept}
-          onChange={(e) => setDept(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          className="px-4 py-2 bg-emerald-600 rounded hover:bg-emerald-500 disabled:opacity-50"
-          disabled={createMutation.isPending}
-        >
-          {createMutation.isPending ? "..." : "Add"}
-        </button>
-      </form>
-
-      {isLoading && <p className="text-gray-400">Loading...</p>}
-
-      <div className="space-y-2">
-        {filtered.map((person: Person) => (
-          <Link
-            key={person.id}
-            href={`/persons/${person.id}`}
-            className="flex items-center gap-3 px-4 py-3 bg-gray-900 border border-gray-800 rounded-lg hover:border-gray-700 transition"
-          >
-            <PersonAvatar personId={person.id} fullName={person.fullName} />
-            <div className="flex-1 min-w-0">
-              <p className="font-medium truncate">{person.fullName}</p>
-              <p className="text-sm text-gray-400 truncate">{person.department}</p>
-            </div>
-            <span
-              className={`text-xs px-2 py-1 rounded ${statusBadge(person.enrollmentStatus)}`}
+      <div className="mx-auto w-full max-w-4xl flex-1 p-6">
+        <div className="mb-4 flex flex-wrap gap-2">
+          {STATUS_FILTERS.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onClick={() => setStatusFilter(s)}
+              className={cn(
+                "rounded px-3 py-1.5 text-xs font-medium transition-colors",
+                statusFilter === s
+                  ? "border border-blue-600/40 bg-blue-700/30 text-blue-300"
+                  : "border border-transparent text-gray-500 hover:bg-white/5 hover:text-gray-300",
+              )}
             >
-              {person.enrollmentStatus}
-            </span>
-          </Link>
-        ))}
-        {filtered.length === 0 && !isLoading && (
-          <p className="text-gray-500 text-center py-8">
-            {search ? "No persons match your search." : "No persons registered."}
-          </p>
+              {s}
+            </button>
+          ))}
+        </div>
+
+        <Input
+          placeholder="Search by name..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="mb-4 border-gv-border bg-gv-panel"
+        />
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            createMutation.mutate();
+          }}
+          className="mb-8 flex flex-col gap-3 sm:flex-row"
+        >
+          <Input
+            className="flex-1 border-gv-border bg-gv-panel"
+            placeholder="Full Name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+          <Input
+            className="w-full border-gv-border bg-gv-panel sm:w-40"
+            placeholder="Department"
+            value={dept}
+            onChange={(e) => setDept(e.target.value)}
+            required
+          />
+          <Button type="submit" disabled={createMutation.isPending}>
+            {createMutation.isPending ? "Adding…" : "Add person"}
+          </Button>
+        </form>
+
+        {isLoading && (
+          <div className="space-y-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-[68px] w-full rounded-lg bg-gv-panel" />
+            ))}
+          </div>
         )}
+
+        <div className="space-y-2">
+          {!isLoading &&
+            filtered.map((person: Person) => (
+              <Link
+                key={person.id}
+                href={`/persons/${person.id}`}
+                className="flex items-center gap-3 rounded-lg border border-gv-border bg-gv-panel px-4 py-3 transition hover:border-gv-muted/50 hover:bg-[#0d1a2f]"
+              >
+                <PersonAvatar personId={person.id} fullName={person.fullName} />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-medium text-gray-100">{person.fullName}</p>
+                  <p className="truncate text-sm text-gv-muted">{person.department}</p>
+                </div>
+                {person.faceCount > 0 && (
+                  <Badge variant="outline" className="shrink-0 border-gv-border text-[10px] text-gray-400">
+                    {person.faceCount} face{person.faceCount !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+                <span
+                  className={cn(
+                    "shrink-0 rounded border px-2 py-1 text-xs",
+                    statusBadgeClass(person.enrollmentStatus),
+                  )}
+                >
+                  {person.enrollmentStatus}
+                </span>
+              </Link>
+            ))}
+          {!isLoading && filtered.length === 0 && (
+            <p className="py-8 text-center text-gv-muted">
+              {search || statusFilter !== "All"
+                ? "No persons match your filters."
+                : "No persons registered."}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   );

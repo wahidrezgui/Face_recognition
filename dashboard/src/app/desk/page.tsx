@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { type GateEvent } from "@/lib/api";
-import { openEventStream } from "@/hooks/useEventStream";
+import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
 import { IdleScreen } from "@/components/kiosk/IdleScreen";
 import wellWishes from "@/data/well-wishes.json";
@@ -79,7 +79,7 @@ export default function DeskPage() {
     if (dismissRef.current) clearTimeout(dismissRef.current);
   };
 
-  const showEvent = (e: GateEvent) => {
+  const showEvent = useCallback((e: GateEvent) => {
     const m = classifyEvent(e);
     setEvent(e);
     setMode(m);
@@ -105,24 +105,20 @@ export default function DeskPage() {
         setMode("idle");
       }, 600);
     }, DISPLAY_MS);
-  };
+  }, []);
 
   useEffect(() => {
     const t = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(t);
   }, []);
 
-  useEffect(() => {
-    const es = openEventStream(
-      showEvent,
-      () => setConnected(true),
-      () => setConnected(false),
-    );
-    return () => {
-      es.close();
-      clearTimers();
-    };
-  }, []);
+  useGateEventStream({
+    onEvent: showEvent,
+    onOpen: () => setConnected(true),
+    onError: () => setConnected(false),
+  });
+
+  useEffect(() => () => clearTimers(), []);
 
   const showing = event !== null && visible;
   const t = mode !== "idle" ? THEMES[mode] : THEMES.identified;

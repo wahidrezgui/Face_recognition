@@ -24,6 +24,12 @@ public class EventBufferService
 {
     private readonly ConcurrentDictionary<int, BufferedTrack> _tracks = new();
     private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
+    private readonly TrainingModeService _trainingMode;
+
+    public EventBufferService(TrainingModeService trainingMode)
+    {
+        _trainingMode = trainingMode;
+    }
 
     public void BufferOrUpdate(BufferedTrack track)
     {
@@ -51,6 +57,9 @@ public class EventBufferService
             });
     }
 
+    bool ShouldPersist(BufferedTrack track) =>
+        _trainingMode.Enabled || track.PersonId is not null;
+
     /// <summary>Find a buffered track by event Id and flush it to the DB immediately.</summary>
     public async Task<GateEvent?> FindAndFlushAsync(AppDbContext db, Guid eventId)
     {
@@ -59,6 +68,8 @@ public class EventBufferService
 
         // Remove and flush immediately (don't wait for expiry)
         if (!_tracks.TryRemove(match.TrackId, out _)) return null;
+
+        if (!ShouldPersist(match)) return null;
 
         var gateEvent = new GateEvent
         {
@@ -85,9 +96,11 @@ public class EventBufferService
             .Where(kvp => now - kvp.Value.LastSeen > Expiry)
             .ToList();
 
+        var persisted = 0;
         foreach (var (trackId, track) in expired)
         {
             if (!_tracks.TryRemove(trackId, out _)) continue;
+            if (!ShouldPersist(track)) continue;
 
             var gateEvent = new GateEvent
             {
@@ -103,12 +116,13 @@ public class EventBufferService
                 Department = track.Department,
             };
             db.GateEvents.Add(gateEvent);
+            persisted++;
         }
 
-        if (expired.Count > 0)
+        if (persisted > 0)
             await db.SaveChangesAsync();
 
-        return expired.Count;
+        return persisted;
     }
 
     public int ActiveTrackCount => _tracks.Count;

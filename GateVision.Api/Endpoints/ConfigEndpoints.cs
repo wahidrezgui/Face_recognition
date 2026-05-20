@@ -1,6 +1,7 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using GateVision.Api.Services;
 
 namespace GateVision.Api.Endpoints;
 
@@ -17,6 +18,16 @@ public static class ConfigEndpoints
 
     public static void MapConfigEndpoints(this WebApplication app)
     {
+        app.MapGet("/api/config/training-mode", (TrainingModeService svc) =>
+            Results.Ok(new { enabled = svc.Enabled }));
+
+        app.MapPost("/api/config/training-mode", (TrainingModeRequest req, TrainingModeService svc, ILogger<Program> logger) =>
+        {
+            svc.Enabled = req.Enabled;
+            logger.LogInformation("Training mode set to {Enabled}", req.Enabled);
+            return Results.Ok(new { enabled = svc.Enabled });
+        }).RequireAuthorization();
+
         app.MapPost("/api/config/video-source", async (VideoSourceRequest req, IWebHostEnvironment env, ILogger<Program> logger) =>
         {
             if (string.IsNullOrWhiteSpace(req.CameraSource))
@@ -77,6 +88,11 @@ public static class ConfigEndpoints
             }
         });
     }
+}
+
+public class TrainingModeRequest
+{
+    public bool Enabled { get; set; }
 }
 
 public class VideoSourceRequest

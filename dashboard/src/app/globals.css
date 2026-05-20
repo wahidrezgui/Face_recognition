@@ -11,3 +11,50 @@
 body {
   font-family: system-ui, -apple-system, sans-serif;
 }
+
+@layer base {
+  :root {
+    /* GateVision design tokens */
+    --gv-bg: #07090f;
+    --gv-panel: #080e1b;
+    --gv-panel-header: #0a1020;
+    --gv-border: #1a2640;
+    --gv-border-subtle: #111f33;
+    --gv-text: #e2e8f0;
+    --gv-muted: #64748b;
+    --gv-accent: #3b82f6;
+    --gv-success: #34d399;
+    --gv-warning: #f59e0b;
+    --gv-danger: #ef4444;
+    --gv-nav: #060a15;
+
+    /* shadcn semantic tokens (dark ops UI) */
+    --background: #07090f;
+    --foreground: #e2e8f0;
+    --card: #080e1b;
+    --card-foreground: #e2e8f0;
+    --popover: #0a1020;
+    --popover-foreground: #e2e8f0;
+    --primary: #2563eb;
+    --primary-foreground: #f8fafc;
+    --secondary: #0d1a2f;
+    --secondary-foreground: #cbd5e1;
+    --muted: #0d1a2f;
+    --muted-foreground: #64748b;
+    --accent: #1e3a5f;
+    --accent-foreground: #93c5fd;
+    --destructive: #ef4444;
+    --border: #1a2640;
+    --input: #1a2640;
+    --ring: #3b82f6;
+    --radius: 0.625rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+  }
+}

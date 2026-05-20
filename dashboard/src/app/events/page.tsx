@@ -2,25 +2,27 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchEvents, createEventStream, deleteEvent, type GateEvent } from "@/lib/api";
+import { fetchEvents, deleteEvent, type GateEvent } from "@/lib/api";
+import { useGateEventStream } from "@/hooks/useGateEventStream";
+import { toast } from "sonner";
 import ReviewEventModal from "./ReviewEventModal";
 
 import { EventCard } from "@/components/events/EventCard";
 
 // ── Tabs config ──────────────────────────────────────────────── ────────────────────────────────────────────────
 const TABS = [
-  { value: "",               label: "All",          col: "#64748b" },
-  { value: "Identified",     label: "Identified",   col: "#22d3a5" },
-  { value: "NeedsReview",    label: "Needs Review", col: "#f59e0b" },
+  { value: "", label: "All", col: "#64748b" },
+  { value: "Identified", label: "Identified", col: "#22d3a5" },
+  { value: "NeedsReview", label: "Needs Review", col: "#f59e0b" },
 ];
 
 // ── Page ───────────────────────────────────────────────────────
 export default function EventsPage() {
-  const queryClient  = useQueryClient();
-  const [tab,        setTab]        = useState("");
-  const [name,       setName]       = useState("");
-  const [page,       setPage]       = useState(1);
-  const [newAlerts,  setNewAlerts]  = useState(0);
+  const queryClient = useQueryClient();
+  const [tab, setTab] = useState("");
+  const [name, setName] = useState("");
+  const [page, setPage] = useState(1);
+  const [newAlerts, setNewAlerts] = useState(0);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [mutatingOp, setMutatingOp] = useState<"block" | null>(null);
   const invalidateRef = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -28,48 +30,54 @@ export default function EventsPage() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["events", page, name, tab],
-    queryFn:  () => fetchEvents(page, limit, name || undefined, tab || undefined),
+    queryFn: () => fetchEvents(page, limit, name || undefined, tab || undefined),
     refetchInterval: 30_000,
   });
 
   const { data: reviewCount } = useQuery({
     queryKey: ["events-count", "NeedsReview"],
-    queryFn:  () => fetchEvents(1, 1, undefined, "NeedsReview"),
+    queryFn: () => fetchEvents(1, 1, undefined, "NeedsReview"),
     refetchInterval: 15_000,
   });
 
-  // Live stream — batch invalidates via debounce (2s window)
-  useEffect(() => {
-    const es = createEventStream((evt) => {
+  useGateEventStream({
+    onEvent: (evt) => {
       if (evt.status === "NeedsReview") {
         setNewAlerts((n) => n + 1);
       }
-      // Direct cache update for current page — avoids instant API refetch
-      queryClient.setQueryData(["events", page, name, tab], (old: any) => {
+      queryClient.setQueryData(["events", page, name, tab], (old: { items?: GateEvent[]; total?: number } | undefined) => {
         if (!old?.items) return old;
-        const filtered = old.items.filter((i: any) => i.eventId !== evt.eventId);
-        return { ...old, items: [evt, ...filtered].slice(0, limit), total: old.total + (filtered.length === old.items.length ? 1 : 0) };
+        const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
+        return {
+          ...old,
+          items: [evt, ...filtered].slice(0, limit),
+          total: old.total! + (filtered.length === old.items.length ? 1 : 0),
+        };
       });
-      // Debounced background refresh for consistency
       clearTimeout(invalidateRef.current);
       invalidateRef.current = setTimeout(() => {
         queryClient.invalidateQueries({ queryKey: ["events-count"] });
       }, 2000);
-    });
-    return () => { es.close(); clearTimeout(invalidateRef.current); };
-  }, [queryClient, page, name, tab, limit]);
+    },
+  });
+
+  useEffect(() => () => clearTimeout(invalidateRef.current), []);
 
   const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
 
   const blockMutation = useMutation({
     mutationFn: (id: string) => deleteEvent(id),
-    onMutate:   (id) => { setMutatingId(id); setMutatingOp("block"); },
-    onSettled:  ()   => { setMutatingId(null); setMutatingOp(null); },
-    onSuccess:  ()   => queryClient.invalidateQueries({ queryKey: ["events"] }),
+    onMutate: (id) => { setMutatingId(id); setMutatingOp("block"); },
+    onSettled: () => { setMutatingId(null); setMutatingOp(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+      toast.success("Event removed");
+    },
+    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to remove event"),
   });
 
   const tabCounts: Record<string, number | undefined> = {
-    NeedsReview:  reviewCount?.total,
+    NeedsReview: reviewCount?.total,
   };
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
@@ -127,7 +135,7 @@ export default function EventsPage() {
             <div className="flex gap-0.5">
               {TABS.map((t) => {
                 const active = tab === t.value;
-                const count  = tabCounts[t.value];
+                const count = tabCounts[t.value];
                 return (
                   <button
                     key={t.value}
@@ -135,9 +143,9 @@ export default function EventsPage() {
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all"
                     style={{
                       fontFamily: "'Oxanium', monospace",
-                      color:      active ? t.col : "#475569",
+                      color: active ? t.col : "#475569",
                       background: active ? `${t.col}12` : "transparent",
-                      border:     active ? `1px solid ${t.col}30` : "1px solid transparent",
+                      border: active ? `1px solid ${t.col}30` : "1px solid transparent",
                     }}
                   >
                     {t.label}

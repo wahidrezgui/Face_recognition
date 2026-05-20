@@ -7,11 +7,11 @@ import {
   fetchPersons,
   fetchPersonsCount,
   fetchEventStats,
-  createEventStream,
   setRoi,
   type GateEvent,
   type Roi,
 } from "@/lib/api";
+import { useGateEventStream } from "@/hooks/useGateEventStream";
 import Link from "next/link";
 import { IconCamera, IconFace, IconTarget, IconChart, IconShield, IconUsers, IconDot } from "@/components/icons";
 import { PanelHeader, StatItem, CaptureThumb, EventCard } from "@/components/face-display";
@@ -65,38 +65,37 @@ export default function DashboardPage() {
     if (initialData?.items) setLiveEvents(initialData.items);
   }, [initialData]);
 
-  useEffect(() => {
-    const es = createEventStream(
-      (e) => {
-        setLiveEvents((prev) => {
-          const exactIdx = prev.findIndex((p) => p.eventId === e.eventId);
-          if (exactIdx !== -1) {
+  const handleStreamEvent = useCallback((e: GateEvent) => {
+    setLiveEvents((prev) => {
+      const exactIdx = prev.findIndex((p) => p.eventId === e.eventId);
+      if (exactIdx !== -1) {
+        const updated = [...prev];
+        updated[exactIdx] = e;
+        return updated;
+      }
+      if (e.personId) {
+        const newTime = new Date(e.timestamp).getTime();
+        const dupIdx = prev.findIndex(
+          (p) => p.personId === e.personId && (newTime - new Date(p.timestamp).getTime()) <= 5000,
+        );
+        if (dupIdx !== -1) {
+          if (e.confidence > prev[dupIdx].confidence) {
             const updated = [...prev];
-            updated[exactIdx] = e;
+            updated[dupIdx] = e;
             return updated;
           }
-          if (e.personId) {
-            const newTime = new Date(e.timestamp).getTime();
-            const dupIdx = prev.findIndex(
-              (p) => p.personId === e.personId && (newTime - new Date(p.timestamp).getTime()) <= 5000,
-            );
-            if (dupIdx !== -1) {
-              if (e.confidence > prev[dupIdx].confidence) {
-                const updated = [...prev];
-                updated[dupIdx] = e;
-                return updated;
-              }
-              return prev;
-            }
-          }
-          return [e, ...prev].slice(0, 100);
-        });
-      },
-      () => { setStreamError(true); },
-      () => { setStreamError(false); }
-    );
-    return () => es.close();
+          return prev;
+        }
+      }
+      return [e, ...prev].slice(0, 100);
+    });
   }, []);
+
+  useGateEventStream({
+    onEvent: handleStreamEvent,
+    onOpen: () => setStreamError(false),
+    onError: () => setStreamError(true),
+  });
 
   // live clock
   useEffect(() => {
@@ -109,13 +108,13 @@ export default function DashboardPage() {
     try {
       localStorage.setItem(ROI_STORAGE_KEY, JSON.stringify(roi));
       await setRoi(roi);
-    } catch {}
+    } catch { }
   }, [roi]);
 
   const handleResetRoi = useCallback(async () => {
     localStorage.removeItem(ROI_STORAGE_KEY);
     setRoiState(null);
-    try { await setRoi({ x: 0, y: 0, width: 0, height: 0 }); } catch {}
+    try { await setRoi({ x: 0, y: 0, width: 0, height: 0 }); } catch { }
   }, []);
 
   useEffect(() => {
@@ -128,7 +127,7 @@ export default function DashboardPage() {
           setRoi(parsed);
         }
       }
-    } catch {}
+    } catch { }
   }, []);
 
   const handleClearCaptures = useCallback(() => {
@@ -142,15 +141,9 @@ export default function DashboardPage() {
   const recentCaptures = liveEvents.slice(0, 6);
 
   return (
-    <div
-      className="flex flex-col overflow-hidden text-gray-100"
-      style={{ height: "calc(100vh - 44px)", background: "#07090f" }}
-    >
+    <div className="flex h-[calc(100vh-44px)] flex-col overflow-hidden bg-gv-bg text-gray-100">
       {/* ── Header bar ─────────────────────────────────────── */}
-      <header
-        className="shrink-0 flex items-center gap-4 px-5 py-2 border-b"
-        style={{ background: "#090e1c", borderColor: "#1a2640" }}
-      >
+      <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-gv-border bg-[#090e1c] px-4 py-2 sm:gap-4 sm:px-5">
         <div className="flex items-center gap-1.5 text-xs text-gray-400">
           <IconDot online />
           <span>System Online</span>
@@ -175,18 +168,15 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* ── Main 3-column grid ─────────────────────────────── */}
-      <div
-        className="flex-1 grid overflow-hidden"
-        style={{ gridTemplateColumns: "240px 1fr 300px", gap: "1px", background: "#111927" }}
-      >
+      {/* ── Main grid: stack on mobile, 3-col on xl ──────── */}
+      <div className="grid flex-1 grid-cols-1 gap-px overflow-hidden bg-gv-border-subtle lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)] xl:grid-cols-[240px_minmax(0,1fr)_300px]">
         {/* ── LEFT: Stats & system panel ─────────────────── */}
-        <aside className="flex flex-col overflow-hidden" style={{ background: "#080e1b" }}>
+        <aside className="flex max-h-[38vh] flex-col overflow-hidden bg-gv-panel lg:col-start-1 lg:row-start-1 lg:max-h-none xl:max-h-none">
           <PanelHeader icon={<IconChart />} title="System Overview" />
 
-          <StatItem label="Today's Entries"  value={stats?.todayEntries ?? 0} color="text-blue-400"    icon={<IconCamera />} />
-          <StatItem label="Pending Review"   value={stats?.pendingReview ?? 0} color="text-amber-400"  icon={<IconShield />} />
-          <StatItem label="Total Enrolled"   value={enrolledCount}             color="text-emerald-400" icon={<IconUsers />} />
+          <StatItem label="Today's Entries" value={stats?.todayEntries ?? 0} color="text-blue-400" icon={<IconCamera />} />
+          <StatItem label="Pending Review" value={stats?.pendingReview ?? 0} color="text-amber-400" icon={<IconShield />} />
+          <StatItem label="Total Enrolled" value={enrolledCount} color="text-emerald-400" icon={<IconUsers />} />
 
           {/* Camera list */}
           <div className="mt-auto">
@@ -217,9 +207,9 @@ export default function DashboardPage() {
         </aside>
 
         {/* ── CENTER: Face captures + camera feed ────────── */}
-        <main className="flex flex-col overflow-hidden" style={{ background: "#080d19" }}>
+        <main className="flex min-h-[280px] flex-col overflow-hidden bg-[#080d19] lg:col-start-2 lg:row-span-2 lg:row-start-1 xl:col-start-2 xl:row-span-1">
           {/* Face captures strip */}
-          <div className="shrink-0 border-b" style={{ borderColor: "#1a2640" }}>
+          <div className="shrink-0 border-b border-gv-border">
             <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e2d4a] bg-[#0a1020]">
               <span className="text-blue-400"><IconFace /></span>
               <span className="text-xs font-semibold tracking-widest uppercase text-gray-300">Face Captures</span>
@@ -245,7 +235,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Live camera feed */}
-          <div className="shrink-0 border-b" style={{ borderColor: "#1a2640" }}>
+          <div className="shrink-0 border-b border-gv-border">
             <PanelHeader icon={<IconCamera />} title="Live View" />
             <button
               onClick={() => {
@@ -322,10 +312,7 @@ export default function DashboardPage() {
         </main>
 
         {/* ── RIGHT: Target Analysis (matched events) ────── */}
-        <aside
-          className="flex flex-col overflow-hidden"
-          style={{ background: "#080e1b" }}
-        >
+        <aside className="flex max-h-[40vh] flex-col overflow-hidden bg-gv-panel lg:col-start-1 lg:row-start-2 lg:max-h-none xl:col-start-3 xl:row-start-1">
           <div className="flex items-center gap-2 px-4 py-2.5 border-b border-[#1e2d4a] bg-[#0a1020]">
             <span className="text-blue-400"><IconTarget /></span>
             <span className="text-xs font-semibold tracking-widest uppercase text-gray-300">Target Analysis</span>

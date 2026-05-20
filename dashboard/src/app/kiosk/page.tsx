@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { type GateEvent } from "@/lib/api";
-import { openEventStream } from "@/hooks/useEventStream";
+import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
 import { IdleScreen } from "@/components/kiosk/IdleScreen";
 
@@ -198,7 +198,7 @@ export default function KioskPage() {
     if (dismissRef.current) clearTimeout(dismissRef.current);
   };
 
-  const showEvent = (e: GateEvent) => {
+  const showEvent = useCallback((e: GateEvent) => {
     const m = classifyEvent(e);
     setEvent(e);
     setMode(m);
@@ -216,19 +216,15 @@ export default function KioskPage() {
       setEvent(null);
       setMode("idle");
     }, DISPLAY_MS);
-  };
-
-  useEffect(() => {
-    const es = openEventStream(
-      showEvent,
-      () => setConnected(true),
-      () => setConnected(false),
-    );
-    return () => {
-      es.close();
-      clearTimers();
-    };
   }, []);
+
+  useGateEventStream({
+    onEvent: showEvent,
+    onOpen: () => setConnected(true),
+    onError: () => setConnected(false),
+  });
+
+  useEffect(() => () => clearTimers(), []);
 
   const showing = event !== null;
 

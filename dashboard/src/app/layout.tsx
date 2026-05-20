@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { Providers } from "./providers";
 import NavBar from "@/components/NavBar";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({ subsets: ['latin'], variable: '--font-sans' });
 
 export const metadata: Metadata = {
   title: "GateVision Dashboard",
@@ -14,8 +18,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
-      <body className="bg-gray-950 text-gray-100 min-h-screen flex flex-col">
+    <html lang="en" className={cn("dark font-sans", geist.variable)} suppressHydrationWarning>
+      <body className="min-h-screen flex flex-col bg-gv-bg text-gv-text">
         <Providers>
           <NavBar />
           {children}
