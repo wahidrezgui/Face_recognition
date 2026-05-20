@@ -21,19 +21,27 @@ public static class PersonEndpoints
 
         app.MapGet("/api/persons/{id:guid}", async (Guid id, AppDbContext db, CancellationToken ct) =>
         {
-            var person = await db.Persons
-                .Where(p => p.Id == id)
-                .Select(p => new
-                {
-                    p.Id,
-                    p.FullName,
-                    p.Department,
-                    enrollmentStatus = p.EnrollmentStatus.ToString(),
-                    p.CreatedAt,
-                    p.WelcomeMessage,
-                })
+            var person = await db.Database.SqlQuery<PersonRow>($"""
+                SELECT p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt",
+                       CAST(COUNT(fe."Id") AS integer) AS "FaceCount", p."WelcomeMessage"
+                FROM persons p
+                LEFT JOIN face_embeddings fe ON fe."PersonId" = p."Id"
+                WHERE p."Id" = {id}
+                GROUP BY p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt", p."WelcomeMessage"
+                """)
                 .FirstOrDefaultAsync(ct);
-            return person is null ? Results.NotFound() : Results.Ok(person);
+
+            if (person is null) return Results.NotFound();
+            return Results.Ok(new
+            {
+                person.Id,
+                person.FullName,
+                person.Department,
+                enrollmentStatus = person.EnrollmentStatus,
+                person.CreatedAt,
+                faceCount = person.FaceCount,
+                person.WelcomeMessage,
+            });
         });
 
         app.MapGet("/api/persons/{id:guid}/faces", async (Guid id, AppDbContext db, CancellationToken ct) =>
@@ -148,8 +156,22 @@ public static class PersonEndpoints
             for (var i = 0; i < dto.Embeddings.Count; i++)
                 if (dto.Embeddings[i].Length != 512)
                     return Results.BadRequest($"Embedding at index {i} must have exactly 512 dimensions, got {dto.Embeddings[i].Length}");
-            await svc.Enroll(id, dto.Embeddings, dto.QualityScore, dto.FaceImages, ct);
+            await svc.Enroll(id, dto.Embeddings, dto.QualityScore, dto.FaceImages, dto.Poses, dto.Replace, ct);
             return Results.Ok(new { status = "enrolled" });
+        });
+
+        app.MapGet("/api/persons/{id:guid}/poses", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        {
+            var poses = await db.Database.SqlQuery<PoseEntry>(
+                $"""
+                SELECT "Pose", MAX("CreatedAt") AS "EnrolledAt"
+                FROM face_embeddings
+                WHERE "PersonId" = {id} AND "Pose" IS NOT NULL
+                GROUP BY "Pose"
+                ORDER BY "Pose"
+                """)
+                .ToListAsync(ct);
+            return Results.Ok(poses);
         });
 
         app.MapPatch("/api/persons/{id:guid}/status", async (Guid id, UpdateStatusDto dto, AppDbContext db, CancellationToken ct) =>
@@ -232,6 +254,11 @@ public class EnrollDto
     public List<float[]> Embeddings { get; set; } = [];
     public float QualityScore { get; set; } = 0.8f;
     public List<string>? FaceImages { get; set; }
+    /// <summary>Pose label per embedding: 'frontal', 'left', 'right', 'up', 'down'. Index-parallel with Embeddings.</summary>
+    public List<string>? Poses { get; set; }
+    /// <summary>When true, all existing embeddings for this person are deleted before inserting the new ones.
+    /// Use this when replacing gate-camera embeddings with higher-quality webcam frames.</summary>
+    public bool Replace { get; set; } = false;
 }
 
 public class UpdateStatusDto
@@ -241,3 +268,4 @@ public class UpdateStatusDto
 
 public record PersonRow(Guid Id, string FullName, string Department, string EnrollmentStatus, DateTime CreatedAt, int FaceCount, string? WelcomeMessage);
 public record FaceImageRow(Guid Id, string? FaceImage);
+public record PoseEntry(string Pose, DateTime EnrolledAt);

@@ -65,3 +65,24 @@ def decode_base64_frame(b64: str) -> np.ndarray:
         b64 = b64.split(",", 1)[1]
     buf = np.frombuffer(base64.b64decode(b64), dtype=np.uint8)
     return cv2.imdecode(buf, cv2.IMREAD_COLOR)
+
+
+def classify_pose(yaw: float, pitch: float) -> str:
+    """Classify (yaw, pitch) degrees into a pose label.
+
+    Thresholds:
+      |yaw| <= 20 and |pitch| <= 20  → frontal
+      yaw < -20                       → left
+      yaw > 20                        → right
+      pitch < -20                     → up
+      pitch > 20                      → down
+    """
+    if abs(yaw) <= 20 and abs(pitch) <= 20:
+        return "frontal"
+    if yaw < -20:
+        return "left"
+    if yaw > 20:
+        return "right"
+    if pitch < -20:
+        return "up"
+    return "down"

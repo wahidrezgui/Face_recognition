@@ -3,7 +3,8 @@
     "allow": [
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\wahid\\\\Documents\\\\DevelopmentFolder\\\\FACE_RECOGNITION\" -Directory)",
       "Bash(Select-Object Name)",
-      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Get-Process -Id $_ | Select-Object Id, ProcessName })"
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Get-Process -Id $_ | Select-Object Id, ProcessName })",
+      "Bash(npx tsc *)"
     ]
   }
 }

@@ -96,13 +96,20 @@ class NetBackendClient:
             logger.error("Identify request error: %s", e)
             return None
 
-    async def enroll(self, person_id: str, embeddings: list[np.ndarray], face_images: list[str] | None = None) -> dict | None:
+    async def enroll(self, person_id: str, embeddings: list[np.ndarray],
+                     face_images: list[str] | None = None,
+                     poses: list[str] | None = None,
+                     replace: bool = False) -> dict | None:
         path = settings.net_enroll_path.format(person_id=person_id)
         body: dict = {
             "embeddings": [e.tolist() for e in embeddings],
         }
         if face_images:
             body["faceImages"] = face_images
+        if poses:
+            body["poses"] = poses
+        if replace:
+            body["replace"] = True
         try:
             resp = await self.client.post(path, json=body)
             resp.raise_for_status()

@@ -20,8 +20,11 @@ public static class IdentifyEndpoints
                 ? Direction.Exit
                 : Direction.Entry;
 
+            var eventId = Guid.NewGuid(); // Single ID shared by SSE + DB
+
             buffer.BufferOrUpdate(new BufferedTrack
             {
+                Id = eventId,
                 TrackId = dto.TrackId,
                 PersonId = result.PersonId,
                 PersonName = result.PersonName,
@@ -38,7 +41,7 @@ public static class IdentifyEndpoints
 
             var gateEvent = new GateEvent
             {
-                Id = Guid.NewGuid(),
+                Id = eventId,
                 PersonId = result.PersonId,
                 PersonName = result.PersonName,
                 Confidence = result.Confidence,

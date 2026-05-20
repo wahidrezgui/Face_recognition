@@ -62,6 +62,12 @@ export async function fetchPersons(): Promise<Person[]> {
   return res.json();
 }
 
+export async function fetchPerson(id: string): Promise<Person> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch person");
+  return res.json();
+}
+
 export async function createPerson(fullName: string, department: string) {
   const res = await apiFetch(`${API_BASE}/api/persons`, {
     method: "POST",
@@ -124,7 +130,7 @@ export async function fetchEventStats(): Promise<{
 export async function deletePerson(personId: string): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/api/persons/${personId}`, {
     method: "DELETE",
-    headers: { ...authHeaders() },
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to delete person");
   return res.json();
@@ -133,7 +139,7 @@ export async function deletePerson(personId: string): Promise<unknown> {
 export async function deleteEvent(eventId: string): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/api/events/${eventId}`, {
     method: "DELETE",
-    headers: { ...authHeaders() },
+    headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to delete event");
   return res.json();
@@ -153,13 +159,61 @@ export async function enrollFaceFromBase64(personId: string, faceImageBase64: st
   return res.json();
 }
 
+export interface EnrollWebcamResult {
+  personId: string;
+  accepted: number;
+  rejected: { frame: number; reason: string }[];
+  poses: string[];
+}
+
+/** Enroll with multiple distinct base64 frames (e.g. from webcam capture).
+ *  Sends 3-20 frames to /vision/enroll/webcam for better enrollment quality.
+ *  Returns per-frame pose labels detected server-side (frontal, left, right, up, down). */
+/** Enroll with multiple distinct base64 frames from webcam.
+ *  Pass replace=true to wipe previous embeddings before inserting (used when upgrading from
+ *  a single gate-camera embedding to full multi-angle webcam enrollment). */
+export async function enrollWithFrames(personId: string, frames: string[], replace = false): Promise<EnrollWebcamResult> {
+  const res = await fetch(`/vision/enroll/webcam`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personId, frames: frames.slice(0, 20), replace }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to enroll face";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+/** Enroll from a single gate-camera face crop (the faceImageBase64 stored in a GateEvent).
+ *  Extracts one embedding server-side; no webcam required.
+ *  The result can later be replaced by calling enrollWithFrames with replace=true. */
+export async function enrollFromEventFace(personId: string, faceImageBase64: string): Promise<EnrollWebcamResult> {
+  const res = await fetch(`/vision/enroll/from-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ personId, frame: faceImageBase64 }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to enroll from event face";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch {}
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export async function reviewEvent(eventId: string, personId: string): Promise<unknown> {
   const res = await apiFetch(`${API_BASE}/api/events/${eventId}/review`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ personId }),
   });
-  if (!res.ok) throw new Error("Failed to review event");
+  if (!res.ok) {
+    let detail = "Failed to review event";
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch {}
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -223,6 +277,31 @@ export async function detectPose(
   } catch {
     return { detected: false, yaw: 0, pitch: 0 };
   }
+}
+
+export interface PoseEntry {
+  pose: "frontal" | "left" | "right" | "up" | "down";
+  enrolledAt: string;
+}
+
+export async function fetchPersonPoses(personId: string): Promise<PoseEntry[]> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}/poses`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+const ALL_POSES = ["frontal", "left", "right", "up", "down"] as const;
+
+/** Compute enrollment completion from a list of enrolled poses. */
+export function poseCompletion(poses: PoseEntry[]): {
+  enrolled: string[];
+  missing: string[];
+  percent: number;
+} {
+  const enrolled = ALL_POSES.filter((p) => poses.some((e) => e.pose === p));
+  const missing = ALL_POSES.filter((p) => !enrolled.includes(p));
+  const percent = Math.round((enrolled.length / ALL_POSES.length) * 100);
+  return { enrolled, missing, percent };
 }
 
 export interface Roi {

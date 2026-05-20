@@ -41,43 +41,101 @@ public class EnrollmentService
         return person;
     }
 
-    public async Task Enroll(Guid personId, List<float[]> embeddings, float qualityScore, List<string>? faceImages = null, CancellationToken ct = default)
+    /// <summary>Enroll face embeddings for a person.
+    /// When <paramref name="poses"/> are provided, each embedding is stored as a separate row
+    /// (tagged with its pose) instead of being averaged into one. This enables multi-angle
+    /// matching and per-pose progress tracking in the UI.</summary>
+    public async Task Enroll(Guid personId, List<float[]> embeddings, float qualityScore,
+        List<string>? faceImages = null, List<string>? poses = null, bool replace = false, CancellationToken ct = default)
     {
         var person = await _db.Persons.FindAsync([personId], ct)
             ?? throw new InvalidOperationException("Person not found");
-
-        var avgEmbedding = AverageEmbeddings(embeddings);
-
-        var embeddingId = Guid.NewGuid();
-        string? faceImagePath = null;
 
         var strategy = _db.Database.CreateExecutionStrategy();
         await strategy.ExecuteAsync(async () =>
         {
             await using var tx = await _db.Database.BeginTransactionAsync(ct);
 
-            var faceImage = faceImages?.FirstOrDefault();
-
-            if (faceImage is not null)
+            if (replace)
             {
-                faceImagePath = await SaveFaceImageAsync(personId, embeddingId, faceImage, ct);
+                // Delete all previous face images from disk, then wipe the DB rows
+                var personDir = Path.Combine(_faceImagesDir, personId.ToString());
+                if (Directory.Exists(personDir))
+                {
+                    try { Directory.Delete(personDir, recursive: true); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Could not remove face image dir for {PersonId}", personId); }
+                }
                 await _db.Database.ExecuteSqlAsync(
-                    $"""INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "FaceImage") VALUES ({embeddingId}, {personId}, {avgEmbedding}::vector, {qualityScore}, {DateTime.UtcNow}, {faceImagePath})""");
+                    $"""DELETE FROM face_embeddings WHERE "PersonId" = {personId}""");
+                _logger.LogInformation("Replaced all embeddings for person {PersonId}", personId);
+            }
+
+            if (poses is not null && poses.Count == embeddings.Count)
+            {
+                // ── Per-frame: store each embedding as its own row with pose tag ──
+                for (var i = 0; i < embeddings.Count; i++)
+                {
+                    var eid = Guid.NewGuid();
+                    var emb = embeddings[i];
+                    var pose = poses[i];
+                    string? facePath = null;
+
+                    if (faceImages is not null && i < faceImages.Count && !string.IsNullOrEmpty(faceImages[i]))
+                        facePath = await SaveFaceImageAsync(personId, eid, faceImages[i], ct);
+
+                    if (facePath is not null)
+                    {
+                        await _db.Database.ExecuteSqlAsync(
+                            $"""
+                            INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "FaceImage", "Pose")
+                            VALUES ({eid}, {personId}, {emb}::vector, {qualityScore}, {DateTime.UtcNow}, {facePath}, {pose})
+                            """);
+                    }
+                    else
+                    {
+                        await _db.Database.ExecuteSqlAsync(
+                            $"""
+                            INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "Pose")
+                            VALUES ({eid}, {personId}, {emb}::vector, {qualityScore}, {DateTime.UtcNow}, {pose})
+                            """);
+                    }
+                }
             }
             else
             {
-                await _db.Database.ExecuteSqlAsync(
-                    $"""INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt") VALUES ({embeddingId}, {personId}, {avgEmbedding}::vector, {qualityScore}, {DateTime.UtcNow})""");
+                // ── Legacy: average all embeddings into one row ──
+                var avg = AverageEmbeddings(embeddings);
+                var eid = Guid.NewGuid();
+                string? facePath = null;
+
+                if (faceImages?.Any() == true)
+                    facePath = await SaveFaceImageAsync(personId, eid, faceImages[0], ct);
+
+                if (facePath is not null)
+                {
+                    await _db.Database.ExecuteSqlAsync(
+                        $"""
+                        INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "FaceImage")
+                        VALUES ({eid}, {personId}, {avg}::vector, {qualityScore}, {DateTime.UtcNow}, {facePath})
+                        """);
+                }
+                else
+                {
+                    await _db.Database.ExecuteSqlAsync(
+                        $"""
+                        INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt")
+                        VALUES ({eid}, {personId}, {avg}::vector, {qualityScore}, {DateTime.UtcNow})
+                        """);
+                }
             }
 
             person.EnrollmentStatus = EnrollmentStatus.Active;
             await _db.SaveChangesAsync(ct);
-
             await tx.CommitAsync(ct);
         });
 
-        if (faceImages?.Any() == true && string.IsNullOrEmpty(faceImagePath))
-            _logger.LogWarning("Face image provided but failed to save for person {PersonId}", personId);
+        _logger.LogInformation("Enrolled {Count} embedding(s) for person {PersonId} (pose-tagged: {HasPoses}, replace: {Replace})",
+            embeddings.Count, personId, poses is not null && poses.Count == embeddings.Count, replace);
 
         await _cache.RemovePersonAsync(personId);
         await _cache.SetPersonAsync(personId, person.FullName, person.Department, person.WelcomeMessage);

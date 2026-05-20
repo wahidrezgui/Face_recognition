@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchPersons,
   createPerson,
   reviewEvent,
   deleteEvent,
-  enrollFaceFromBase64,
+  enrollWithFrames,
+  enrollFromEventFace,
   type GateEvent,
   type Person,
 } from "@/lib/api";
 import { statusColor } from "@/components/events/EventCard";
+import { QuickCapture } from "@/components/events/QuickCapture";
 
 type Tab = "link" | "create" | "delete";
+type CapturePhase = "idle" | "capturing" | "enrolling" | "done";
 
 export default function ReviewEventModal({
   event,
@@ -46,6 +49,7 @@ export default function ReviewEventModal({
     ? `data:image/jpeg;base64,${event.faceImageBase64}`
     : event.faceImageUrl ?? null;
   const time = new Date(event.timestamp);
+  const hasFace = !!event.faceImageBase64;
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["events"] });
@@ -54,43 +58,93 @@ export default function ReviewEventModal({
 
   const [busy, setBusy] = useState(false);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [capturePhase, setCapturePhase] = useState<CapturePhase>("idle");
+  const [linkedPersonId, setLinkedPersonId] = useState<string | null>(null);
+  const [enrolledPoses, setEnrolledPoses] = useState<string[] | null>(null);
 
-  async function handleLink(enroll: boolean) {
+  // ── Link tab actions ──────────────────────────────────────────────────────
+  async function handleLink(mode: "link" | "enroll" | "capture") {
     if (!selectedPersonId) return;
     setBusy(true);
     setStatusMsg(null);
     try {
       await reviewEvent(event.eventId, selectedPersonId);
-      if (enroll && event.faceImageBase64) {
-        await enrollFaceFromBase64(selectedPersonId, event.faceImageBase64);
+
+      if (mode === "capture") {
+        setLinkedPersonId(selectedPersonId);
+        setCapturePhase("capturing");
+        return; // QuickCapture takes over from here
       }
+
+      if (mode === "enroll" && hasFace) {
+        setCapturePhase("enrolling");
+        const result = await enrollFromEventFace(selectedPersonId, event.faceImageBase64!);
+        setEnrolledPoses(result.poses ?? []);
+        setLinkedPersonId(selectedPersonId);
+        setCapturePhase("done");
+        return;
+      }
+
+      // "link" — just link, no enrollment
       invalidateAll();
       onDone();
     } catch (e) {
       setStatusMsg(e instanceof Error ? e.message : "Failed to link person");
+      setCapturePhase("idle");
     } finally {
       setBusy(false);
     }
   }
 
-  async function handleCreate(enroll: boolean) {
+  // ── Create tab actions ────────────────────────────────────────────────────
+  async function handleCreate(mode: "link" | "enroll" | "capture") {
     if (!newName || !newDept) return;
     setBusy(true);
     setStatusMsg(null);
     try {
       const person = await createPerson(newName, newDept);
       await reviewEvent(event.eventId, person.id);
-      if (enroll && event.faceImageBase64) {
-        await enrollFaceFromBase64(person.id, event.faceImageBase64);
+
+      if (mode === "capture") {
+        setLinkedPersonId(person.id);
+        setCapturePhase("capturing");
+        return;
       }
+
+      if (mode === "enroll" && hasFace) {
+        setCapturePhase("enrolling");
+        const result = await enrollFromEventFace(person.id, event.faceImageBase64!);
+        setEnrolledPoses(result.poses ?? []);
+        setLinkedPersonId(person.id);
+        setCapturePhase("done");
+        return;
+      }
+
       invalidateAll();
       onDone();
     } catch (e) {
       setStatusMsg(e instanceof Error ? e.message : "Failed to create person");
+      setCapturePhase("idle");
     } finally {
       setBusy(false);
     }
   }
+
+  // ── Webcam frames ready — replace existing embeddings ────────────────────
+  const handleFramesReady = useCallback(async (frames: string[]) => {
+    if (!linkedPersonId) return;
+    setCapturePhase("enrolling");
+    setStatusMsg(null);
+    try {
+      // replace=true: wipe gate-camera embedding and store fresh webcam embeddings
+      const result = await enrollWithFrames(linkedPersonId, frames, true);
+      setEnrolledPoses(result.poses ?? []);
+      setCapturePhase("done");
+    } catch (e) {
+      setStatusMsg(e instanceof Error ? e.message : "Failed to enroll face");
+      setCapturePhase("idle");
+    }
+  }, [linkedPersonId]);
 
   async function handleDelete() {
     setBusy(true);
@@ -105,6 +159,66 @@ export default function ReviewEventModal({
       setBusy(false);
     }
   }
+
+  // ── Shared views ──────────────────────────────────────────────────────────
+
+  const enrollingView = capturePhase === "enrolling" && (
+    <div className="flex flex-col items-center gap-3 py-6">
+      <div className="w-8 h-8 rounded-full border-2 border-emerald-500 border-t-transparent animate-spin" />
+      <p className="text-xs text-gray-400">Enrolling face embeddings…</p>
+    </div>
+  );
+
+  const doneView = capturePhase === "done" && enrolledPoses && (
+    <div className="flex flex-col items-center gap-4 py-4">
+      <div
+        className="rounded-full border-2 border-emerald-500 flex items-center justify-center"
+        style={{ width: 72, height: 72, boxShadow: "0 0 32px rgba(34,197,94,0.25)" }}
+      >
+        <svg className="w-10 h-10 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+      </div>
+      <p className="text-emerald-400 font-semibold text-sm">Enrolled successfully</p>
+      <div className="flex gap-2 flex-wrap justify-center">
+        {["frontal", "left", "right", "up", "down"].map((p) => {
+          const has = enrolledPoses.includes(p);
+          return (
+            <div
+              key={p}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs"
+              style={{
+                background: has ? "rgba(34,211,165,0.1)" : "rgba(255,255,255,0.03)",
+                border: has ? "1px solid rgba(34,211,165,0.25)" : "1px solid rgba(255,255,255,0.08)",
+                color: has ? "#22d3a5" : "#475569",
+              }}
+            >
+              {has ? (
+                <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <span className="w-3 h-3 text-[9px]">·</span>
+              )}
+              {p}
+            </div>
+          );
+        })}
+      </div>
+      {enrolledPoses.length < 5 && (
+        <p className="text-[10px] text-gray-600 text-center max-w-[220px]">
+          Use <span style={{ color: "#22d3a5" }}>Link &amp; Replace Webcam</span> on the next event to add more angles.
+        </p>
+      )}
+      <button
+        onClick={() => { invalidateAll(); onDone(); }}
+        className="px-5 py-2 text-sm font-semibold rounded-lg transition-all"
+        style={{ background: "rgba(34,211,165,0.12)", color: "#22d3a5", border: "1px solid rgba(34,211,165,0.25)" }}
+      >
+        Done
+      </button>
+    </div>
+  );
 
   return (
     <div
@@ -179,14 +293,25 @@ export default function ReviewEventModal({
         </div>
 
         {/* ── Tab content ─────────────────────────── */}
-        <div className="px-5 py-4 max-h-[320px] overflow-y-auto">
-          {statusMsg && (
+        <div className="px-5 py-4 max-h-[360px] overflow-y-auto">
+          {doneView}
+          {enrollingView}
+
+          {statusMsg && !doneView && !enrollingView && (
             <div className="mb-3 text-xs px-3 py-2 rounded" style={{ background: "#f8717115", color: "#f87171", border: "1px solid #f8717130" }}>
               {statusMsg}
             </div>
           )}
 
-          {tab === "link" && (
+          {/* ── Link tab ── */}
+          {tab === "link" && capturePhase === "capturing" && (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <p className="text-xs text-gray-400">Event linked. Capture different angles — this will replace any existing embeddings.</p>
+              <QuickCapture onFramesReady={handleFramesReady} onCancel={() => setCapturePhase("idle")} />
+            </div>
+          )}
+
+          {tab === "link" && capturePhase === "idle" && (
             <div className="space-y-3">
               <input
                 autoFocus
@@ -196,7 +321,7 @@ export default function ReviewEventModal({
                 className="w-full px-3 py-2 rounded text-xs"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2640", color: "#cbd5e1", outline: "none" }}
               />
-              <div className="space-y-1 max-h-[160px] overflow-y-auto">
+              <div className="space-y-1 max-h-[140px] overflow-y-auto">
                 {filtered.map((p: Person) => (
                   <button
                     key={p.id}
@@ -216,40 +341,70 @@ export default function ReviewEventModal({
                   <p className="text-xs text-gray-700 text-center py-4">No persons found</p>
                 )}
               </div>
-              <div className="flex gap-2 pt-2">
+
+              {/* Row 1: Link Only + Link & Enroll (from event face) */}
+              <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => handleLink(false)}
+                  onClick={() => handleLink("link")}
                   disabled={busy || !selectedPersonId}
                   className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                   style={{
-                    background: "rgba(34,211,165,0.1)",
-                    color: "#22d3a5",
-                    border: "1px solid rgba(34,211,165,0.25)",
+                    background: "transparent",
+                    color: "#64748b",
+                    border: "1px solid #1a2640",
                     fontFamily: "'Oxanium', monospace",
                   }}
                 >
-                  {busy ? "..." : "Link Only"}
+                  {busy ? "…" : "Link Only"}
                 </button>
-                {event.faceImageBase64 && (
+                {hasFace && (
                   <button
-                    onClick={() => handleLink(true)}
+                    onClick={() => handleLink("enroll")}
                     disabled={busy || !selectedPersonId}
                     className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                     style={{
-                      background: "rgba(34,211,165,0.18)",
+                      background: "rgba(34,211,165,0.12)",
                       color: "#22d3a5",
-                      border: "1px solid rgba(34,211,165,0.35)",
+                      border: "1px solid rgba(34,211,165,0.3)",
                       fontFamily: "'Oxanium', monospace",
                     }}
                   >
-                    {busy ? "..." : "Link & Enroll"}
+                    {busy ? "…" : "Link & Enroll ⚡"}
                   </button>
                 )}
               </div>
+
+              {/* Row 2: Link & Replace via Webcam */}
+              <button
+                onClick={() => handleLink("capture")}
+                disabled={busy || !selectedPersonId}
+                className="w-full px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: "rgba(99,102,241,0.1)",
+                  color: "#818cf8",
+                  border: "1px solid rgba(99,102,241,0.25)",
+                  fontFamily: "'Oxanium', monospace",
+                }}
+              >
+                {busy ? "…" : "Link & Replace via Webcam"}
+              </button>
+              {hasFace && (
+                <p className="text-[10px] text-center" style={{ color: "#374151" }}>
+                  ⚡ uses gate camera face · Webcam replaces embeddings
+                </p>
+              )}
             </div>
           )}
 
-          {tab === "create" && (
+          {/* ── Create tab ── */}
+          {tab === "create" && capturePhase === "capturing" && (
+            <div className="flex flex-col items-center gap-3 py-2">
+              <p className="text-xs text-gray-400">Person created &amp; linked. Capture different angles — this will replace any existing embeddings.</p>
+              <QuickCapture onFramesReady={handleFramesReady} onCancel={() => setCapturePhase("idle")} />
+            </div>
+          )}
+
+          {tab === "create" && capturePhase === "idle" && (
             <div className="space-y-3">
               <input
                 autoFocus
@@ -266,39 +421,62 @@ export default function ReviewEventModal({
                 className="w-full px-3 py-2 rounded text-xs"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2640", color: "#cbd5e1", outline: "none" }}
               />
+
+              {/* Row 1: Create & Link + Create, Link & Enroll */}
               <div className="flex gap-2 pt-1">
                 <button
-                  onClick={() => handleCreate(false)}
+                  onClick={() => handleCreate("link")}
                   disabled={busy || !newName || !newDept}
                   className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                   style={{
-                    background: "rgba(99,102,241,0.12)",
-                    color: "#818cf8",
-                    border: "1px solid rgba(99,102,241,0.25)",
+                    background: "transparent",
+                    color: "#64748b",
+                    border: "1px solid #1a2640",
                     fontFamily: "'Oxanium', monospace",
                   }}
                 >
-                  {busy ? "..." : "Create & Link"}
+                  {busy ? "…" : "Create & Link"}
                 </button>
-                {event.faceImageBase64 && (
+                {hasFace && (
                   <button
-                    onClick={() => handleCreate(true)}
+                    onClick={() => handleCreate("enroll")}
                     disabled={busy || !newName || !newDept}
                     className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                     style={{
-                      background: "rgba(99,102,241,0.2)",
-                      color: "#818cf8",
-                      border: "1px solid rgba(99,102,241,0.35)",
+                      background: "rgba(34,211,165,0.12)",
+                      color: "#22d3a5",
+                      border: "1px solid rgba(34,211,165,0.3)",
                       fontFamily: "'Oxanium', monospace",
                     }}
                   >
-                    {busy ? "..." : "Create, Link & Enroll"}
+                    {busy ? "…" : "Create & Enroll ⚡"}
                   </button>
                 )}
               </div>
+
+              {/* Row 2: Create & Replace via Webcam */}
+              <button
+                onClick={() => handleCreate("capture")}
+                disabled={busy || !newName || !newDept}
+                className="w-full px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: "rgba(99,102,241,0.1)",
+                  color: "#818cf8",
+                  border: "1px solid rgba(99,102,241,0.25)",
+                  fontFamily: "'Oxanium', monospace",
+                }}
+              >
+                {busy ? "…" : "Create & Enroll via Webcam"}
+              </button>
+              {hasFace && (
+                <p className="text-[10px] text-center" style={{ color: "#374151" }}>
+                  ⚡ uses gate camera face · Webcam replaces embeddings
+                </p>
+              )}
             </div>
           )}
 
+          {/* ── Delete tab ── */}
           {tab === "delete" && (
             <div className="space-y-3">
               <p className="text-xs" style={{ color: "#94a3b8" }}>

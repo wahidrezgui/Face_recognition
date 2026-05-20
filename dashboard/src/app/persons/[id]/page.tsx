@@ -3,7 +3,7 @@
 import { useRef, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
-import { fetchPersons, updatePersonStatus, fetchPersonFaces, uploadFace, updateWelcomeMessage, deletePerson, type FaceImage } from "@/lib/api";
+import { fetchPersons, updatePersonStatus, fetchPersonFaces, uploadFace, updateWelcomeMessage, deletePerson, fetchPersonPoses, poseCompletion, type Person, type FaceImage } from "@/lib/api";
 import WebcamEnrollment from "@/components/WebcamEnrollment";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
@@ -24,13 +24,21 @@ export default function PersonDetailPage() {
     queryFn: fetchPersons,
     staleTime: 0,
   });
-  const person = persons.find((p: any) => p.id === id);
+  const person = persons.find((p: Person) => p.id === id);
 
   const { data: faces = [] } = useQuery({
     queryKey: ["person-faces", id],
     queryFn: () => fetchPersonFaces(id),
-    enabled: person?.enrollmentStatus === "Active",
+    enabled: !!person,
   });
+
+  const { data: poses = [] } = useQuery({
+    queryKey: ["person-poses", id],
+    queryFn: () => fetchPersonPoses(id),
+    enabled: !!person,
+  });
+
+  const comp = poseCompletion(poses);
 
   const statusMutation = useMutation({
     mutationFn: (status: string) => updatePersonStatus(id, status),
@@ -112,10 +120,17 @@ export default function PersonDetailPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 mb-6">
+      <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Status</p>
           <p className="font-semibold">{person.enrollmentStatus}</p>
+        </div>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Frames</p>
+          <p className={`font-semibold ${person.faceCount === 0 ? "text-amber-400" : "text-emerald-400"}`}>
+            {person.faceCount}
+            {person.faceCount === 0 && <span className="text-gray-500 text-xs ml-1">— enroll needed</span>}
+          </p>
         </div>
         <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Added</p>
@@ -123,9 +138,12 @@ export default function PersonDetailPage() {
         </div>
       </div>
 
-      {person.enrollmentStatus === "Active" && faces.length > 0 && (
-        <div className="mb-6">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">Enrolled Faces</h2>
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Enrolled Faces
+          {faces.length > 0 && <span className="text-gray-600 font-normal ml-1">({faces.length})</span>}
+        </h2>
+        {faces.length > 0 ? (
           <div className="flex gap-3 flex-wrap">
             {faces.map((face: FaceImage) => (
               <img
@@ -135,6 +153,89 @@ export default function PersonDetailPage() {
                 className="w-24 h-24 object-cover rounded-lg border border-gray-700"
               />
             ))}
+          </div>
+        ) : (
+          <div className="bg-gray-900 border border-dashed border-gray-700 rounded-xl p-6 text-center">
+            <svg className="w-10 h-10 mx-auto mb-2 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+            <p className="text-sm text-gray-500">No face frames enrolled yet.</p>
+            <p className="text-xs text-gray-600 mt-1">Use the enrollment panel below to capture face frames from different angles.</p>
+          </div>
+        )}
+      </div>
+
+      {/* ── Pose Enrollment Progress ── */}
+      <div className="mb-6">
+        <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-3">
+          Enrollment Progress — {comp.percent}%
+        </h2>
+        <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+          {/* Progress bar */}
+          <div className="w-full h-2 rounded-full mb-4" style={{ background: "#1a2640" }}>
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{
+                width: `${comp.percent}%`,
+                background: comp.percent === 100
+                  ? "linear-gradient(90deg, #22d3a5, #10b981)"
+                  : "linear-gradient(90deg, #f59e0b, #eab308)",
+              }}
+            />
+          </div>
+          {/* Pose grid */}
+          <div className="grid grid-cols-5 gap-2">
+            {(["frontal", "left", "right", "up", "down"] as const).map((pose) => {
+              const done = comp.enrolled.includes(pose);
+              return (
+                <div
+                  key={pose}
+                  className="flex flex-col items-center gap-1.5 px-2 py-2.5 rounded-lg transition-all"
+                  style={{
+                    background: done ? "rgba(34,211,165,0.08)" : "rgba(255,255,255,0.02)",
+                    border: done ? "1px solid rgba(34,211,165,0.2)" : "1px solid transparent",
+                  }}
+                >
+                  {/* Pose icon */}
+                  <div
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all"
+                    style={{
+                      background: done ? "rgba(34,211,165,0.15)" : "rgba(255,255,255,0.04)",
+                      color: done ? "#22d3a5" : "#475569",
+                    }}
+                  >
+                    {pose === "frontal" ? "F" : pose === "left" ? "L" : pose === "right" ? "R" : pose === "up" ? "U" : "D"}
+                  </div>
+                  <span
+                    className="text-[10px] font-medium capitalize transition-colors"
+                    style={{ color: done ? "#22d3a5" : "#475569" }}
+                  >
+                    {pose}
+                  </span>
+                  {done && (
+                    <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Enrollment CTA (zero frames) ── */}
+      {person.faceCount === 0 && (
+        <div className="mb-6 p-4 rounded-xl flex items-start gap-3"
+          style={{ background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.18)" }}>
+          <svg className="w-5 h-5 mt-0.5 shrink-0 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18v-5.25m0 0a6.01 6.01 0 001.5-.189m-1.5.189a6.01 6.01 0 01-1.5-.189m3.75 7.478a12.06 12.06 0 01-4.5 0m3.75 2.383a14.406 14.406 0 01-3 0M14.25 18v-.192c0-.983.658-1.823 1.508-2.316a7.5 7.5 0 10-7.517 0c.85.493 1.509 1.333 1.509 2.316V18" />
+          </svg>
+          <div>
+            <p className="text-sm font-medium text-amber-300">Enrollment required</p>
+            <p className="text-xs text-gray-400 mt-1">
+              This person has no face frames enrolled. Use the <strong>Face Enrollment</strong> panel below to capture frames before approving.
+            </p>
           </div>
         </div>
       )}
@@ -210,7 +311,11 @@ export default function PersonDetailPage() {
         </div>
       </div>
 
-      <WebcamEnrollment personId={id} onComplete={() => { queryClient.invalidateQueries({ queryKey: ["persons"] }); queryClient.refetchQueries({ queryKey: ["persons"] }); }} />
+      <WebcamEnrollment personId={id} onComplete={() => {
+        queryClient.invalidateQueries({ queryKey: ["persons"] });
+        queryClient.refetchQueries({ queryKey: ["persons"] });
+        queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
+      }} />
 
       {showDeleteConfirm && (
         <div

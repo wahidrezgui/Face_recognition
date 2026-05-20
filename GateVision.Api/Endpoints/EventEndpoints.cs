@@ -84,9 +84,15 @@ public static class EventEndpoints
             return Results.Ok(stats ?? new { todayEntries = 0, pendingReview = 0 });
         });
 
-        app.MapPost("/api/events/{id:guid}/review", async (Guid id, ReviewEventDto dto, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
+        app.MapPost("/api/events/{id:guid}/review", async (Guid id, ReviewEventDto dto, AppDbContext db, EventBufferService buffer, ILogger<Program> logger, CancellationToken ct) =>
         {
             var evt = await db.GateEvents.FindAsync([id], ct);
+
+            // Event may still be in the in-memory buffer (not yet flushed to DB).
+            // Force-flush it immediately so we can proceed with review.
+            if (evt is null)
+                evt = await buffer.FindAndFlushAsync(db, id);
+
             if (evt is null)
                 return Results.NotFound(new { error = "Event not found" });
 

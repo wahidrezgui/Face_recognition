@@ -6,6 +6,7 @@ namespace GateVision.Api.Services;
 
 public class BufferedTrack
 {
+    public required Guid Id { get; set; }
     public int TrackId { get; set; }
     public Guid? PersonId { get; set; }
     public string PersonName { get; set; } = "UNKNOWN";
@@ -50,6 +51,33 @@ public class EventBufferService
             });
     }
 
+    /// <summary>Find a buffered track by event Id and flush it to the DB immediately.</summary>
+    public async Task<GateEvent?> FindAndFlushAsync(AppDbContext db, Guid eventId)
+    {
+        var match = _tracks.Values.FirstOrDefault(t => t.Id == eventId);
+        if (match is null) return null;
+
+        // Remove and flush immediately (don't wait for expiry)
+        if (!_tracks.TryRemove(match.TrackId, out _)) return null;
+
+        var gateEvent = new GateEvent
+        {
+            Id = match.Id,
+            PersonId = match.PersonId,
+            PersonName = match.PersonName,
+            Confidence = match.Confidence,
+            Status = match.Status,
+            Direction = match.Direction,
+            CapturedAt = match.CapturedAt,
+            FaceImageBase64 = match.FaceImageBase64,
+            WelcomeMessage = match.WelcomeMessage,
+            Department = match.Department,
+        };
+        db.GateEvents.Add(gateEvent);
+        await db.SaveChangesAsync();
+        return gateEvent;
+    }
+
     public async Task<int> FlushExpiredAsync(AppDbContext db)
     {
         var now = DateTime.UtcNow;
@@ -63,7 +91,7 @@ public class EventBufferService
 
             var gateEvent = new GateEvent
             {
-                Id = Guid.NewGuid(),
+                Id = track.Id,  // Use the same ID published via SSE
                 PersonId = track.PersonId,
                 PersonName = track.PersonName,
                 Confidence = track.Confidence,

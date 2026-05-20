@@ -15,7 +15,7 @@ from pydantic import BaseModel
 from .config import settings
 from .capture import CameraCapture
 from .processing import process_single_face
-from .quality import check_quality, crop_face_b64, estimate_pose_from_kps, decode_base64_frame
+from .quality import check_quality, crop_face_b64, estimate_pose_from_kps, decode_base64_frame, classify_pose
 from .embedder import extract_embedding, average_embeddings
 
 logger = logging.getLogger("gate_vision_ai")
@@ -40,6 +40,12 @@ class EnrollCaptureRequest(BaseModel):
 class EnrollWebcamRequest(BaseModel):
     personId: str
     frames: list[str]
+    replace: bool = False
+
+
+class EnrollFromImageRequest(BaseModel):
+    personId: str
+    frame: str  # base64 jpeg — a single face crop from a gate event
 
 
 class PoseRequest(BaseModel):
@@ -162,6 +168,7 @@ def register_routes(app, state: dict):
             raise HTTPException(400, f"Need 3-20 frames, got {len(req.frames)}")
         accepted_embs = []
         face_crops = []
+        poses = []
         rejected = []
         for i, b64 in enumerate(req.frames):
             frame = decode_base64_frame(b64)
@@ -183,16 +190,64 @@ def register_routes(app, state: dict):
                 crop = crop_face_b64(frame, face["bbox"])
                 if crop:
                     face_crops.append(crop)
+                # ── Detect pose for this frame ──
+                if face.get("pose"):
+                    pitch, yaw, _roll = face["pose"]
+                else:
+                    yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
+                poses.append(classify_pose(yaw, pitch))
             else:
                 rejected.append({"frame": i, "reason": "no_embedding"})
         if len(accepted_embs) < 3:
             raise HTTPException(400, f"Too few valid frames: {len(accepted_embs)} accepted, need >=3")
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
-        result = await s["backend"].enroll(req.personId, accepted_embs, face_crops if face_crops else None)
+        result = await s["backend"].enroll(req.personId, accepted_embs, face_crops if face_crops else None, poses, replace=req.replace)
         if result is None:
             raise HTTPException(502, "backend enrollment failed")
-        return {"personId": req.personId, "accepted": len(accepted_embs), "rejected": rejected, "backend_result": result}
+        return {
+            "personId": req.personId,
+            "accepted": len(accepted_embs),
+            "rejected": rejected,
+            "poses": poses,
+            "backend_result": result,
+        }
+
+    @app.post("/enroll/from-image")
+    async def enroll_from_image(req: EnrollFromImageRequest):
+        """Enroll a single face image (e.g. gate event crop) without requiring webcam capture.
+        Extracts one embedding, detects pose, and stores it for the person.
+        Use /enroll/webcam with replace=true later to upgrade to multi-angle webcam embeddings."""
+        det = s["detector"]
+        if det is None:
+            raise HTTPException(503, "detector not available")
+        frame = decode_base64_frame(req.frame)
+        if frame is None or frame.size == 0:
+            raise HTTPException(400, "Failed to decode image")
+        faces = det.detect(frame)
+        if not faces:
+            raise HTTPException(400, "No face detected in image")
+        face = faces[0]
+        emb = extract_embedding(face)
+        if emb is None:
+            raise HTTPException(400, "Failed to extract embedding from image")
+        crop = crop_face_b64(frame, face["bbox"])
+        if face.get("pose"):
+            pitch, yaw, _roll = face["pose"]
+        else:
+            yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
+        pose = classify_pose(yaw, pitch)
+        if s["backend"] is None:
+            raise HTTPException(503, "backend not available")
+        result = await s["backend"].enroll(req.personId, [emb], [crop] if crop else None, [pose])
+        if result is None:
+            raise HTTPException(502, "backend enrollment failed")
+        return {
+            "personId": req.personId,
+            "accepted": 1,
+            "poses": [pose],
+            "backend_result": result,
+        }
 
     @app.get("/stream/status")
     def stream_status():
