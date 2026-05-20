@@ -1,6 +1,6 @@
 services:
   postgres-gatevision:
-    image: pgvector/pgvector:pg16
+    image: postgres:16-alpine
     container_name: gatevision-db
     environment:
       POSTGRES_USER: gatevision
@@ -28,10 +28,24 @@ services:
       - devnet
     restart: unless-stopped
 
+  qdrant:
+    image: qdrant/qdrant
+    container_name: gatevision-qdrant
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC (used by .NET client)
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - devnet
+    restart: unless-stopped
+
 volumes:
   postgres_data:
     driver: local
   postgres_gatevision_data:
+    driver: local
+  qdrant_data:
     driver: local
 
 networks:

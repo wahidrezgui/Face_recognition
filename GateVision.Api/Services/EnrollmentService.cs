@@ -9,17 +9,20 @@ public class EnrollmentService
 {
     private readonly AppDbContext _db;
     private readonly CacheService _cache;
+    private readonly IVectorStore _vectorStore;
     private readonly ILogger<EnrollmentService> _logger;
     private readonly string _faceImagesDir;
 
     public EnrollmentService(
         AppDbContext db,
         CacheService cache,
+        IVectorStore vectorStore,
         ILogger<EnrollmentService> logger,
         IWebHostEnvironment env)
     {
         _db = db;
         _cache = cache;
+        _vectorStore = vectorStore;
         _logger = logger;
         _faceImagesDir = Path.Combine(env.ContentRootPath, "FaceImages");
         Directory.CreateDirectory(_faceImagesDir);
@@ -58,21 +61,22 @@ public class EnrollmentService
 
             if (replace)
             {
-                // Delete all previous face images from disk, then wipe the DB rows
+                // Delete all previous face images from disk
                 var personDir = Path.Combine(_faceImagesDir, personId.ToString());
                 if (Directory.Exists(personDir))
                 {
                     try { Directory.Delete(personDir, recursive: true); }
                     catch (Exception ex) { _logger.LogWarning(ex, "Could not remove face image dir for {PersonId}", personId); }
                 }
-                await _db.Database.ExecuteSqlAsync(
-                    $"""DELETE FROM face_embeddings WHERE "PersonId" = {personId}""");
+                // Wipe Qdrant points for this person
+                try { await _vectorStore.DeleteByPersonAsync(personId); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Qdrant replace-cleanup failed for {PersonId}", personId); }
                 _logger.LogInformation("Replaced all embeddings for person {PersonId}", personId);
             }
 
             if (poses is not null && poses.Count == embeddings.Count)
             {
-                // ── Per-frame: store each embedding as its own row with pose tag ──
+                // ── Per-frame: store each embedding as a Qdrant point with pose tag ──
                 for (var i = 0; i < embeddings.Count; i++)
                 {
                     var eid = Guid.NewGuid();
@@ -83,27 +87,13 @@ public class EnrollmentService
                     if (faceImages is not null && i < faceImages.Count && !string.IsNullOrEmpty(faceImages[i]))
                         facePath = await SaveFaceImageAsync(personId, eid, faceImages[i], ct);
 
-                    if (facePath is not null)
-                    {
-                        await _db.Database.ExecuteSqlAsync(
-                            $"""
-                            INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "FaceImage", "Pose")
-                            VALUES ({eid}, {personId}, {emb}::vector, {qualityScore}, {DateTime.UtcNow}, {facePath}, {pose})
-                            """);
-                    }
-                    else
-                    {
-                        await _db.Database.ExecuteSqlAsync(
-                            $"""
-                            INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "Pose")
-                            VALUES ({eid}, {personId}, {emb}::vector, {qualityScore}, {DateTime.UtcNow}, {pose})
-                            """);
-                    }
+                    try { await _vectorStore.UpsertAsync(eid, personId, emb, pose, qualityScore); }
+                    catch (Exception ex) { _logger.LogWarning(ex, "Qdrant write failed for embedding {Eid}", eid); }
                 }
             }
             else
             {
-                // ── Legacy: average all embeddings into one row ──
+                // ── Legacy: average all embeddings, store as single Qdrant point ──
                 var avg = AverageEmbeddings(embeddings);
                 var eid = Guid.NewGuid();
                 string? facePath = null;
@@ -111,22 +101,8 @@ public class EnrollmentService
                 if (faceImages?.Any() == true)
                     facePath = await SaveFaceImageAsync(personId, eid, faceImages[0], ct);
 
-                if (facePath is not null)
-                {
-                    await _db.Database.ExecuteSqlAsync(
-                        $"""
-                        INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt", "FaceImage")
-                        VALUES ({eid}, {personId}, {avg}::vector, {qualityScore}, {DateTime.UtcNow}, {facePath})
-                        """);
-                }
-                else
-                {
-                    await _db.Database.ExecuteSqlAsync(
-                        $"""
-                        INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt")
-                        VALUES ({eid}, {personId}, {avg}::vector, {qualityScore}, {DateTime.UtcNow})
-                        """);
-                }
+                try { await _vectorStore.UpsertAsync(eid, personId, avg, null, qualityScore); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Qdrant write failed for averaged embedding {Eid}", eid); }
             }
 
             person.EnrollmentStatus = EnrollmentStatus.Active;

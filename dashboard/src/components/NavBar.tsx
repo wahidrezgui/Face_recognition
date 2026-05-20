@@ -31,16 +31,15 @@ const DISPLAY_LINKS = [
 export default function NavBar() {
   const pathname = usePathname();
   const { logout } = useAuth();
-
-  const hideNav = pathname === "/login" || pathname.startsWith("/kiosk");
-  if (hideNav) return null;
-
   const { data: training } = useQuery({
     queryKey: ["training-mode"],
     queryFn: fetchTrainingMode,
     staleTime: 60_000,
     retry: false,
   });
+
+  const hideNav = pathname === "/login" || pathname.startsWith("/kiosk");
+  if (hideNav) return null;
 
   return (
     <nav className="flex h-11 shrink-0 items-center gap-1 border-b border-gv-border bg-gv-nav px-4 text-sm">

@@ -1,5 +1,5 @@
-"""Enroll faces directly by inserting embeddings into PostgreSQL.
-This bypasses the .NET API to ensure data persists correctly.
+"""Enroll faces via the .NET API (replaced direct pgvector insert).
+Face embeddings are now stored in Qdrant by the .NET backend.
 
 Usage:
     python scripts/direct_enroll.py <video_path> [name1] [name2]
@@ -7,11 +7,11 @@ Usage:
 
 import sys
 import os
-import uuid
 import logging
 
 import cv2
 import numpy as np
+import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "gate_vision_ai"))
 from insightface.app import FaceAnalysis
@@ -20,7 +20,8 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelna
 logger = logging.getLogger("direct_enroll")
 
 VIDEO_PATH = os.path.join(os.path.dirname(__file__), "..", "gate_vision_ai", "sample1.mp4")
-DB_DSN = "postgresql://gatevision:localdev@localhost:6667/gatevision"
+NET = "http://localhost:5000"
+HEADERS = {"X-API-Key": "dev-api-key-change-me", "Content-Type": "application/json"}
 
 FRAME_SKIP = 10
 MAX_FRAMES = 60
@@ -34,10 +35,6 @@ def cosine_similarity(a, b):
 
 
 def main():
-    import psycopg2
-    conn = psycopg2.connect(DB_DSN)
-    cur = conn.cursor()
-
     logger.info("Loading InsightFace...")
     app = FaceAnalysis(name="buffalo_l", providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
     app.prepare(ctx_id=0, det_size=(640, 640))
@@ -96,13 +93,13 @@ def main():
     person_names = ["Alice Johnson", "Bob Smith"]
     departments = ["Engineering", "Marketing"]
 
-    # Clean existing entries for these persons
+    # Clean existing entries via the .NET API
     for name in person_names:
-        cur.execute('DELETE FROM face_embeddings WHERE "PersonId" IN (SELECT "Id" FROM persons WHERE "FullName" = %s)', (name,))
-        cur.execute('DELETE FROM gate_events WHERE "PersonId" IN (SELECT "Id" FROM persons WHERE "FullName" = %s)', (name,))
-        cur.execute('DELETE FROM persons WHERE "FullName" = %s', (name,))
-        logger.info("Cleaned existing entries for %s", name)
-    conn.commit()
+        resp = requests.get(f"{NET}/api/persons", headers=HEADERS)
+        for p in resp.json():
+            if p.get("fullName") == name:
+                requests.delete(f"{NET}/api/persons/{p['id']}", headers=HEADERS)
+                logger.info("Deleted existing %s (ID: %s)", name, p['id'])
 
     for idx, cluster in enumerate(top_clusters):
         name = person_names[idx]
@@ -112,26 +109,19 @@ def main():
         # Average the embeddings
         avg_emb = np.mean(embs, axis=0).astype(np.float32)
 
-        # Create person
-        person_id = str(uuid.uuid4())
-        cur.execute(
-            'INSERT INTO persons ("Id", "FullName", "Department", "EnrollmentStatus", "CreatedAt") VALUES (%s, %s, %s, %s, NOW())',
-            (person_id, name, dept, "Active")
-        )
+        # Create person via .NET API
+        r = requests.post(f"{NET}/api/persons", json={"fullName": name, "department": dept}, headers=HEADERS)
+        r.raise_for_status()
+        pid = r.json()["id"]
 
-        # Insert averaged embedding as vector
-        emb_str = "[" + ",".join(f"{v:.8f}" for v in avg_emb) + "]"
-        emb_id = str(uuid.uuid4())
-        cur.execute(
-            'INSERT INTO face_embeddings ("Id", "PersonId", "Vector", "QualityScore", "CreatedAt") VALUES (%s, %s, %s::vector, %s, NOW())',
-            (emb_id, person_id, emb_str, 0.9)
-        )
-        logger.info("Enrolled %s (person_id=%s, emb_id=%s, samples=%d)", name, person_id, emb_id, len(embs))
+        # Enroll via .NET API (stores in Qdrant)
+        r2 = requests.post(f"{NET}/api/persons/{pid}/enroll",
+            json={"embeddings": [avg_emb.tolist()], "qualityScore": 0.9},
+            headers=HEADERS)
+        r2.raise_for_status()
+        logger.info("Enrolled %s (person_id=%s, samples=%d)", name, pid, len(embs))
 
-    conn.commit()
-    cur.close()
-    conn.close()
-    logger.info("Done! Enrolled %d persons via direct DB insert.", len(top_clusters))
+    logger.info("Done! Enrolled %d persons via .NET API.", len(top_clusters))
 
 
 if __name__ == "__main__":

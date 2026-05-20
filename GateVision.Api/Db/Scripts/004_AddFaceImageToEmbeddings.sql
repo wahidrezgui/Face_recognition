@@ -1,1 +1,1 @@
-ALTER TABLE face_embeddings ADD COLUMN IF NOT EXISTS "FaceImage" TEXT;
+ALTER TABLE IF EXISTS face_embeddings ADD COLUMN IF NOT EXISTS "FaceImage" TEXT;

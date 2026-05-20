@@ -24,12 +24,6 @@ public class EventBufferService
 {
     private readonly ConcurrentDictionary<int, BufferedTrack> _tracks = new();
     private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
-    private readonly TrainingModeService _trainingMode;
-
-    public EventBufferService(TrainingModeService trainingMode)
-    {
-        _trainingMode = trainingMode;
-    }
 
     public void BufferOrUpdate(BufferedTrack track)
     {
@@ -57,8 +51,10 @@ public class EventBufferService
             });
     }
 
-    bool ShouldPersist(BufferedTrack track) =>
-        _trainingMode.Enabled || track.PersonId is not null;
+    // Persist all events so they can be reviewed/approved later.
+    // Unknown events skipped here would vanish from both buffer and DB,
+    // making review impossible ("Event not found").
+    bool ShouldPersist(BufferedTrack track) => true;
 
     /// <summary>Find a buffered track by event Id and flush it to the DB immediately.</summary>
     public async Task<GateEvent?> FindAndFlushAsync(AppDbContext db, Guid eventId)

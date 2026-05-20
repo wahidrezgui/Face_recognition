@@ -11,7 +11,7 @@
 
 ### GateVision .NET Backend
 - .NET 10, ASP.NET Core Minimal API, port 5000
-- Dapper + pgvector (cosine distance `<=>` operator)
+- Qdrant.Client for vector ANN search (cosine distance, gRPC port 6334)
 - EF Core for Person + GateEvent entities
 - Redis caching (localhost:6379)
 - SSE at `/api/events/stream`
@@ -172,9 +172,8 @@ Proxied via dashboard/next.config.js
 
 ### GateVision .NET Backend (`GateVision.Api/`)
 - ASP.NET Core 9 Minimal API, port 5000
-- Own pgvector DB `gatevision` on port 6667
-- FaceEmbedding entity: `Id`, `PersonId`, `Vector` (pgvector 512), `QualityScore`, `CreatedAt`, `FaceImage` (TEXT, file path relative to `FaceImages/` dir)
-- Dapper for vector similarity (parameterized queries)
+- PostgreSQL DB `gatevision` on port 6667 (relational data only)
+- Qdrant vector DB on port 6334 (gRPC) for ANN face search via `IVectorStore` → `QdrantVectorStore`
 - EF Core for Person + GateEvent entities
 - Redis caching at `localhost:6379` for person metadata. Combined key `person:{id}` (Name, Department, WelcomeMessage) — 1 read instead of 3 round-trips.
 - `Services/GateEventChannel.cs` — static `Channel<GateEvent>` (bounded 200, DropOldest) for push-based SSE
@@ -243,9 +242,9 @@ Proxied via dashboard/next.config.js
 | ID | Goal | Status | Notes |
 |----|------|--------|-------|
 | G1 | GateVision AI Service | ✅ VERIFIED | FastAPI, background capture, 14/14 smoke tests, circuit breaker |
-| G2 | GateVision .NET Backend | ✅ VERIFIED | JWT + API key auth, pgvector, SSE, Redis, no hardcoded creds |
+| G2 | GateVision .NET Backend | ✅ VERIFIED | JWT + API key auth, Qdrant, SSE, Redis, no hardcoded creds |
 | G3 | GateVision Dashboard | ✅ VERIFIED | Login page, auth guard, 7 pages, TanStack Query, SSE live feed |
-| G4 | Docker: Redis + pgvector | ✅ VERIFIED | Added to docker-compose.yml, verified running |
+| G4 | Docker: Redis + PostgreSQL | ✅ VERIFIED | Added to docker-compose.yml, verified running |
 | G5 | Live camera stream on dashboard | ✅ VERIFIED | MJPEG endpoint + Next.js proxy |
 | G6 | Webcam enrollment | ✅ VERIFIED | Browser webcam with head-pose guidance |
 | G7 | Event filters (name ILIKE + status) | ✅ VERIFIED | Backend + frontend wired |
@@ -257,7 +256,7 @@ Proxied via dashboard/next.config.js
 | G13 | Channel-based SSE push | ✅ ADDED v4 | Replaced DB polling with Channel&lt;T&gt; push, zero steady-state queries |
 | G14 | Shared processing module | ✅ ADDED v4 | Extracted duplicate `_process_single_face` to `processing.py` |
 | G15 | Smoke test removal | ✅ ADDED v4 | Deleted broken `scripts/smoke_test.py` |
-| G16 | Filesystem face image storage | 🔄 DEPRECATED v5 | Replaced by DB-only storage — face images are now stored as base64 TEXT in `gate_events.FaceImageBase64` and `face_embeddings.FaceImage` columns. `/api/events/{id}/image` still serves old files if they exist but no new files are written. |
+| G16 | Filesystem face image storage | 🔄 DEPRECATED v5 | Replaced by base64 TEXT in `gate_events.FaceImageBase64`. `/api/events/{id}/image` still serves old files if they exist but no new files are written. |
 | G17 | SSE query string token auth | ✅ ADDED v4 | H12/M8 fixed: `?token=` query param validated against API key |
 | G18 | User Secrets + .env.example | ✅ ADDED v4 | H15/M12 fixed: `.env` deleted, `.env.example` templates created |
 | G19 | Circuit breaker metrics | ✅ ADDED v4 | Added `open_count` counter + state transition logging |
@@ -277,7 +276,7 @@ Proxied via dashboard/next.config.js
 | G33 | WebcamEnrollment extraction | ✅ ADDED v4 | H11 fixed: extracted `CaptureRing.tsx` and `usePoseDetection` hook, 381→135 lines |
 | G34 | Rate limiting on /api/identify | ✅ ADDED v4 | H14 fixed: 10 req/s fixed window via built-in rate limiter |
 | G35 | .env files deleted | ✅ ADDED v4 | H15 fixed: actual `.env` removed, `.env.example` templates in place |
-| G36 | Face image on face_embeddings | ✅ ADDED v5 | `FaceImage` TEXT (base64) column stores enrolled face crop. New enrollment paths (/enroll/webcam, /enroll/capture) now send face crops to .NET. |
+| G36 | Face image enrollment | ✅ ADDED v5 | Enrollment paths send face crops to .NET, stored as files in `FaceImages/{personId}/`. |
 | G37 | Person detail shows enrolled faces | ✅ ADDED v5 | `GET /api/persons/{id}/faces` endpoint returns enrolled face images. Dashboard displays them when enrollment is Active. |
 | G38 | Low-confidence UNKNOWN | ✅ ADDED v5 | `IdentificationService.Identify` returns UNKNOWN with null PersonId when confidence < 0.35, eliminating random-person display for noise matches. |
 | G39 | Identify stores base64 in DB | ✅ ADDED v5 | `IdentifyEndpoints` no longer writes to `EventImages/` filesystem. FaceCrop is stored directly as `gateEvent.FaceImageBase64`. |
@@ -313,6 +312,7 @@ Proxied via dashboard/next.config.js
 | G71 | SSE: debounced invalidate + direct cache | ✅ ADDED v12 | `setQueryData` prepends events directly into cache. Background refresh debounced to 2s window. `refetchInterval: 30s` for consistency. `useRef` cleanup on unmount. |
 | G72 | React.memo on dashboard cards | ✅ ADDED v12 | `EventCard` + `CaptureThumb` wrapped with `React.memo`. Custom comparator checks `eventId` + `confidence` to skip unnecessary re-renders. |
 | G73 | Lazy JPEG encoding | ✅ ADDED v12 | MJPEG stream only encodes JPEG when `stream_connections > 0`. Counter tracks active viewers via `finally` block. Saves ~2-5ms CPU per frame when dashboard is closed. |
+| P3 | **Phase 3: Remove pgvector** — fully migrated to Qdrant | ✅ COMPLETED | Deleted `face_embeddings` table (migration 009), dropped pgvector extension (migration 010), switched docker image to `postgres:16-alpine`, removed dead `FaceEmbedding.cs`, cleaned up legacy scripts, updated all documentation. Qdrant is the sole vector store. |
 
 ## [CONFIGURATION]
 
@@ -355,7 +355,7 @@ Proxied via dashboard/next.config.js
 - Python 3.12+
 - .NET 9 SDK
 - Node.js 20+
-- Docker (PostgreSQL pgvector + Redis)
+- Docker (PostgreSQL + Redis + Qdrant)
 
 ### Start Infrastructure
 ```bash

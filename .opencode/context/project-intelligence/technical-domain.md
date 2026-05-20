@@ -16,7 +16,7 @@
 | AI/ML Service | Python — FastAPI, OpenCV, InsightFace | Python 3.x | Face detection/recognition pipeline |
 | Backend API | C# — ASP.NET Core, EF Core + Npgsql | .NET 10 | Core business logic & data access |
 | Frontend | Next.js + React + TypeScript | Next 15 / React 19 / TS 5.6 | Dashboard UI & real-time monitoring |
-| Database | PostgreSQL 16 + pgvector (Docker) | pg16 | Vector embeddings for face matching |
+| Database | PostgreSQL 16 (Docker) | 16-alpine | Relational data (persons, events) |
 | Cache | Redis 7 (Docker) | 7-alpine | Session caching & event buffering |
 | Styling | Tailwind CSS (dark theme) | 3.4 | Consistent dark UI components |
 | State | TanStack React Query | 5.60 | Server state management |
@@ -98,15 +98,15 @@ export function StatCard({ label, value, color = "text-emerald-400" }: StatCardP
 | TS functions | camelCase | `fetchEvents()`, `enrollWithWebcam()` |
 | TS interfaces | PascalCase | `GateEvent`, `Person`, `StreamStatus` |
 | Config (env) | UPPER_SNAKE + `GV_` prefix | `GV_CAMERA_SOURCE`, `GV_LOG_LEVEL` |
-| DB tables | snake_case | `persons`, `face_embeddings`, `gate_events` |
+| DB tables | snake_case | `persons`, `gate_events` |
 
 ## Code Standards
 
 - **Python**: Pydantic v2 for models & settings, async/await, structured logging, type hints everywhere
-- **C#**: EF Core + Npgsql with pgvector, Minimal API endpoints, DbUp migrations, DI via `IServiceCollection`
+- **C#**: EF Core + Npgsql, Qdrant.Client for vector search, Minimal API endpoints, DbUp migrations, DI via `IServiceCollection`
 - **TypeScript**: Strict types on all interfaces/props, `apiFetch` wrapper auto-redirects on 401, `export async function` for API calls
 - **Frontend**: `bg-gray-900` base + `border-gray-800` cards, `rounded-xl` containers, `text-gray-400` secondary text
-- **Infra**: Docker Compose for local dev, health checks on DB, pgvector for vector similarity search
+- **Infra**: Docker Compose for local dev, health checks on DB, Qdrant for vector similarity search
 
 ## Security Requirements
 
@@ -130,7 +130,7 @@ export function StatCard({ label, value, color = "text-emerald-400" }: StatCardP
 | API client layer | `dashboard/src/lib/api.ts` — fetch wrapper, typed interfaces |
 | Python config | `gate_vision_ai/config.py` — Pydantic BaseSettings with `GV_` prefix |
 | AI pipeline | `gate_vision_ai/main.py` — FastAPI app, lifespan, capture loop |
-| Docker setup | `docker-compose.yml` — pgvector + Redis with health checks |
+| Docker setup | `docker-compose.yml` — PostgreSQL + Redis + Qdrant with health checks |
 | Frontend layout | `dashboard/src/app/layout.tsx` — root layout, providers |
 
 ## Related Files

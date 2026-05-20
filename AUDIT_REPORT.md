@@ -11,7 +11,7 @@
 
 | Assumption | Confidence | Why Assumed |
 |-----------|------------|-------------|
-| Production-adjacent system, not prototype | HIGH | Docker compose, DbUp migrations, pgvector+Redis, standalone Next.js |
+| Production-adjacent system, not prototype | HIGH | Docker compose, DbUp migrations, Qdrant+Redis+PostgreSQL, standalone Next.js |
 | Camera source is dev mock (sample.mp4/sample1.mp4) | HIGH | `.env` sets `GV_CAMERA_SOURCE=./sample1.mp4`, both .mp4 files present in source tree |
 | No CI/CD pipeline configured | HIGH | No YAML configs for GitHub Actions, Jenkins, etc. |
 | System operates on dev-internal network only | MEDIUM | Plain HTTP, hardcoded localhost URLs, over-permissive CORS on both backends |
@@ -37,7 +37,7 @@
 │ ~650 lines              │                     │ ~800 lines           │                  │ ~1,550 lines     │
 ├─────────────────────────┤                     ├──────────────────────┤                  ├─────────────────┤
 │ capture → detect →      │                     │ JWT + API-Key auth   │                  │ 7 pages          │
-│ quality → embed → POST  │                     │ pgvector cosine sim  │                  │ login page       │
+ │ quality → embed → POST  │                     │ Qdrant cosine sim    │                  │ login page       │
 │ circuit breaker         │                     │ EF Core + Dapper Raw │                  │ auth guard       │
 │ MJPEG stream            │                     │ SSE real-time push   │                  │ SSE live feed    │
 └─────────────────────────┘                     │ DbUp migrations      │                  │ webcam enroll    │
@@ -143,7 +143,7 @@ Every SSE event includes `faceImageBase64` — a full JPEG face crop (15-40 KB).
 
 **File:** `GateVision.Api/Endpoints/PersonEndpoints.cs:76-83`
 
-`POST /api/persons/{id}/enroll` accepts a list of embeddings with no rate limiting. An attacker with a valid API key can drive unbounded database growth and pollute the `face_embeddings` table.
+`POST /api/persons/{id}/enroll` accepts a list of embeddings with no rate limiting. An attacker with a valid API key can drive unbounded database growth and pollute the Qdrant collection.
 
 **Fix:** Apply rate limiting to the enrollment endpoint:
 ```csharp

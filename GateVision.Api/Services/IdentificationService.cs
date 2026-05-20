@@ -9,34 +9,27 @@ public class IdentificationService
 {
     private readonly CacheService _cache;
     private readonly AppDbContext _db;
+    private readonly IVectorStore _vectorStore;
     private readonly ILogger<IdentificationService> _logger;
 
     public IdentificationService(
         CacheService cache,
         AppDbContext db,
+        IVectorStore vectorStore,
         ILogger<IdentificationService> logger)
     {
         _cache = cache;
         _db = db;
+        _vectorStore = vectorStore;
         _logger = logger;
     }
 
     public async Task<IdentifyResponse> Identify(float[] embedding, float frameQuality, DateTime capturedAt)
     {
-        var results = await _db.Database
-            .SqlQueryRaw<IdentifyResult>(
-                "SELECT fe.\"PersonId\" AS \"PersonId\", 1 - (fe.\"Vector\" <=> {0}::vector) AS \"Confidence\" " +
-                "FROM face_embeddings fe " +
-                "JOIN persons p ON p.\"Id\" = fe.\"PersonId\" " +
-                "WHERE p.\"EnrollmentStatus\" = 'Active' " +
-                "ORDER BY fe.\"Vector\" <=> {0}::vector " +
-                "LIMIT 1",
-                embedding).ToListAsync();
+        // 1. Pure ANN vector search — Qdrant, no metadata
+        var match = await _vectorStore.FindMatchAsync(embedding, minScore: 0.35f);
 
-
-        var result = results.FirstOrDefault();
-
-        if (result is null)
+        if (match is null)
         {
             return new IdentifyResponse
             {
@@ -47,33 +40,13 @@ public class IdentificationService
             };
         }
 
-        var confidence = (float)result.Confidence;
+        var confidence = match.Score;
         if (float.IsNaN(confidence) || float.IsInfinity(confidence))
             confidence = 0f;
 
-        if (confidence < 0.35f)
-        {
-            return new IdentifyResponse
-            {
-                PersonId = null,
-                PersonName = "UNKNOWN",
-                Confidence = confidence,
-                Status = EventStatus.NeedsReview,
-            };
-        }
-        EventStatus status;
+        // 2. Resolve person metadata (cache → DB)
+        var cached = await _cache.GetPersonAsync(match.PersonId);
 
-        if (confidence >= 0.80f)
-        {
-            status = EventStatus.Identified;
-        }
-        else
-        {
-            status = EventStatus.NeedsReview;
-        }
-
-        // Single cache read — 1 key instead of 3 separate round-trips
-        var cached = await _cache.GetPersonAsync(result.PersonId);
         string personName;
         string? welcomeMessage;
         string? department;
@@ -87,17 +60,32 @@ public class IdentificationService
         else
         {
             var person = await _db.Persons.AsNoTracking()
-                .FirstOrDefaultAsync(p => p.Id == result.PersonId);
-            personName = person?.FullName ?? "UNKNOWN";
-            welcomeMessage = person?.WelcomeMessage;
-            department = person?.Department;
-            if (person is not null)
-                await _cache.SetPersonAsync(result.PersonId, personName, department, welcomeMessage);
+                .FirstOrDefaultAsync(p => p.Id == match.PersonId);
+
+            // Person deleted or status changed since embedding was stored
+            if (person is null || person.EnrollmentStatus != EnrollmentStatus.Active)
+            {
+                return new IdentifyResponse
+                {
+                    PersonId = null,
+                    PersonName = "UNKNOWN",
+                    Confidence = confidence,
+                    Status = EventStatus.NeedsReview,
+                };
+            }
+
+            personName = person.FullName;
+            welcomeMessage = person.WelcomeMessage;
+            department = person.Department;
+            await _cache.SetPersonAsync(match.PersonId, personName, department, welcomeMessage);
         }
+
+        // 3. Apply confidence thresholds
+        var status = confidence >= 0.80f ? EventStatus.Identified : EventStatus.NeedsReview;
 
         return new IdentifyResponse
         {
-            PersonId = result.PersonId,
+            PersonId = match.PersonId,
             PersonName = personName,
             Confidence = confidence,
             Status = status,
@@ -105,12 +93,6 @@ public class IdentificationService
             Department = string.IsNullOrEmpty(department) ? null : department,
         };
     }
-}
-
-public class IdentifyResult
-{
-    public Guid PersonId { get; set; }
-    public double Confidence { get; set; }
 }
 
 public class IdentifyResponse

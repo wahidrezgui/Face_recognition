@@ -1,5 +1,3 @@
-CREATE EXTENSION IF NOT EXISTS vector;
-
 CREATE TABLE IF NOT EXISTS persons (
     "Id" UUID PRIMARY KEY,
     "FullName" VARCHAR(200) NOT NULL,
@@ -7,17 +5,6 @@ CREATE TABLE IF NOT EXISTS persons (
     "EnrollmentStatus" VARCHAR(20) NOT NULL DEFAULT 'Pending',
     "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
-CREATE TABLE IF NOT EXISTS face_embeddings (
-    "Id" UUID PRIMARY KEY,
-    "PersonId" UUID NOT NULL REFERENCES persons("Id"),
-    "Vector" vector(512) NOT NULL,
-    "QualityScore" REAL NOT NULL DEFAULT 0.0,
-    "CreatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS idx_fe_person_id ON face_embeddings("PersonId");
-CREATE INDEX IF NOT EXISTS idx_face_embeddings_vector ON face_embeddings USING ivfflat ("Vector" vector_cosine_ops) WITH (lists = 100);
 
 CREATE TABLE IF NOT EXISTS gate_events (
     "Id" UUID PRIMARY KEY,

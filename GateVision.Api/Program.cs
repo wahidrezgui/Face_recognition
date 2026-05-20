@@ -23,7 +23,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql =>
     {
         npgsql.EnableRetryOnFailure(3);
-        npgsql.UseVector();
     });
 });
 
@@ -45,6 +44,8 @@ if (!string.IsNullOrEmpty(redisConnection))
 builder.Services.AddSingleton(new CacheService(redis));
 builder.Services.AddSingleton<TrainingModeService>();
 builder.Services.AddSingleton<EventBufferService>();
+builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
+builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 builder.Services.AddScoped<IdentificationService>();
 builder.Services.AddScoped<EnrollmentService>();
 
@@ -130,6 +131,21 @@ app.UseRateLimiter();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<AuthMiddleware>();
+
+// Ensure Qdrant collection exists on startup (non-blocking best-effort)
+_ = Task.Run(async () =>
+{
+    try
+    {
+        var store = app.Services.GetRequiredService<IVectorStore>();
+        await store.EnsureCollectionAsync();
+        app.Logger.LogInformation("Qdrant collection ready");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Qdrant collection init failed — will retry on first use");
+    }
+});
 
 app.MapIdentifyEndpoints();
 app.MapPersonEndpoints();

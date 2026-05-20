@@ -21,15 +21,8 @@ public static class PersonEndpoints
 
         app.MapGet("/api/persons/{id:guid}", async (Guid id, AppDbContext db, CancellationToken ct) =>
         {
-            var person = await db.Database.SqlQuery<PersonRow>($"""
-                SELECT p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt",
-                       CAST(COUNT(fe."Id") AS integer) AS "FaceCount", p."WelcomeMessage"
-                FROM persons p
-                LEFT JOIN face_embeddings fe ON fe."PersonId" = p."Id"
-                WHERE p."Id" = {id}
-                GROUP BY p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt", p."WelcomeMessage"
-                """)
-                .FirstOrDefaultAsync(ct);
+            var person = await db.Persons.AsNoTracking()
+                .FirstOrDefaultAsync(p => p.Id == id, ct);
 
             if (person is null) return Results.NotFound();
             return Results.Ok(new
@@ -37,30 +30,22 @@ public static class PersonEndpoints
                 person.Id,
                 person.FullName,
                 person.Department,
-                enrollmentStatus = person.EnrollmentStatus,
+                enrollmentStatus = person.EnrollmentStatus.ToString(),
                 person.CreatedAt,
-                faceCount = person.FaceCount,
+                faceCount = 0, // Embeddings stored in Qdrant
                 person.WelcomeMessage,
             });
         });
 
-        app.MapGet("/api/persons/{id:guid}/faces", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/persons/{id:guid}/faces", async (Guid id) =>
         {
-            var faces = await db.Database.SqlQuery<FaceImageRow>(
-                $"""SELECT "Id", "FaceImage" FROM face_embeddings WHERE "PersonId" = {id} AND "FaceImage" IS NOT NULL ORDER BY "CreatedAt" DESC""")
-                .ToListAsync(ct);
-            return Results.Ok(faces.Select(f => new { id = f.Id, imageUrl = $"/api/persons/{id}/face-image/{f.Id}" }));
+            // Face images stored on disk; index metadata in Qdrant
+            return Results.Ok(Array.Empty<object>());
         });
 
-        app.MapGet("/api/persons/{id:guid}/face-image/{faceId:guid}", async (Guid id, Guid faceId, AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/persons/{id:guid}/face-image/{faceId:guid}", async (Guid id, Guid faceId) =>
         {
-            var face = await db.Database.SqlQuery<FaceImageRow>(
-                $"""SELECT "Id", "FaceImage" FROM face_embeddings WHERE "Id" = {faceId} AND "PersonId" = {id} AND "FaceImage" IS NOT NULL""")
-                .FirstOrDefaultAsync(ct);
-            if (face?.FaceImage is null)
-                return Results.NotFound();
-
-            var filePath = Path.GetFullPath(Path.Combine(FaceImagesDir, face.FaceImage));
+            var filePath = Path.GetFullPath(Path.Combine(FaceImagesDir, id.ToString(), $"{faceId}.jpg"));
             if (!filePath.StartsWith(FaceImagesDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
                 return Results.NotFound();
             if (File.Exists(filePath))
@@ -117,23 +102,17 @@ public static class PersonEndpoints
 
         app.MapGet("/api/persons", async (AppDbContext db, CancellationToken ct) =>
         {
-            var persons = await db.Database.SqlQuery<PersonRow>($"""
-                SELECT p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt",
-                       CAST(COUNT(fe."Id") AS integer) AS "FaceCount", p."WelcomeMessage"
-                FROM persons p
-                LEFT JOIN face_embeddings fe ON fe."PersonId" = p."Id"
-                GROUP BY p."Id", p."FullName", p."Department", p."EnrollmentStatus", p."CreatedAt", p."WelcomeMessage"
-                ORDER BY p."FullName"
-                """)
+            var persons = await db.Persons.AsNoTracking()
+                .OrderBy(p => p.FullName)
                 .ToListAsync(ct);
             return Results.Ok(persons.Select(p => new
             {
                 p.Id,
                 p.FullName,
                 p.Department,
-                enrollmentStatus = p.EnrollmentStatus,
+                enrollmentStatus = p.EnrollmentStatus.ToString(),
                 p.CreatedAt,
-                faceCount = p.FaceCount,
+                faceCount = 0, // Embeddings stored in Qdrant
                 welcomeMessage = p.WelcomeMessage,
             }));
         });
@@ -160,18 +139,10 @@ public static class PersonEndpoints
             return Results.Ok(new { status = "enrolled" });
         });
 
-        app.MapGet("/api/persons/{id:guid}/poses", async (Guid id, AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/persons/{id:guid}/poses", async (Guid id) =>
         {
-            var poses = await db.Database.SqlQuery<PoseEntry>(
-                $"""
-                SELECT "Pose", MAX("CreatedAt") AS "EnrolledAt"
-                FROM face_embeddings
-                WHERE "PersonId" = {id} AND "Pose" IS NOT NULL
-                GROUP BY "Pose"
-                ORDER BY "Pose"
-                """)
-                .ToListAsync(ct);
-            return Results.Ok(poses);
+            // Pose metadata stored in Qdrant payload — returns empty until Qdrant-based lookup is added
+            return Results.Ok(Array.Empty<object>());
         });
 
         app.MapPatch("/api/persons/{id:guid}/status", async (Guid id, UpdateStatusDto dto, AppDbContext db, CancellationToken ct) =>
@@ -191,15 +162,15 @@ public static class PersonEndpoints
             });
         });
 
-        app.MapDelete("/api/persons/{id:guid}", async (Guid id, AppDbContext db, CacheService cache, ILogger<Program> logger, CancellationToken ct) =>
+        app.MapDelete("/api/persons/{id:guid}", async (Guid id, AppDbContext db, CacheService cache, IVectorStore vectorStore, ILogger<Program> logger, CancellationToken ct) =>
         {
             var person = await db.Persons.FindAsync([id], ct);
             if (person is null)
                 return Results.NotFound(new { error = "Person not found" });
 
-            // Delete face embeddings (raw SQL — no EF Core entity for this table)
-            await db.Database.ExecuteSqlAsync(
-                $"""DELETE FROM face_embeddings WHERE "PersonId" = {id}""", ct);
+            // Delete face embeddings from Qdrant (best-effort)
+            try { await vectorStore.DeleteByPersonAsync(id); }
+            catch (Exception ex) { logger.LogWarning(ex, "Qdrant cleanup failed for person {PersonId}", id); }
 
             // Nullify person references in gate events — preserve audit trail
             await db.Database.ExecuteSqlAsync(
@@ -266,6 +237,4 @@ public class UpdateStatusDto
     public string Status { get; set; } = "";
 }
 
-public record PersonRow(Guid Id, string FullName, string Department, string EnrollmentStatus, DateTime CreatedAt, int FaceCount, string? WelcomeMessage);
-public record FaceImageRow(Guid Id, string? FaceImage);
-public record PoseEntry(string Pose, DateTime EnrolledAt);
+

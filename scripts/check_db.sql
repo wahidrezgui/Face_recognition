@@ -1,7 +1,6 @@
-SELECT p."FullName", fe."Id" as embedding_id, 
-       substring(fe."Vector"::text, 1, 100) as vector_preview, 
-       fe."QualityScore" 
-FROM face_embeddings fe 
-JOIN persons p ON p."Id" = fe."PersonId" 
-WHERE p."FullName" IN ('Alice Johnson', 'Bob Smith') 
-ORDER BY p."FullName", fe."CreatedAt";
+-- Note: face_embeddings table was dropped in migration 009.
+-- Embeddings are now stored in Qdrant. Use the .NET API to inspect enrollment.
+SELECT "Id", "FullName", "Department", "EnrollmentStatus", "CreatedAt"
+FROM persons
+WHERE "FullName" IN ('Alice Johnson', 'Bob Smith')
+ORDER BY "FullName", "CreatedAt";
