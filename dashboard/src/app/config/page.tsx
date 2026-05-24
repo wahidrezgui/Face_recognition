@@ -1,8 +1,15 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { setVideoSource, fetchTrainingMode, setTrainingMode, fetchLogUnknown, setLogUnknown, fetchProcessingFps, setProcessingFps } from "@/lib/api";
+import {
+  fetchGates, fetchGateStatus, setGateVideoSource,
+  fetchTrainingMode, setTrainingMode,
+  fetchLogUnknown, setLogUnknown,
+  fetchProcessingFps, setProcessingFps,
+  GateStatus,
+} from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -26,7 +33,10 @@ interface CameraInfo {
   name: string;
 }
 
-export default function ConfigPage() {
+function ConfigPageInner() {
+  const searchParams = useSearchParams();
+  const [gates, setGates] = useState<GateStatus[]>([]);
+  const [selectedGateId, setSelectedGateId] = useState<string>("");
   const [sourceType, setSourceType] = useState<SourceType>("webcam");
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [camLoading, setCamLoading] = useState(true);
@@ -45,38 +55,46 @@ export default function ConfigPage() {
   const [processingFps, setProcessingFpsState] = useState(3);
   const [processingFpsLoaded, setProcessingFpsLoaded] = useState(false);
 
-  // Load current camera source and direction on mount
+  // Load gates on mount; honour ?gateId= URL param
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/vision/stream/status");
-        if (!res.ok) return;
-        const data = await res.json();
-        const src: string = data.camera_source || "";
+        const data = await fetchGates();
+        setGates(data);
+        const paramId = searchParams.get("gateId");
+        const match = data.find((g) => g.id === paramId);
+        setSelectedGateId(match?.id ?? data[0]?.id ?? "");
+      } catch {
+        // keep defaults
+      }
+    })();
+  }, [searchParams]);
+
+  // Load gate status when selected gate changes → pre-fill source + direction
+  useEffect(() => {
+    if (!selectedGateId) return;
+    (async () => {
+      try {
+        const status = await fetchGateStatus(selectedGateId);
+        if (!status) return;
+        const src: string = status.camera_source || "";
         if (src) {
           const kind = inferSourceType(src);
           setSourceType(kind);
           switch (kind) {
-            case "webcam":
-              setSelectedCam(src);
-              setUseCustom(false);
-              break;
-            case "video":
-              setVideoPath(src);
-              break;
-            case "rtsp":
-              setRtspUrl(src);
-              break;
+            case "webcam": setSelectedCam(src); setUseCustom(false); break;
+            case "video":  setVideoPath(src); break;
+            case "rtsp":   setRtspUrl(src); break;
           }
         }
-        if (data.direction === "exit" || data.direction === "entry") {
-          setDirection(data.direction);
+        if (status.direction === "exit" || status.direction === "entry") {
+          setDirection(status.direction);
         }
       } catch {
-        // service not reachable — keep defaults
+        // gate unreachable — keep current form values
       }
     })();
-  }, []);
+  }, [selectedGateId]);
 
   // Load training mode on mount
   useEffect(() => {
@@ -152,9 +170,10 @@ export default function ConfigPage() {
       await setTrainingMode(trainingMode);
       await setLogUnknown(logUnknown);
       await setProcessingFps(processingFps);
-      const res = await setVideoSource(getCameraSource(), direction);
+      const res = await setGateVideoSource(selectedGateId, getCameraSource(), direction);
       const dirMsg = `direction: ${res.direction ?? direction}`;
-      const msg = `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}`;
+      const gateMsg = res.gate_id ? ` [${res.gate_id}]` : "";
+      const msg = `Source set to "${res.camera_source}"${gateMsg} (${dirMsg})${res.message ? ". " + res.message : ""}`;
       if (res.status === "warning") {
         setResult({ kind: "warning", message: msg });
         toast.warning(res.message || "Config saved – camera not yet ready");
@@ -182,6 +201,42 @@ export default function ConfigPage() {
         <p className="mb-6 text-xs text-gv-muted">Change the camera input source.</p>
 
         <div className="space-y-5">
+          {/* Gate selector */}
+          {gates.length > 0 && (
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-400">Configure Gate</label>
+              <div className={`grid gap-2 ${gates.length === 1 ? "grid-cols-1" : "grid-cols-2"}`}>
+                {gates.map((gate) => {
+                  const dotColor = !gate.online
+                    ? "bg-red-500"
+                    : !gate.status?.camera_open
+                      ? "bg-amber-400"
+                      : "bg-emerald-400";
+                  return (
+                    <button
+                      key={gate.id}
+                      type="button"
+                      onClick={() => setSelectedGateId(gate.id)}
+                      className={`p-3 rounded border text-left transition-colors ${
+                        selectedGateId === gate.id
+                          ? "bg-blue-700/30 border-blue-600/40 text-blue-300"
+                          : "bg-[#0d1a2f] border-[#1a2640] text-gray-400 hover:border-gray-600"
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                        <span className="text-xs font-medium">{gate.name}</span>
+                      </div>
+                      <div className="mt-0.5 text-[10px] opacity-70">
+                        {!gate.online ? "Offline" : !gate.status?.camera_open ? "Degraded" : "Online"}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Source type selector */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-400">Source Type</label>
@@ -395,7 +450,7 @@ export default function ConfigPage() {
           <Separator className="my-8 bg-gv-border" />
           <Button
             className="w-full"
-            disabled={saving || (sourceType === "rtsp" && !rtspUrl)}
+            disabled={saving || !selectedGateId || (sourceType === "rtsp" && !rtspUrl)}
             onClick={handleApplyRestart}
           >
             {saving ? "Applying & Restarting..." : "Apply & Restart"}
@@ -418,5 +473,13 @@ export default function ConfigPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ConfigPage() {
+  return (
+    <Suspense>
+      <ConfigPageInner />
+    </Suspense>
   );
 }

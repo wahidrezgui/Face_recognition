@@ -3,6 +3,7 @@ namespace GateVision.Api.Domain;
 public class TrainingEvent
 {
     public Guid Id { get; set; }
+    public string GateId { get; set; } = "default";
     public Guid? PersonId { get; set; }
     public float Confidence { get; set; }
     public EventStatus Status { get; set; } = EventStatus.NeedsReview;

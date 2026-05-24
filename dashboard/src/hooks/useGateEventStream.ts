@@ -17,14 +17,18 @@ export function resolveStreamToken(): string | null {
   return getToken();
 }
 
-export function buildEventStreamUrl(token: string | null): string {
-  return token
-    ? `${API_BASE}/api/events/stream?token=${encodeURIComponent(token)}`
+export function buildEventStreamUrl(token: string | null, gateId?: string): string {
+  const base = gateId
+    ? `${API_BASE}/api/events/stream/${encodeURIComponent(gateId)}`
     : `${API_BASE}/api/events/stream`;
+  return token
+    ? `${base}?token=${encodeURIComponent(token)}`
+    : base;
 }
 
 export type GateEventStreamOptions = {
   enabled?: boolean;
+  gateId?: string;
   filter?: (e: GateEvent) => boolean;
   onEvent: (e: GateEvent) => void;
   onOpen?: () => void;
@@ -37,9 +41,10 @@ export function openEventStream(
   onOpen?: () => void,
   onError?: () => void,
   token?: string | null,
+  gateId?: string,
 ): EventSource {
   const tk = token ?? resolveStreamToken();
-  const es = new EventSource(buildEventStreamUrl(tk));
+  const es = new EventSource(buildEventStreamUrl(tk, gateId));
   if (onOpen) es.onopen = onOpen;
   if (onError) es.onerror = onError;
   es.onmessage = (msg) => {
@@ -54,6 +59,7 @@ export function openEventStream(
 
 export function useGateEventStream({
   enabled = true,
+  gateId,
   filter,
   onEvent,
   onOpen,
@@ -65,6 +71,7 @@ export function useGateEventStream({
   const onErrorRef = useRef(onError);
   const filterRef = useRef(filter);
   const resolveTokenRef = useRef(resolveTokenFn);
+  const gateIdRef = useRef(gateId);
 
   useEffect(() => {
     onEventRef.current = onEvent;
@@ -81,6 +88,9 @@ export function useGateEventStream({
   useEffect(() => {
     resolveTokenRef.current = resolveTokenFn;
   }, [resolveTokenFn]);
+  useEffect(() => {
+    gateIdRef.current = gateId;
+  }, [gateId]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -94,8 +104,9 @@ export function useGateEventStream({
       () => onOpenRef.current?.(),
       () => onErrorRef.current?.(),
       tokenResolver(),
+      gateIdRef.current,
     );
 
     return () => es.close();
-  }, [enabled]);
+  }, [enabled, gateId]);
 }

@@ -4,6 +4,7 @@ import httpx
 import numpy as np
 from datetime import datetime, timezone
 from .config import settings
+from .local_buffer import LocalEventBuffer
 
 logger = logging.getLogger(__name__)
 
@@ -52,6 +53,7 @@ class CircuitBreaker:
 
 class NetBackendClient:
     def __init__(self):
+        self.gate_id = settings.gate_id
         self.client = httpx.AsyncClient(
             base_url=settings.net_backend_url,
             timeout=settings.net_timeout,
@@ -61,13 +63,16 @@ class NetBackendClient:
             threshold=settings.net_circuit_threshold,
             reset_timeout=settings.net_circuit_reset_timeout,
         )
+        self._local_buffer = LocalEventBuffer(settings.local_buffer_path)
 
     async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> dict | None:
         if not self.circuit_breaker.allow_request():
-            logger.warning("Circuit breaker OPEN — skipping identify request")
+            logger.warning("Circuit breaker OPEN — buffering identify request locally")
+            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
             return {"circuit_open": True}
 
         body = {
+            "gate_id": self.gate_id,
             "embedding": embedding.tolist(),
             "frame_quality": frame_quality,
             "captured_at": captured_at,
@@ -88,16 +93,62 @@ class NetBackendClient:
                 self.circuit_breaker.on_success()
                 return None
             self.circuit_breaker.on_failure()
-            logger.error("Identify request failed (%d): %s", e.response.status_code, e)
+            logger.error("Identify request failed (%d): %s — buffering locally", e.response.status_code, e)
+            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             self.circuit_breaker.on_failure()
-            logger.error("Backend unreachable: %s", e)
+            logger.error("Backend unreachable: %s — buffering locally", e)
+            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
             return {"backend_down": True}
         except Exception as e:
             self.circuit_breaker.on_failure()
-            logger.error("Identify request error: %s", e)
+            logger.error("Identify request error: %s — buffering locally", e)
+            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
             return None
+
+    def _buffer_identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> None:
+        body = {
+            "gate_id": self.gate_id,
+            "embedding": embedding.tolist() if hasattr(embedding, 'tolist') else embedding,
+            "frame_quality": frame_quality,
+            "captured_at": captured_at,
+            "direction": direction,
+            "face_crop": face_crop_b64,
+            "track_id": track_id,
+            "age": int(age) if age is not None else None,
+            "gender": gender,
+            "emotion": emotion,
+        }
+        self._local_buffer.enqueue(self.gate_id, body)
+        pending = self._local_buffer.pending_count()
+        logger.info("Buffered identify request locally (%d pending)", pending)
+
+    async def drain_local_buffer(self) -> int:
+        drained = 0
+        while True:
+            batch = self._local_buffer.dequeue_batch(20)
+            if not batch:
+                break
+            for item in batch:
+                body = item["payload"]
+                body["replayed"] = True
+                try:
+                    resp = await self.client.post(settings.net_identify_path, json=body)
+                    if resp.is_success:
+                        drained += 1
+                    else:
+                        # Re-enqueue on transient failure
+                        self._local_buffer.enqueue(item["gate_id"], body)
+                        logger.warning("Replay failed (%d) — re-buffered", resp.status_code)
+                        return drained
+                except (httpx.ConnectError, httpx.TimeoutException) as e:
+                    self._local_buffer.enqueue(item["gate_id"], body)
+                    logger.warning("Backend unreachable during drain — re-buffered: %s", e)
+                    return drained
+        if drained > 0:
+            logger.info("Drained %d buffered events to central", drained)
+        return drained
 
     async def enroll(self, person_id: str, embeddings: list[np.ndarray],
                      face_images: list[str] | None = None,

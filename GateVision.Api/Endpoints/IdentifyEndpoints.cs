@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using System.Text.Json.Serialization;
 using GateVision.Api.Domain;
 using GateVision.Api.Infrastructure.Db;
@@ -9,11 +10,19 @@ public static class IdentifyEndpoints
 {
     public static void MapIdentifyEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/identify", async (IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, TrainingModeService trainingMode, LogUnknownService logUnknown, ILogger<Program> logger, CancellationToken ct) =>
+        app.MapPost("/api/identify", async (HttpContext ctx, IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, TrainingModeService trainingMode, LogUnknownService logUnknown, GateChannelRegistry channelRegistry, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (dto.Embedding.Length != 512)
                 return Results.BadRequest($"Embedding must have exactly 512 dimensions, got {dto.Embedding.Length}");
-            var capturedAt = DateTime.Parse(dto.CapturedAt).ToUniversalTime();
+
+            // Enforce gate key → gate_id match
+            var authenticatedGateId = ctx.User.FindFirstValue("GateId");
+            if (authenticatedGateId != null && !string.Equals(authenticatedGateId, dto.GateId, StringComparison.OrdinalIgnoreCase))
+                return Results.Forbid();
+
+            if (!DateTime.TryParse(dto.CapturedAt, out var capturedAt))
+                return Results.BadRequest($"Invalid CapturedAt format: '{dto.CapturedAt}'");
+            capturedAt = capturedAt.ToUniversalTime();
             var result = await svc.Identify(dto.Embedding, dto.FrameQuality, capturedAt);
 
             var direction = string.Equals(dto.Direction, "exit", StringComparison.OrdinalIgnoreCase)
@@ -35,6 +44,7 @@ public static class IdentifyEndpoints
                 {
                     Id = Guid.NewGuid(),
                     TrackId = dto.TrackId,
+                    GateId = dto.GateId ?? "default",
                     PersonId = result.PersonId,
                     PersonName = result.PersonName,
                     Confidence = result.Confidence,
@@ -63,11 +73,13 @@ public static class IdentifyEndpoints
             }
 
             // Publish to gate display only when this frame is the confidence best for its track.
-            if (publishToSse)
+            // Skip SSE publish for replayed events (already processed, no stale kiosk cards).
+            if (publishToSse && !dto.Replayed)
             {
-                GateEventChannel.Publish(new GateEvent
+                channelRegistry.Publish(dto.GateId ?? "default", new GateEvent
                 {
                     Id = eventId,
+                    GateId = dto.GateId ?? "default",
                     PersonId = result.PersonId,
                     PersonName = result.PersonName,
                     Confidence = result.Confidence,
@@ -113,6 +125,12 @@ public class IdentifyRequestDto
 
     [JsonPropertyName("track_id")]
     public int TrackId { get; set; }
+
+    [JsonPropertyName("gate_id")]
+    public string? GateId { get; set; } = "default";
+
+    [JsonPropertyName("replayed")]
+    public bool Replayed { get; set; }
 
     [JsonPropertyName("emotion")]
     public string? Emotion { get; set; }

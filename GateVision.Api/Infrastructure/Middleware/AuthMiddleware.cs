@@ -9,6 +9,7 @@ public class AuthMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly string _apiKey;
+    private readonly Dictionary<string, string> _gateApiKeys;
     private readonly TokenValidationParameters _jwtValidationParams;
     private static readonly JwtSecurityTokenHandler JwtHandler = new();
 
@@ -26,6 +27,8 @@ public class AuthMiddleware
         _logger = logger;
         _apiKey = configuration["Auth:ApiKey"]
             ?? throw new InvalidOperationException("Auth:ApiKey not configured. Set via User Secrets, appsettings, or environment variable.");
+        _gateApiKeys = configuration.GetSection("Auth:GateApiKeys")
+            .Get<Dictionary<string, string>>() ?? new Dictionary<string, string>();
         var jwtSecret = configuration["Auth:JwtSecret"]
             ?? throw new InvalidOperationException("Auth:JwtSecret not configured. Set via User Secrets, appsettings, or environment variable.");
         _jwtValidationParams = new TokenValidationParameters
@@ -72,9 +75,22 @@ public class AuthMiddleware
             if (providedKey == _apiKey)
             {
                 ctx.User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.Role, "api")], "ApiKey"));
-                _logger.LogDebug("Authenticated via API key for {Path}", path);
+                _logger.LogDebug("Authenticated via global API key for {Path}", path);
                 await _next(ctx);
                 return;
+            }
+
+            // Check per-gate API keys
+            foreach (var (gateId, gateKey) in _gateApiKeys)
+            {
+                if (providedKey == gateKey)
+                {
+                    ctx.User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.Role, "api"), new Claim("GateId", gateId)], "GateApiKey"));
+                    _logger.LogDebug("Authenticated via gate API key for {GateId} on {Path}", gateId, path);
+                    await _next(ctx);
+                    return;
+                }
             }
 
             var principal = ValidateJwtToken(providedKey);

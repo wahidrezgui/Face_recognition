@@ -7,6 +7,7 @@ import {
   fetchPersons,
   fetchPersonsCount,
   fetchEventStats,
+  fetchGates,
   setRoi,
   type GateEvent,
   type Roi,
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const [now, setNow] = useState(new Date());
   const [roiEditing, setRoiEditing] = useState(false);
   const [roi, setRoiState] = useState<Roi | null>(null);
+  const [selectedGate, setSelectedGate] = useState<string | undefined>(undefined);
   const imageRef = useRef<HTMLImageElement | null>(null);
 
   const { data: initialData, refetch: refetchEvents } = useQuery({
@@ -37,6 +39,12 @@ export default function DashboardPage() {
     queryKey: ["personsCount"],
     queryFn: fetchPersonsCount,
     refetchInterval: 30_000,
+  });
+
+  const { data: gates = [] } = useQuery({
+    queryKey: ["gates"],
+    queryFn: fetchGates,
+    refetchInterval: 15_000,
   });
 
   const { data: persons = [] } = useQuery({
@@ -92,6 +100,7 @@ export default function DashboardPage() {
   }, []);
 
   useGateEventStream({
+    gateId: selectedGate,
     onEvent: handleStreamEvent,
     onOpen: () => setStreamError(false),
     onError: () => setStreamError(true),
@@ -178,23 +187,29 @@ export default function DashboardPage() {
           <StatItem label="Pending Review" value={stats?.pendingReview ?? 0} color="text-amber-400" icon={<IconShield />} />
           <StatItem label="Total Enrolled" value={enrolledCount} color="text-emerald-400" icon={<IconUsers />} />
 
-          {/* Camera list */}
+          {/* Camera / Gate list */}
           <div className="mt-auto">
-            <PanelHeader icon={<IconCamera />} title="Cameras" />
-            {[
-              { name: "Camera 01", zone: "Main Entrance", online: !streamError },
-            ].map((cam) => (
+            <PanelHeader icon={<IconCamera />} title="Gates" />
+            {gates.length === 0 && (
+              <div className="px-4 py-2.5 text-[10px] text-gray-500">
+                No gates detected yet
+              </div>
+            )}
+            {gates.map((g) => (
               <div
-                key={cam.name}
-                className="flex items-center gap-2.5 px-4 py-2.5 border-b border-[#111f33] hover:bg-[#0d1a2f] cursor-pointer"
+                key={g.id}
+                onClick={() => setSelectedGate(selectedGate === g.id ? undefined : g.id)}
+                className={`flex items-center gap-2.5 px-4 py-2.5 border-b border-[#111f33] hover:bg-[#0d1a2f] cursor-pointer ${selectedGate === g.id ? "bg-[#0d1a2f]" : ""}`}
               >
-                <IconDot online={cam.online} />
+                <IconDot online={g.online && (g.status?.camera_open ?? false)} />
                 <div>
-                  <p className="text-xs font-medium text-gray-200">{cam.name}</p>
-                  <p className="text-[10px] text-gray-600">{cam.zone}</p>
+                  <p className="text-xs font-medium text-gray-200">{g.name}</p>
+                  <p className="text-[10px] text-gray-600">
+                    {selectedGate === g.id ? "Selected" : "Click to filter"}
+                  </p>
                 </div>
-                <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded border ${cam.online ? "text-emerald-400 border-emerald-800 bg-emerald-950" : "text-red-400 border-red-900 bg-red-950"}`}>
-                  {cam.online ? "LIVE" : "OFF"}
+                <span className={`ml-auto text-[10px] px-1.5 py-0.5 rounded border ${g.online && g.status?.camera_open ? "text-emerald-400 border-emerald-800 bg-emerald-950" : "text-red-400 border-red-900 bg-red-950"}`}>
+                  {g.online && g.status?.camera_open ? "LIVE" : "OFF"}
                 </span>
               </div>
             ))}

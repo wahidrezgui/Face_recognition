@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Threading.Channels;
 using GateVision.Api.Domain;
 using GateVision.Api.Infrastructure.Db;
 using GateVision.Api.Services;
@@ -73,6 +74,7 @@ public static class EventEndpoints
                 return new
                 {
                     eventId = e.Id,
+                    gateId = e.GateId,
                     personId = e.PersonId.HasValue ? e.PersonId.Value.ToString() : (string?)null,
                     personName = person?.FullName ?? "UNKNOWN",
                     confidence = e.Confidence,
@@ -306,6 +308,7 @@ public static class EventEndpoints
                 return new
                 {
                     eventId = e.Id,
+                    gateId = e.GateId,
                     personId = e.PersonId.HasValue ? e.PersonId.Value.ToString() : (string?)null,
                     personName = person?.FullName ?? "UNKNOWN",
                     confidence = e.Confidence,
@@ -322,97 +325,111 @@ public static class EventEndpoints
             return Results.Ok(new { items = events, total, page, limit });
         });
 
-        app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, GateChannelRegistry registry, CancellationToken ct) =>
         {
-            ctx.Response.ContentType = "text/event-stream";
-            ctx.Response.Headers.CacheControl = "no-cache";
-            ctx.Response.Headers.Connection = "keep-alive";
+            await StreamEvents(ctx, db, registry.GetAllReader(), ct);
+        });
 
-            var lastTimestamp = DateTime.MinValue;
-            if (ctx.Request.Headers.TryGetValue("Last-Event-Id", out var lastId) &&
-                DateTime.TryParse(lastId, out var parsed))
+        app.MapGet("/api/events/stream/{gateId}", async (string gateId, HttpContext ctx, AppDbContext db, GateChannelRegistry registry, CancellationToken ct) =>
+        {
+            await StreamEvents(ctx, db, registry.GetReader(gateId), ct);
+        });
+
+        app.MapGet("/api/gates", (GateChannelRegistry registry) =>
+        {
+            return Results.Ok(new { gates = registry.ActiveGateIds });
+        });
+    }
+
+    static async Task StreamEvents(HttpContext ctx, AppDbContext db, ChannelReader<GateEvent> channel, CancellationToken ct)
+    {
+        ctx.Response.ContentType = "text/event-stream";
+        ctx.Response.Headers.CacheControl = "no-cache";
+        ctx.Response.Headers.Connection = "keep-alive";
+
+        var lastTimestamp = DateTime.MinValue;
+        if (ctx.Request.Headers.TryGetValue("Last-Event-Id", out var lastId) &&
+            DateTime.TryParse(lastId, out var parsed))
+        {
+            lastTimestamp = parsed.Kind == DateTimeKind.Local ? parsed.ToUniversalTime() : parsed;
+        }
+
+        var todayStart = DateTime.UtcNow.Date;
+        List<GateEvent> initialEvents;
+        if (lastTimestamp == DateTime.MinValue)
+        {
+            initialEvents = await db.GateEvents
+                .Where(e => e.CapturedAt >= todayStart && e.CapturedAt < todayStart.AddDays(1))
+                .OrderByDescending(e => e.CapturedAt)
+                .Take(10)
+                .ToListAsync(ct);
+        }
+        else
+        {
+            initialEvents = await db.GateEvents
+                .Where(e => e.CapturedAt > lastTimestamp
+                         && e.CapturedAt >= todayStart
+                         && e.CapturedAt < todayStart.AddDays(1))
+                .OrderBy(e => e.CapturedAt)
+                .Take(100)
+                .ToListAsync(ct);
+        }
+
+        // Batch-load persons to populate [NotMapped] display fields before writing SSE
+        var initPersonIds = initialEvents
+            .Where(e => e.PersonId.HasValue)
+            .Select(e => e.PersonId!.Value)
+            .Distinct()
+            .ToList();
+        var initPersons = initPersonIds.Count > 0
+            ? await db.Persons.Where(p => initPersonIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct)
+            : new Dictionary<Guid, Person>();
+
+        foreach (var evt in initialEvents)
+        {
+            if (evt.PersonId.HasValue && initPersons.TryGetValue(evt.PersonId.Value, out var p))
             {
-                lastTimestamp = parsed.Kind == DateTimeKind.Local ? parsed.ToUniversalTime() : parsed;
+                evt.PersonName = p.FullName;
+                evt.WelcomeMessage = p.WelcomeMessage;
+                evt.Department = p.Department;
             }
+            if (evt.CapturedAt > lastTimestamp)
+                lastTimestamp = evt.CapturedAt;
+            await WriteEvent(ctx, evt, ct);
+        }
+        await ctx.Response.Body.FlushAsync(ct);
 
-            var todayStart = DateTime.UtcNow.Date;
-            List<GateEvent> initialEvents;
-            if (lastTimestamp == DateTime.MinValue)
-            {
-                initialEvents = await db.GateEvents
-                    .Where(e => e.CapturedAt >= todayStart && e.CapturedAt < todayStart.AddDays(1))
-                    .OrderByDescending(e => e.CapturedAt)
-                    .Take(10)
-                    .ToListAsync(ct);
-            }
-            else
-            {
-                initialEvents = await db.GateEvents
-                    .Where(e => e.CapturedAt > lastTimestamp
-                             && e.CapturedAt >= todayStart
-                             && e.CapturedAt < todayStart.AddDays(1))
-                    .OrderBy(e => e.CapturedAt)
-                    .Take(100)
-                    .ToListAsync(ct);
-            }
+        var heartbeatInterval = 5000;
+        while (!ct.IsCancellationRequested)
+        {
+            var readTask = channel.WaitToReadAsync(ct).AsTask();
+            var heartbeatTask = Task.Delay(heartbeatInterval, CancellationToken.None);
+            var done = await Task.WhenAny(readTask, heartbeatTask);
 
-            // Batch-load persons to populate [NotMapped] display fields before writing SSE
-            var initPersonIds = initialEvents
-                .Where(e => e.PersonId.HasValue)
-                .Select(e => e.PersonId!.Value)
-                .Distinct()
-                .ToList();
-            var initPersons = initPersonIds.Count > 0
-                ? await db.Persons.Where(p => initPersonIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct)
-                : new Dictionary<Guid, Person>();
-
-            foreach (var evt in initialEvents)
+            if (done == readTask)
             {
-                if (evt.PersonId.HasValue && initPersons.TryGetValue(evt.PersonId.Value, out var p))
+                var hasItem = await readTask;
+                if (hasItem)
                 {
-                    evt.PersonName = p.FullName;
-                    evt.WelcomeMessage = p.WelcomeMessage;
-                    evt.Department = p.Department;
-                }
-                if (evt.CapturedAt > lastTimestamp)
-                    lastTimestamp = evt.CapturedAt;
-                await WriteEvent(ctx, evt, ct);
-            }
-            await ctx.Response.Body.FlushAsync(ct);
-
-            var channel = GateEventChannel.Reader;
-            var heartbeatInterval = 5000;
-            while (!ct.IsCancellationRequested)
-            {
-                var readTask = channel.WaitToReadAsync(ct).AsTask();
-                var heartbeatTask = Task.Delay(heartbeatInterval, CancellationToken.None);
-                var done = await Task.WhenAny(readTask, heartbeatTask);
-
-                if (done == readTask)
-                {
-                    var hasItem = await readTask;
-                    if (hasItem)
+                    heartbeatInterval = 5000;
+                    while (channel.TryRead(out var evt))
                     {
-                        heartbeatInterval = 5000;
-                        while (channel.TryRead(out var evt))
+                        if (evt.CapturedAt > lastTimestamp)
                         {
-                            if (evt.CapturedAt > lastTimestamp)
-                            {
-                                lastTimestamp = evt.CapturedAt;
-                                await WriteEvent(ctx, evt, ct);
-                            }
+                            lastTimestamp = evt.CapturedAt;
+                            await WriteEvent(ctx, evt, ct);
                         }
                     }
                 }
-                else
-                {
-                    heartbeatInterval = Math.Min(heartbeatInterval + 5000, 30000);
-                    await ctx.Response.WriteAsync(": heartbeat\n\n", ct);
-                }
-
-                await ctx.Response.Body.FlushAsync(ct);
             }
-        });
+            else
+            {
+                heartbeatInterval = Math.Min(heartbeatInterval + 5000, 30000);
+                await ctx.Response.WriteAsync(": heartbeat\n\n", ct);
+            }
+
+            await ctx.Response.Body.FlushAsync(ct);
+        }
     }
 
     static (DateTime from, DateTime to, string range) ResolveActivityRange(string range)
@@ -447,6 +464,7 @@ public static class EventEndpoints
         var payload = JsonSerializer.Serialize(new
         {
             eventId = evt.Id,
+            gateId = evt.GateId,
             personId = evt.PersonId?.ToString(),
             personName = evt.PersonName,
             confidence = evt.Confidence,

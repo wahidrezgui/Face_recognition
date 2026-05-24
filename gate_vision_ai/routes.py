@@ -326,6 +326,41 @@ def register_routes(app, state: dict):
         logger.info("Processing FPS set to %d", req.fps)
         return {"fps": req.fps}
 
+    @app.get("/metrics")
+    def metrics():
+        stats = s["stats"]
+        gate_id = settings.gate_id
+        cb_state = 1 if stats.get("circuit_open") else 0
+        buffer_pending = 0
+        backend = s.get("backend")
+        if backend and hasattr(backend, '_local_buffer'):
+            buffer_pending = backend._local_buffer.pending_count()
+        lines = [
+            "# HELP gatevision_frames_captured_total Total frames captured",
+            f"# TYPE gatevision_frames_captured_total counter",
+            f'gatevision_frames_captured_total{{gate_id="{gate_id}"}} {stats.get("frames_captured", 0)}',
+            "# HELP gatevision_faces_detected_total Total faces detected",
+            f"# TYPE gatevision_faces_detected_total counter",
+            f'gatevision_faces_detected_total{{gate_id="{gate_id}"}} {stats.get("faces_detected", 0)}',
+            "# HELP gatevision_events_sent_total Identity requests sent to central",
+            f"# TYPE gatevision_events_sent_total counter",
+            f'gatevision_events_sent_total{{gate_id="{gate_id}"}} {stats.get("events_sent", 0)}',
+            "# HELP gatevision_backend_errors_total Backend errors total",
+            f"# TYPE gatevision_backend_errors_total counter",
+            f'gatevision_backend_errors_total{{gate_id="{gate_id}"}} {stats.get("backend_errors", 0)}',
+            "# HELP gatevision_circuit_breaker_state 1=OPEN 0=CLOSED",
+            f"# TYPE gatevision_circuit_breaker_state gauge",
+            f'gatevision_circuit_breaker_state{{gate_id="{gate_id}"}} {cb_state}',
+            "# HELP gatevision_local_buffer_pending Events buffered awaiting replay",
+            f"# TYPE gatevision_local_buffer_pending gauge",
+            f'gatevision_local_buffer_pending{{gate_id="{gate_id}"}} {buffer_pending}',
+            "# HELP gatevision_windows_processed Total interaction windows processed",
+            f"# TYPE gatevision_windows_processed counter",
+            f'gatevision_windows_processed{{gate_id="{gate_id}"}} {stats.get("windows_processed", 0)}',
+        ]
+        from fastapi.responses import PlainTextResponse
+        return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
+
     @app.get("/stream")
     async def stream():
         if s["capture"] is None:

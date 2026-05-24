@@ -241,6 +241,23 @@ async def _capture_loop():
             continue
 
 
+async def _drain_loop():
+    """Every 10s, drain buffered events to the central server when circuit is CLOSED."""
+    while True:
+        await asyncio.sleep(10)
+        backend = _state.get("backend")
+        if backend is None:
+            continue
+        if backend.circuit_breaker.state != "CLOSED":
+            continue
+        try:
+            drained = await backend.drain_local_buffer()
+            if drained > 0:
+                _stats["events_sent"] += drained
+        except Exception as e:
+            logger.error("Drain loop error: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global capture, detector, backend
@@ -261,10 +278,16 @@ async def lifespan(app: FastAPI):
     logger.info("Backend client initialized")
 
     task = asyncio.create_task(_capture_loop())
+    drain_task = asyncio.create_task(_drain_loop())
     yield
     task.cancel()
+    drain_task.cancel()
     try:
         await task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await drain_task
     except asyncio.CancelledError:
         pass
     cap = _state.get("capture")

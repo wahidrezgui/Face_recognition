@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { type GateEvent } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
@@ -62,6 +63,8 @@ const THEMES = {
 // FacePhoto and IdleScreen are imported from @/components/kiosk/
 
 export default function DeskPage() {
+  const searchParams = useSearchParams();
+  const gateId = searchParams.get("gateId") ?? undefined;
   const [event, setEvent] = useState<GateEvent | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [connected, setConnected] = useState(false);
@@ -119,6 +122,7 @@ export default function DeskPage() {
   }, []);
 
   useGateEventStream({
+    gateId,
     onEvent: (e) => {
       if (activeEventIdRef.current === e.eventId) {
         // Same track, higher confidence frame — update silently

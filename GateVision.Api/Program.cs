@@ -45,10 +45,12 @@ builder.Services.AddSingleton(new CacheService(redis));
 builder.Services.AddSingleton<TrainingModeService>();
 builder.Services.AddSingleton<LogUnknownService>();
 builder.Services.AddSingleton<EventBufferService>();
+builder.Services.AddSingleton<GateChannelRegistry>();
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 builder.Services.AddScoped<IdentificationService>();
 builder.Services.AddScoped<EnrollmentService>();
+builder.Services.AddHttpClient();
 
 var jwtSecret = builder.Configuration["Auth:JwtSecret"]
     ?? throw new InvalidOperationException("Auth:JwtSecret not configured. Set via User Secrets, appsettings, or environment variable.");
@@ -94,13 +96,21 @@ builder.Services.AddRateLimiter(options =>
         cfg.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
         cfg.QueueLimit = 0;
     });
+    options.AddFixedWindowLimiter("EnrollPolicy", cfg =>
+    {
+        cfg.PermitLimit = 5;
+        cfg.Window = TimeSpan.FromSeconds(1);
+        cfg.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        cfg.QueueLimit = 0;
+    });
 });
 
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? ["http://localhost:3000"];
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins("http://localhost:3000")
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyMethod()
               .AllowAnyHeader();
     });
@@ -119,11 +129,27 @@ var upgrader = DeployChanges.To
     .LogTo(new DbUpLogger(app.Logger))
     .Build();
 
-var result = upgrader.PerformUpgrade();
-if (!result.Successful)
+var migrated = false;
+for (var retry = 0; retry < 10; retry++)
 {
-    app.Logger.LogError(result.Error, "Database migration failed");
-    throw result.Error;
+    try
+    {
+        var r = upgrader.PerformUpgrade();
+        if (r.Successful) { migrated = true; break; }
+        app.Logger.LogWarning("Database migration attempt {Attempt} failed: {Error}", retry + 1, r.Error);
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogWarning(ex, "Database migration attempt {Attempt} threw, retrying in 3s…", retry + 1);
+    }
+    Thread.Sleep(3000);
+}
+
+if (!migrated)
+{
+    var err = new InvalidOperationException("Database migration failed after 10 retries");
+    app.Logger.LogError(err, "Database migration failed");
+    throw err;
 }
 app.Logger.LogInformation("Database migration completed");
 
@@ -199,6 +225,30 @@ _ = Task.Run(async () =>
         catch (Exception ex)
         {
             app.Logger.LogError(ex, "Track flush error");
+        }
+    }
+});
+
+// ── Periodic cleanup of old gate_events (daily) ──────────────
+_ = Task.Run(async () =>
+{
+    var cleanupTimer = new PeriodicTimer(TimeSpan.FromHours(1));
+    while (await cleanupTimer.WaitForNextTickAsync(app.Lifetime.ApplicationStopping))
+    {
+        try
+        {
+            using var scope = app.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var cutoff = DateTime.UtcNow.AddDays(-90);
+            var deleted = await db.GateEvents
+                .Where(e => e.CapturedAt < cutoff)
+                .ExecuteDeleteAsync();
+            if (deleted > 0)
+                app.Logger.LogInformation("Cleaned up {Count} gate_events older than 90 days", deleted);
+        }
+        catch (Exception ex)
+        {
+            app.Logger.LogError(ex, "Event cleanup error");
         }
     }
 });

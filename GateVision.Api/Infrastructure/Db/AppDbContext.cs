@@ -29,24 +29,28 @@ public class AppDbContext : DbContext
         {
             e.ToTable("gate_events");
             e.HasKey(g => g.Id);
+            e.Property(g => g.GateId).HasMaxLength(50).HasDefaultValue("default");
             e.Property(g => g.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
             e.Property(g => g.Direction)
                 .HasConversion<string>()
                 .HasMaxLength(10);
+            e.HasIndex(g => g.GateId);
         });
 
         modelBuilder.Entity<TrainingEvent>(e =>
         {
             e.ToTable("training_events");
             e.HasKey(t => t.Id);
+            e.Property(t => t.GateId).HasMaxLength(50).HasDefaultValue("default");
             e.Property(t => t.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
             e.Property(t => t.Direction)
                 .HasConversion<string>()
                 .HasMaxLength(10);
+            e.HasIndex(t => t.GateId);
         });
     }
 }

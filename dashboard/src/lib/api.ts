@@ -501,3 +501,62 @@ export async function setProcessingFps(fps: number): Promise<{ fps: number }> {
   if (!res.ok) throw new Error("Failed to set processing FPS");
   return res.json();
 }
+
+export interface GateStats {
+  frames_captured: number;
+  faces_detected: number;
+  events_sent: number;
+  backend_errors: number;
+  circuit_open: boolean;
+  windows_processed: number;
+}
+
+export interface GateStreamStatus {
+  camera_open: boolean;
+  detector_loaded: boolean;
+  camera_source: string;
+  direction: string;
+  processing_fps: number;
+  stats: GateStats;
+}
+
+export interface GateStatus {
+  id: string;
+  name: string;
+  online: boolean;
+  status: GateStreamStatus | null;
+}
+
+export async function fetchGates(): Promise<GateStatus[]> {
+  const res = await apiFetch(`${API_BASE}/api/gates`, { headers: authHeaders() });
+  if (!res.ok) return [];
+  return res.json();
+}
+
+export async function fetchGateStatus(gateId: string): Promise<GateStreamStatus | null> {
+  try {
+    const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/status`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function setGateVideoSource(
+  gateId: string,
+  cameraSource: string,
+  direction: string
+): Promise<{ status: string; gate_id: string; camera_source: string; direction: string; message?: string }> {
+  const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/video-source`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ cameraSource, direction }),
+  });
+  if (!res.ok) {
+    let detail = "Failed to set video source";
+    try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
+}

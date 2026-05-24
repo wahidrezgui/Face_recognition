@@ -17,6 +17,7 @@ public enum Direction
 public class GateEvent
 {
     public Guid Id { get; set; }
+    public string GateId { get; set; } = "default";
     public Guid? PersonId { get; set; }
     public float Confidence { get; set; }
     public EventStatus Status { get; set; }

@@ -8,6 +8,7 @@ public class BufferedTrack
 {
     public required Guid Id { get; set; }
     public int TrackId { get; set; }
+    public string GateId { get; set; } = "default";
     public Guid? PersonId { get; set; }
     public string PersonName { get; set; } = "UNKNOWN";
     public float Confidence { get; set; }
@@ -27,9 +28,11 @@ public class BufferedTrack
 /// <summary>Carries the flushed entity — exactly one of GateEvent or TrainingEvent is non-null.</summary>
 public record FlushResult(GateEvent? GateEvent, TrainingEvent? TrainingEvent);
 
+public readonly record struct TrackKey(string GateId, int TrackId);
+
 public class EventBufferService
 {
-    private readonly ConcurrentDictionary<int, BufferedTrack> _tracks = new();
+    private readonly ConcurrentDictionary<TrackKey, BufferedTrack> _tracks = new();
     private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
 
     /// <summary>
@@ -39,8 +42,9 @@ public class EventBufferService
     /// </summary>
     public (Guid EventId, bool IsNewBest) BufferOrUpdate(BufferedTrack track)
     {
+        var key = new TrackKey(track.GateId, track.TrackId);
         bool isNewBest = false;
-        var result = _tracks.AddOrUpdate(track.TrackId,
+        var result = _tracks.AddOrUpdate(key,
             _ =>
             {
                 track.LastSeen = DateTime.UtcNow;
@@ -75,13 +79,15 @@ public class EventBufferService
         var match = _tracks.Values.FirstOrDefault(t => t.Id == eventId);
         if (match is null) return null;
 
-        if (!_tracks.TryRemove(match.TrackId, out _)) return null;
+        var key = new TrackKey(match.GateId, match.TrackId);
+        if (!_tracks.TryRemove(key, out _)) return null;
 
         if (match.IsTrainingEvent)
         {
             var trainingEvt = new TrainingEvent
             {
                 Id = match.Id,
+                GateId = match.GateId,
                 PersonId = match.PersonId,
                 Confidence = match.Confidence,
                 Status = match.Status,
@@ -101,6 +107,7 @@ public class EventBufferService
             var gateEvent = new GateEvent
             {
                 Id = match.Id,
+                GateId = match.GateId,
                 PersonId = match.PersonId,
                 PersonName = match.PersonName,
                 Confidence = match.Confidence,
@@ -128,15 +135,16 @@ public class EventBufferService
             .ToList();
 
         var persisted = 0;
-        foreach (var (trackId, track) in expired)
+        foreach (var (key, track) in expired)
         {
-            if (!_tracks.TryRemove(trackId, out _)) continue;
+            if (!_tracks.TryRemove(key, out _)) continue;
 
             if (track.IsTrainingEvent)
             {
                 db.TrainingEvents.Add(new TrainingEvent
                 {
                     Id = track.Id,
+                    GateId = track.GateId,
                     PersonId = track.PersonId,
                     Confidence = track.Confidence,
                     Status = track.Status,
@@ -153,6 +161,7 @@ public class EventBufferService
                 db.GateEvents.Add(new GateEvent
                 {
                     Id = track.Id,
+                    GateId = track.GateId,
                     PersonId = track.PersonId,
                     PersonName = track.PersonName,
                     Confidence = track.Confidence,

@@ -184,7 +184,7 @@ public static class PersonEndpoints
                     return Results.BadRequest($"Embedding at index {i} must have exactly 512 dimensions, got {dto.Embeddings[i].Length}");
             await svc.Enroll(id, dto.Embeddings, dto.QualityScore, dto.FaceImages, dto.Poses, dto.Replace, ct);
             return Results.Ok(new { status = "enrolled" });
-        });
+        }).RequireRateLimiting("EnrollPolicy");
 
         app.MapGet("/api/persons/{id:guid}/poses", async (Guid id, IVectorStore vectorStore) =>
         {

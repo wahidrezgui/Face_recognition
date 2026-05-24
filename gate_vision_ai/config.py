@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     camera_source: str = "0"
     processing_fps: int = 3
 
+    gate_id: str = "default"
+
     window_duration_ms: int = 250
     max_identity_requests_per_window: int = 3
     greeting_delay_ms: int = 300
@@ -20,6 +22,8 @@ class Settings(BaseSettings):
     min_face_confidence: float = 0.5
     min_face_size: int = 40
     max_yaw: int = 30
+
+    local_buffer_path: str = "gate_events_local.db"
 
     net_backend_url: str = "http://localhost:5000"
     net_identify_path: str = "/api/identify"

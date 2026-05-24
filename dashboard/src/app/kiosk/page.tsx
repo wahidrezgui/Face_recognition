@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { type GateEvent } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
@@ -185,6 +186,8 @@ function DetectionScreen({
 
 // ── Page ───────────────────────────────────────────────────────
 export default function KioskPage() {
+  const searchParams = useSearchParams();
+  const gateId = searchParams.get("gateId") ?? undefined;
   const [event, setEvent] = useState<GateEvent | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [connected, setConnected] = useState(false);
@@ -219,6 +222,7 @@ export default function KioskPage() {
   }, []);
 
   useGateEventStream({
+    gateId,
     onEvent: showEvent,
     onOpen: () => setConnected(true),
     onError: () => setConnected(false),
