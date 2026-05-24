@@ -64,6 +64,10 @@ class RestartRequest(BaseModel):
     direction: str = "entry"
 
 
+class ProcessingFpsRequest(BaseModel):
+    fps: int
+
+
 def register_routes(app, state: dict):
     s = state  # shorthand
 
@@ -281,12 +285,12 @@ def register_routes(app, state: dict):
         return {
             "camera_open": cap is not None and cap.cap.isOpened() if cap else False,
             "detector_loaded": s["detector"] is not None,
-            "capture_interval_ms": settings.capture_interval_ms,
             "window_duration_ms": settings.window_duration_ms,
             "max_identity_requests_per_window": settings.max_identity_requests_per_window,
             "greeting_delay_ms": settings.greeting_delay_ms,
             "camera_source": settings.camera_source,
             "direction": settings.direction,
+            "processing_fps": s.get("processing_fps", settings.processing_fps),
             "stats": s["stats"],
             "roi": roi,
             "frame_size": s.get("frame_size", {"width": 0, "height": 0}),
@@ -299,6 +303,28 @@ def register_routes(app, state: dict):
         s["roi"] = {"x": req.x, "y": req.y, "width": req.width, "height": req.height}
         logger.info("ROI updated: x=%d y=%d w=%d h=%d", req.x, req.y, req.width, req.height)
         return {"status": "ok", "roi": s["roi"]}
+
+    @app.get("/config/processing-fps")
+    def get_processing_fps():
+        return {"fps": s.get("processing_fps", settings.processing_fps)}
+
+    @app.post("/config/processing-fps")
+    async def set_processing_fps(req: ProcessingFpsRequest):
+        if req.fps < 1 or req.fps > 30:
+            raise HTTPException(400, "fps must be between 1 and 30")
+        s["processing_fps"] = req.fps
+        settings.processing_fps = req.fps
+        config_path = settings.python_settings_config_path
+        tmp_path = config_path + ".tmp"
+        try:
+            os.makedirs(os.path.dirname(config_path), exist_ok=True)
+            with open(tmp_path, "w") as f:
+                json.dump({"processing_fps": req.fps}, f)
+            os.replace(tmp_path, config_path)
+        except OSError as e:
+            logger.warning("Failed to persist processing_fps: %s", e)
+        logger.info("Processing FPS set to %d", req.fps)
+        return {"fps": req.fps}
 
     @app.get("/stream")
     async def stream():

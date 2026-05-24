@@ -149,6 +149,8 @@ Proxied via dashboard/next.config.js
 - GET /events/recent - Recent events log
 - POST /restart - Accept `{ "source": "..." }` in body, open new CameraCapture, warm-up with test frame, swap atomically, persist config (atomic temp+rename), release old capture. Returns 502 if camera opens but delivers no frames.
 - GET /cameras - Probe camera indices 0..9, return available with friendly names (Windows: via WMI PowerShell query)
+- GET /config/processing-fps - Return current processing FPS `{ "fps": int }`
+- POST /config/processing-fps - Set processing FPS (1–30); persists to `config/python_settings.json`; MJPEG stream is unaffected
 
 ### Confidence Thresholds
 - `>= 0.85` → Identified (confirmed match)
@@ -334,7 +336,9 @@ Proxied via dashboard/next.config.js
 | G76 | `IdentityScheduler` | ✅ ADDED v14 | `window.py`: resolves at most `max_identity_requests_per_window` identities per snapshot in rank order with `greeting_delay_ms` pacing between calls. Queue ordering is immutable once `schedule()` starts. |
 | G77 | `_capture_loop()` rewired to event-window model | ✅ ADDED v14 | `main.py`: replaced immediate per-face `process_single_face()` call with `_window_manager.collect()` for all detected faces; `_process_snapshot()` task fired when window expires. Removed `_track_best_conf` guard/cleanup. `faces_detected` now counts all faces per frame, not just one. |
 | G78 | Interaction metrics in `/stream/status` | ✅ ADDED v14 | `routes.py`: `window_duration_ms`, `max_identity_requests_per_window`, `greeting_delay_ms` added to status response. `windows_processed` counter added to `_stats`. |
-| G79 | Dual-table event schema | ✅ ADDED v15 | `gate_events` slimmed to 7 cols (Id, PersonId, Confidence, Status, Direction, CapturedAt, FaceImageBase64). PersonName/WelcomeMessage/Department dropped from DB; populated at read time via persons JOIN. New `training_events` table for sub-threshold captures when training mode ON. `GateEvent.PersonName` is `[NotMapped]` — present in-memory for SSE but never stored. SSE always fires for gate display; DB persistence gated by training mode for unidentified faces. Review endpoint searches gate_events → training_events → buffer (FlushResult). Stats `pendingReview` now counts from training_events. |
+| G79 | Dual-table event schema | ✅ ADDED v15 |
+| G80 | Configurable processing FPS | ✅ ADDED v16 |
+| G81 | Multi-track face tracker + desk-page dedup | ✅ ADDED v17 | Replaced single-slot `_next_track_id` (compared only against last-seen bbox) with `_match_or_create_track` (matches every detection against all active tracks by IoU≥0.15, expires tracks after 3s). Fixes track_id churn when multiple faces present or when a person moves >~0.5 bbox-width between frames. Desk page adds `activePersonIdRef`: same identified `personId` arriving while the card is visible updates confidence silently instead of restarting the animation. Removed dead config: `camera_fps`, `capture_interval_ms` (superseded by `processing_fps`). | `processing_fps` (default 3) throttles face detection rate independently of the MJPEG preview stream. Tunable at runtime via `POST /config/processing-fps`; persists to `config/python_settings.json`. Exposed on config page with 1–30 fps input. `detect_interval` now derived dynamically from `_state["processing_fps"]` each loop iteration. | `gate_events` slimmed to 7 cols (Id, PersonId, Confidence, Status, Direction, CapturedAt, FaceImageBase64). PersonName/WelcomeMessage/Department dropped from DB; populated at read time via persons JOIN. New `training_events` table for sub-threshold captures when training mode ON. `GateEvent.PersonName` is `[NotMapped]` — present in-memory for SSE but never stored. SSE always fires for gate display; DB persistence gated by training mode for unidentified faces. Review endpoint searches gate_events → training_events → buffer (FlushResult). Stats `pendingReview` now counts from training_events. |
 
 ## [CONFIGURATION]
 
@@ -366,6 +370,7 @@ Proxied via dashboard/next.config.js
 
 ### Python .env (GV_ prefix)
 - `GV_CAMERA_SOURCE` - Camera source (default: "0", overridden by `config/video_source.json` if present)
+- `GV_PROCESSING_FPS` - Face detection rate in fps (default: 3, overridden by `config/python_settings.json` if present)
 - `GV_NET_BACKEND_URL` - .NET backend URL (default: "http://localhost:5000")
 - `GV_NET_API_KEY` - API key for X-API-Key header
 - `GV_NET_CIRCUIT_THRESHOLD` - Circuit breaker failure threshold (default: 5)

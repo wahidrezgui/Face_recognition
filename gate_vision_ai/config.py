@@ -7,8 +7,7 @@ _PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__
 
 class Settings(BaseSettings):
     camera_source: str = "0"
-    camera_fps: int = 25
-    capture_interval_ms: int = 500
+    processing_fps: int = 3
 
     window_duration_ms: int = 250
     max_identity_requests_per_window: int = 3
@@ -48,6 +47,10 @@ class Settings(BaseSettings):
     @property
     def video_source_config_path(self) -> str:
         return os.path.join(_PROJECT_ROOT, "config", "video_source.json")
+
+    @property
+    def python_settings_config_path(self) -> str:
+        return os.path.join(_PROJECT_ROOT, "config", "python_settings.json")
 
 
 settings = Settings()

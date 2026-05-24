@@ -425,12 +425,11 @@ export interface StreamStatus {
   frame_size: { width: number; height: number };
   camera_open: boolean;
   detector_loaded: boolean;
-  capture_interval_ms: number;
 }
 
 export async function fetchStreamStatus(): Promise<StreamStatus> {
   const res = await fetch("/vision/stream/status");
-  if (!res.ok) return { roi: { x: 0, y: 0, width: 0, height: 0 }, frame_size: { width: 0, height: 0 }, camera_open: false, detector_loaded: false, capture_interval_ms: 500 };
+  if (!res.ok) return { roi: { x: 0, y: 0, width: 0, height: 0 }, frame_size: { width: 0, height: 0 }, camera_open: false, detector_loaded: false };
   return res.json();
 }
 
@@ -486,4 +485,20 @@ export async function setRoi(roi: Roi): Promise<void> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(roi),
   });
+}
+
+export async function fetchProcessingFps(): Promise<{ fps: number }> {
+  const res = await fetch("/vision/config/processing-fps");
+  if (!res.ok) return { fps: 3 };
+  return res.json();
+}
+
+export async function setProcessingFps(fps: number): Promise<{ fps: number }> {
+  const res = await fetch("/vision/config/processing-fps", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ fps }),
+  });
+  if (!res.ok) throw new Error("Failed to set processing FPS");
+  return res.json();
 }

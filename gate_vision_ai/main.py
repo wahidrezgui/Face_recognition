@@ -41,6 +41,18 @@ if os.path.isfile(_config_path):
     except (json.JSONDecodeError, OSError) as e:
         logger.warning("Failed to read config file %s: %s", _config_path, e)
 
+# Override processing_fps from persisted python settings if present
+_python_settings_path = settings.python_settings_config_path
+if os.path.isfile(_python_settings_path):
+    try:
+        with open(_python_settings_path) as f:
+            _ps = json.load(f)
+        if "processing_fps" in _ps:
+            settings.processing_fps = int(_ps["processing_fps"])
+            logger.info("Loaded processing_fps from config: %d", settings.processing_fps)
+    except (json.JSONDecodeError, OSError, ValueError) as e:
+        logger.warning("Failed to read python settings %s: %s", _python_settings_path, e)
+
 capture: CameraCapture | None = None
 detector: FaceDetector | None = None
 backend: NetBackendClient | None = None
@@ -52,9 +64,11 @@ _latest_frame_jpg: bytes | None = None
 
 _roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_width, "height": settings.roi_height}
 
-# Simple bbox-based face tracker for track_id assignment
-_track_last_bbox: list[float] | None = None
+# Bbox-based face tracker: maps track_id → {bbox, last_seen (time.time())}
+_active_tracks: dict[int, dict] = {}
 _track_counter: int = 0
+_TRACK_IOU_THRESHOLD: float = 0.15   # min overlap to count as same track
+_TRACK_EXPIRY_S: float = 3.0         # drop track after 3s of no updates
 _window_manager = InteractionWindowManager(settings.window_duration_ms)
 _scheduler = IdentityScheduler(settings.max_identity_requests_per_window, settings.greeting_delay_ms)
 
@@ -71,11 +85,26 @@ def _bbox_iou(a: list[float], b: list[float]) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def _next_track_id(bbox: list[float]) -> int:
-    global _track_last_bbox, _track_counter
-    if _track_last_bbox is None or _bbox_iou(bbox, _track_last_bbox) < 0.3:
-        _track_counter += 1
-    _track_last_bbox = bbox
+def _match_or_create_track(bbox: list[float], now: float) -> int:
+    """Match bbox against all active tracks (highest IoU wins). Creates a new track if no match."""
+    global _track_counter
+    # Expire tracks that haven't been seen recently
+    expired = [tid for tid, d in _active_tracks.items() if now - d["t"] > _TRACK_EXPIRY_S]
+    for tid in expired:
+        del _active_tracks[tid]
+    # Find the active track with the best IoU
+    best_tid, best_iou = None, _TRACK_IOU_THRESHOLD
+    for tid, d in _active_tracks.items():
+        iou = _bbox_iou(bbox, d["bbox"])
+        if iou > best_iou:
+            best_iou, best_tid = iou, tid
+    if best_tid is not None:
+        _active_tracks[best_tid] = {"bbox": bbox, "t": now}
+        return best_tid
+    # No match — start a new track
+    _track_counter += 1
+    _active_tracks[_track_counter] = {"bbox": bbox, "t": now}
+    logger.debug("New track %d created (active: %d)", _track_counter, len(_active_tracks))
     return _track_counter
 
 # Mutable container for route closures (captured by reference at import time)
@@ -88,6 +117,7 @@ _state = {
     "latest_frame_jpg": _latest_frame_jpg,
     "roi": _roi,
     "stream_connections": 0,
+    "processing_fps": settings.processing_fps,
 }
 
 
@@ -125,9 +155,8 @@ async def _process_snapshot(snapshot, backend) -> None:
 
 async def _capture_loop():
     global _last_process_time, _stats, _latest_frame_jpg
-    logger.info("Background capture loop started (interval=%dms)", settings.capture_interval_ms)
+    logger.info("Background capture loop started (processing_fps=%d)", settings.processing_fps)
     last_detect_time = 0.0
-    detect_interval = settings.capture_interval_ms / 1000.0
     _frame_count = 0
 
     while True:
@@ -175,6 +204,7 @@ async def _capture_loop():
                 continue
 
             now = time.time()
+            detect_interval = 1.0 / max(1, _state.get("processing_fps", 3))
             if (now - last_detect_time) < detect_interval:
                 continue
             last_detect_time = now
@@ -198,7 +228,7 @@ async def _capture_loop():
             now_iso = datetime.now(timezone.utc).isoformat()
 
             for face in faces:
-                tid = _next_track_id(face["bbox"])
+                tid = _match_or_create_track(face["bbox"], now)
                 _window_manager.collect(tid, face, frame, face["confidence"], now_iso)
 
             if not _window_manager.is_window_open() and _window_manager.has_faces():

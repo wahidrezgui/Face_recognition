@@ -74,6 +74,7 @@ export default function DeskPage() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEventIdRef = useRef<string | null>(null);
+  const activePersonIdRef = useRef<string | null>(null);
 
   const clearTimers = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -83,6 +84,7 @@ export default function DeskPage() {
   const showEvent = useCallback((e: GateEvent) => {
     const m = classifyEvent(e);
     activeEventIdRef.current = e.eventId;
+    activePersonIdRef.current = e.personId ?? null;
     setEvent(e);
     setMode(m);
     setProgress(1);
@@ -102,6 +104,7 @@ export default function DeskPage() {
     dismissRef.current = setTimeout(() => {
       clearTimers();
       activeEventIdRef.current = null;
+      activePersonIdRef.current = null;
       setVisible(false);
       setTimeout(() => {
         setEvent(null);
@@ -118,10 +121,16 @@ export default function DeskPage() {
   useGateEventStream({
     onEvent: (e) => {
       if (activeEventIdRef.current === e.eventId) {
+        // Same track, higher confidence frame — update silently
         setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
-      } else {
-        showEvent(e);
+        return;
       }
+      if (e.personId && activePersonIdRef.current === e.personId) {
+        // Same identified person re-detected while card is still displayed — upgrade, don't restart
+        setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
+        return;
+      }
+      showEvent(e);
     },
     onOpen: () => setConnected(true),
     onError: () => setConnected(false),

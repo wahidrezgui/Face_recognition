@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import { setVideoSource, fetchTrainingMode, setTrainingMode, fetchLogUnknown, setLogUnknown } from "@/lib/api";
+import { setVideoSource, fetchTrainingMode, setTrainingMode, fetchLogUnknown, setLogUnknown, fetchProcessingFps, setProcessingFps } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -42,6 +42,8 @@ export default function ConfigPage() {
   const [trainingLoaded, setTrainingLoaded] = useState(false);
   const [logUnknown, setLogUnknownState] = useState(false);
   const [logUnknownLoaded, setLogUnknownLoaded] = useState(false);
+  const [processingFps, setProcessingFpsState] = useState(3);
+  const [processingFpsLoaded, setProcessingFpsLoaded] = useState(false);
 
   // Load current camera source and direction on mount
   useEffect(() => {
@@ -104,6 +106,20 @@ export default function ConfigPage() {
     })();
   }, []);
 
+  // Load processing FPS on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { fps } = await fetchProcessingFps();
+        setProcessingFpsState(fps);
+      } catch {
+        // service not reachable — keep default
+      } finally {
+        setProcessingFpsLoaded(true);
+      }
+    })();
+  }, []);
+
   const fetchCameras = useCallback(async () => {
     setCamLoading(true);
     try {
@@ -135,6 +151,7 @@ export default function ConfigPage() {
     try {
       await setTrainingMode(trainingMode);
       await setLogUnknown(logUnknown);
+      await setProcessingFps(processingFps);
       const res = await setVideoSource(getCameraSource(), direction);
       const dirMsg = `direction: ${res.direction ?? direction}`;
       const msg = `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}`;
@@ -300,6 +317,31 @@ export default function ConfigPage() {
               ))}
             </div>
           </div>
+
+          <Separator className="my-8 bg-gv-border" />
+          <section className="mb-8">
+            <h2 className="mb-1 text-sm font-bold tracking-wide">Processing FPS</h2>
+            <p className="mb-4 text-xs text-gv-muted">
+              Controls how many frames per second are sent to face detection. Lower values reduce CPU/GPU load without affecting accuracy. The camera preview stream is unaffected.
+            </p>
+            <div className="flex items-center gap-3">
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={processingFps}
+                disabled={!processingFpsLoaded}
+                onChange={(e) => {
+                  const v = parseInt(e.target.value, 10);
+                  if (!isNaN(v)) setProcessingFpsState(Math.min(30, Math.max(1, v)));
+                }}
+                className="w-24 px-3 py-2 rounded text-xs bg-[#0d1a2f] border border-[#1a2640] text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
+              />
+              <label className="text-xs text-gray-400">
+                {processingFpsLoaded ? `${processingFps} fps (1–30)` : "Loading..."}
+              </label>
+            </div>
+          </section>
 
           <Separator className="my-8 bg-gv-border" />
           <section className="mb-8">
