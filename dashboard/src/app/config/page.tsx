@@ -1,9 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { setVideoSource, fetchTrainingMode, setTrainingMode } from "@/lib/api";
+import { setVideoSource, fetchTrainingMode, setTrainingMode, fetchLogUnknown, setLogUnknown } from "@/lib/api";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -28,7 +27,6 @@ interface CameraInfo {
 }
 
 export default function ConfigPage() {
-  const queryClient = useQueryClient();
   const [sourceType, setSourceType] = useState<SourceType>("webcam");
   const [cameras, setCameras] = useState<CameraInfo[]>([]);
   const [camLoading, setCamLoading] = useState(true);
@@ -39,10 +37,11 @@ export default function ConfigPage() {
   const [rtspUrl, setRtspUrl] = useState("");
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [result, setResult] = useState<{ kind: "ok" | "warning" | "error"; message: string } | null>(null);
   const [trainingMode, setTrainingModeState] = useState(false);
   const [trainingLoaded, setTrainingLoaded] = useState(false);
-  const [trainingSaving, setTrainingSaving] = useState(false);
+  const [logUnknown, setLogUnknownState] = useState(false);
+  const [logUnknownLoaded, setLogUnknownLoaded] = useState(false);
 
   // Load current camera source and direction on mount
   useEffect(() => {
@@ -91,6 +90,20 @@ export default function ConfigPage() {
     })();
   }, []);
 
+  // Load log-unknown setting on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const { enabled } = await fetchLogUnknown();
+        setLogUnknownState(enabled);
+      } catch {
+        // endpoint not available — keep default
+      } finally {
+        setLogUnknownLoaded(true);
+      }
+    })();
+  }, []);
+
   const fetchCameras = useCallback(async () => {
     setCamLoading(true);
     try {
@@ -116,36 +129,28 @@ export default function ConfigPage() {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleApplyRestart() {
     setSaving(true);
     setResult(null);
     try {
+      await setTrainingMode(trainingMode);
+      await setLogUnknown(logUnknown);
       const res = await setVideoSource(getCameraSource(), direction);
       const dirMsg = `direction: ${res.direction ?? direction}`;
       const msg = `Source set to "${res.camera_source}" (${dirMsg})${res.message ? ". " + res.message : ""}`;
-      setResult({ ok: true, message: msg });
-      toast.success("Video source updated");
+      if (res.status === "warning") {
+        setResult({ kind: "warning", message: msg });
+        toast.warning(res.message || "Config saved – camera not yet ready");
+      } else {
+        setResult({ kind: "ok", message: msg });
+        toast.success("Configuration applied — AI service restarting");
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Unknown error";
-      setResult({ ok: false, message: msg });
+      setResult({ kind: "error", message: msg });
       toast.error(msg);
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function handleTrainingToggle(checked: boolean) {
-    setTrainingSaving(true);
-    try {
-      const { enabled } = await setTrainingMode(checked);
-      setTrainingModeState(enabled);
-      queryClient.invalidateQueries({ queryKey: ["training-mode"] });
-      toast.success(enabled ? "Training mode enabled" : "Training mode disabled");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to update training mode");
-    } finally {
-      setTrainingSaving(false);
     }
   }
 
@@ -157,9 +162,9 @@ export default function ConfigPage() {
       />
       <div className="mx-auto w-full max-w-xl flex-1 p-6">
         <h2 className="mb-1 text-sm font-bold tracking-wide">Video Source</h2>
-        <p className="mb-6 text-xs text-gv-muted">Change the camera input source. The AI service will restart automatically.</p>
+        <p className="mb-6 text-xs text-gv-muted">Change the camera input source.</p>
 
-        <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-5">
           {/* Source type selector */}
           <div className="space-y-2">
             <label className="text-xs font-medium text-gray-400">Source Type</label>
@@ -296,51 +301,79 @@ export default function ConfigPage() {
             </div>
           </div>
 
+          <Separator className="my-8 bg-gv-border" />
+          <section className="mb-8">
+            <h2 className="mb-1 text-sm font-bold tracking-wide">Log Unknown Events</h2>
+            <p className="mb-4 text-xs text-gv-muted">
+              When enabled, <strong className="text-gray-400">all</strong> detections are stored in the gate events log,
+              including unrecognized persons. When disabled, only identified events are recorded.
+            </p>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="log-unknown"
+                checked={logUnknown}
+                disabled={!logUnknownLoaded}
+                onCheckedChange={setLogUnknownState}
+              />
+              <label htmlFor="log-unknown" className="text-xs text-gray-400">
+                {logUnknownLoaded
+                  ? logUnknown
+                    ? "ON — storing all detections"
+                    : "OFF — storing only identified"
+                  : "Loading..."}
+              </label>
+            </div>
+          </section>
+
+          <Separator className="my-8 bg-gv-border" />
+          <section className="mb-8">
+            <h2 className="mb-1 text-sm font-bold tracking-wide">Training Mode</h2>
+            <p className="mb-4 text-xs text-gv-muted">
+              When enabled, unrecognized detections are stored in the training events table for review
+              and manual linking. When disabled, only identified events are stored.
+            </p>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="training-mode"
+                checked={trainingMode}
+                disabled={!trainingLoaded}
+                onCheckedChange={setTrainingModeState}
+              />
+              <label htmlFor="training-mode" className="text-xs text-gray-400">
+                {trainingLoaded
+                  ? trainingMode
+                    ? "ON — storing all detections"
+                    : "OFF — storing only identified"
+                  : "Loading..."}
+              </label>
+            </div>
+          </section>
+
+          {/* Apply & Restart button at the bottom */}
+          <Separator className="my-8 bg-gv-border" />
           <Button
-            type="submit"
             className="w-full"
             disabled={saving || (sourceType === "rtsp" && !rtspUrl)}
+            onClick={handleApplyRestart}
           >
-            {saving ? "Applying..." : "Apply & Restart"}
+            {saving ? "Applying & Restarting..." : "Apply & Restart"}
           </Button>
-        </form>
 
-        {/* Result feedback */}
-        {result && (
-          <div
-            className={`mt-4 p-3 rounded border text-xs ${result.ok
-                ? "bg-emerald-900/30 border-emerald-700/40 text-emerald-300"
-                : "bg-red-900/30 border-red-700/40 text-red-300"
-              }`}
-          >
-            {result.message}
-          </div>
-        )}
-
-        <Separator className="my-8 bg-gv-border" />
-        <section>
-          <h2 className="mb-1 text-sm font-bold tracking-wide">Training Mode</h2>
-          <p className="mb-4 text-xs text-gv-muted">
-            When enabled, <strong className="text-gray-400">all</strong> detected faces are stored in the event log,
-            including unrecognized ones. Use this to collect data for building your face database.
-            When disabled, only identified persons are persisted.
-          </p>
-          <div className="flex items-center gap-3">
-            <Switch
-              id="training-mode"
-              checked={trainingMode}
-              disabled={trainingSaving || !trainingLoaded}
-              onCheckedChange={handleTrainingToggle}
-            />
-            <label htmlFor="training-mode" className="text-xs text-gray-400">
-              {trainingLoaded
-                ? trainingMode
-                  ? "ON — storing all detections"
-                  : "OFF — storing only identified"
-                : "Loading..."}
-            </label>
-          </div>
-        </section>
+          {/* Result feedback */}
+          {result && (
+            <div
+              className={`mt-4 p-3 rounded border text-xs ${
+                  result.kind === "ok"
+                    ? "bg-emerald-900/30 border-emerald-700/40 text-emerald-300"
+                    : result.kind === "warning"
+                      ? "bg-amber-900/30 border-amber-700/40 text-amber-300"
+                      : "bg-red-900/30 border-red-700/40 text-red-300"
+                }`}
+            >
+              {result.message}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

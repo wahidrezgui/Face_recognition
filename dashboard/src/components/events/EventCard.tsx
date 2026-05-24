@@ -80,17 +80,12 @@ function FaceRing({ event }: { event: GateEvent }) {
 // ── Event card row ─────────────────────────────────────────────
 export function EventCard({
   event,
-  onApprove,
-  onBlock,
-  blocking,
+  onViewDetails,
 }: {
   event: GateEvent;
-  onApprove: () => void;
-  onBlock: () => void;
-  blocking: boolean;
+  onViewDetails?: () => void;
 }) {
   const col        = statusColor(event.status);
-  const canAct     = event.status === "NeedsReview" || event.status === "Unrecognized";
   const isReview   = event.status === "NeedsReview";
   const time       = new Date(event.timestamp);
 
@@ -161,49 +156,26 @@ export function EventCard({
         </span>
       </div>
 
-      {/* Action buttons */}
-      {canAct && (
-        <div className="flex gap-1.5 shrink-0">
-          <button
-            onClick={() => onApprove()}
-            disabled={blocking}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
-            style={{
-              background: "rgba(34,211,165,0.08)",
-              color: "#22d3a5",
-              border: "1px solid rgba(34,211,165,0.22)",
-              fontFamily: "'Oxanium', monospace",
-            }}
-            title="Open review dialog"
-          >
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
-            Accept
-          </button>
-          <button
-            onClick={() => onBlock()}
-            disabled={blocking}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
-            style={{
-              background: "rgba(248,113,113,0.08)",
-              color: "#f87171",
-              border: "1px solid rgba(248,113,113,0.22)",
-              fontFamily: "'Oxanium', monospace",
-            }}
-            title="Delete event"
-          >
-            {blocking ? (
-              <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
-            ) : (
-              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
-              </svg>
-            )}
-            Block
-          </button>
-        </div>
-      )}
+      {/* View Details button */}
+      <div className="flex gap-1.5 shrink-0">
+        <button
+          onClick={() => onViewDetails?.()}
+          className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all"
+          style={{
+            background: "rgba(99,102,241,0.08)",
+            color: "#818cf8",
+            border: "1px solid rgba(99,102,241,0.22)",
+            fontFamily: "'Oxanium', monospace",
+          }}
+          title="View event details"
+        >
+          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          View
+        </button>
+      </div>
     </div>
   );
 }

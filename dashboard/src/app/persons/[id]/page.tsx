@@ -9,12 +9,14 @@ import {
   Camera,
   Check,
   Loader2,
+  Pencil,
   Trash2,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
   fetchPersons,
+  updatePerson,
   updatePersonStatus,
   fetchPersonFaces,
   uploadFace,
@@ -22,6 +24,8 @@ import {
   deletePerson,
   fetchPersonPoses,
   poseCompletion,
+  deletePersonFace,
+  resetPersonFaces,
   type Person,
   type FaceImage,
 } from "@/lib/api";
@@ -32,6 +36,7 @@ import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
@@ -88,6 +93,9 @@ export default function PersonDetailPage() {
   const [imgCacheBust, setImgCacheBust] = useState(() => Date.now());
   const [welcomeMsg, setWelcomeMsg] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editName, setEditName] = useState("");
+  const [editDept, setEditDept] = useState("");
 
   const { data: persons = [], isLoading } = useQuery({
     queryKey: ["persons"],
@@ -130,6 +138,17 @@ export default function PersonDetailPage() {
       toast.error(err instanceof Error ? err.message : "Failed to save message"),
   });
 
+  const editMutation = useMutation({
+    mutationFn: (data: { fullName?: string; department?: string }) => updatePerson(id, data),
+    onSuccess: () => {
+      setEditOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["persons"] });
+      toast.success("Person updated");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to update person"),
+  });
+
   const deleteMutation = useMutation({
     mutationFn: () => deletePerson(id),
     onSuccess: () => {
@@ -140,6 +159,32 @@ export default function PersonDetailPage() {
     },
     onError: (err) =>
       toast.error(err instanceof Error ? err.message : "Failed to delete person"),
+  });
+
+  const deleteFaceMutation = useMutation({
+    mutationFn: (faceId: string) => deletePersonFace(id, faceId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["person-faces", id] });
+      queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
+      toast.success("Face removed");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to remove face"),
+  });
+
+  const [resetOpen, setResetOpen] = useState(false);
+  const resetFacesMutation = useMutation({
+    mutationFn: () => resetPersonFaces(id),
+    onSuccess: () => {
+      setResetOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["person-faces", id] });
+      queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
+      toast.success("Enrollment reset — ready to re-enroll");
+    },
+    onError: (err) =>
+      toast.error(err instanceof Error ? err.message : "Failed to reset enrollment"),
   });
 
   useEffect(() => {
@@ -249,9 +294,18 @@ export default function PersonDetailPage() {
           </div>
 
           <div className="min-w-0 flex-1 text-center sm:text-left">
-            <h1 className="font-display text-xl font-semibold tracking-wide text-white sm:text-2xl">
-              {person.fullName}
-            </h1>
+            <div className="flex items-center justify-center gap-2 sm:justify-start">
+              <h1 className="font-display text-xl font-semibold tracking-wide text-white sm:text-2xl">
+                {person.fullName}
+              </h1>
+              <button
+                onClick={() => { setEditName(person.fullName); setEditDept(person.department); setEditOpen(true); }}
+                className="inline-flex size-7 items-center justify-center rounded-md text-gv-muted transition-colors hover:bg-gv-panel hover:text-white"
+                title="Edit person"
+              >
+                <Pencil className="size-3.5" />
+              </button>
+            </div>
             <p className="mt-1 text-sm text-gv-muted">{person.department}</p>
             <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
               <span
@@ -391,9 +445,21 @@ export default function PersonDetailPage() {
             description="Reference images used for recognition"
             action={
               faces.length > 0 ? (
-                <Badge variant="outline" className="border-gv-border text-gv-muted">
-                  {faces.length}
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="border-gv-border text-gv-muted">
+                    {faces.length}
+                  </Badge>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 gap-1 border-red-900/50 px-2 text-xs text-red-300 hover:bg-red-950/40"
+                    onClick={() => setResetOpen(true)}
+                    disabled={resetFacesMutation.isPending}
+                  >
+                    <Trash2 className="size-3" />
+                    Reset
+                  </Button>
+                </div>
               ) : undefined
             }
             className="lg:col-span-2"
@@ -403,13 +469,21 @@ export default function PersonDetailPage() {
                 {faces.map((face: FaceImage) => (
                   <div
                     key={face.id}
-                    className="overflow-hidden rounded-lg border border-gv-border bg-black/20"
+                    className="group relative overflow-hidden rounded-lg border border-gv-border bg-black/20"
                   >
                     <img
                       src={`${API_BASE}${face.imageUrl}`}
                       alt="Enrolled face"
                       className="h-24 w-24 object-cover"
                     />
+                    <button
+                      onClick={() => deleteFaceMutation.mutate(face.id)}
+                      disabled={deleteFaceMutation.isPending}
+                      className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 transition-opacity group-hover:opacity-100"
+                      title="Remove this face"
+                    >
+                      <Trash2 className="size-5 text-red-400" />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -533,6 +607,85 @@ export default function PersonDetailPage() {
           }}
         />
       </div>
+
+      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
+        <DialogContent className="border-gv-border bg-gv-panel sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Reset enrollment</DialogTitle>
+            <DialogDescription className="text-gv-muted">
+              Delete all enrolled face images and embeddings for{" "}
+              <span className="font-medium text-foreground">{person.fullName}</span>. The person
+              record is kept — you can re-enroll immediately after.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button
+              variant="outline"
+              onClick={() => setResetOpen(false)}
+              disabled={resetFacesMutation.isPending}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => resetFacesMutation.mutate()}
+              disabled={resetFacesMutation.isPending}
+              className="gap-1.5"
+            >
+              {resetFacesMutation.isPending ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Trash2 className="size-3.5" />
+              )}
+              Reset enrollment
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="border-gv-border bg-gv-panel sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="font-display">Edit person</DialogTitle>
+            <DialogDescription className="text-gv-muted">
+              Update name and department details.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name" className="text-xs text-gv-muted">Full name</Label>
+              <Input
+                id="edit-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="border-gv-border bg-gv-bg text-sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-dept" className="text-xs text-gv-muted">Department</Label>
+              <Input
+                id="edit-dept"
+                value={editDept}
+                onChange={(e) => setEditDept(e.target.value)}
+                className="border-gv-border bg-gv-bg text-sm"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editMutation.isPending}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => editMutation.mutate({ fullName: editName, department: editDept })}
+              disabled={editMutation.isPending || !editName.trim()}
+              className="gap-1.5"
+            >
+              {editMutation.isPending ? <Loader2 className="size-3.5 animate-spin" /> : <Check className="size-3.5" />}
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
         <DialogContent className="border-gv-border bg-gv-panel sm:max-w-md">

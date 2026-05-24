@@ -1,295 +1,272 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fetchEvents, deleteEvent, type GateEvent } from "@/lib/api";
+import { useState, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  fetchEvents,
+  fetchEventActivity,
+  activityRangeBounds,
+  type GateEvent,
+  type EventActivityRange,
+} from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
-import { toast } from "sonner";
-import ReviewEventModal from "./ReviewEventModal";
-
+import { cn } from "@/lib/utils";
+import { PageHeader } from "@/components/layout/PageHeader";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { EventCard } from "@/components/events/EventCard";
+import EventDetailModal from "@/components/events/EventDetailModal";
+import { EventActivityStatsPanel } from "@/components/events/EventActivityStats";
+import { EventActivityChart } from "@/components/events/EventActivityChart";
 
-// ── Tabs config ──────────────────────────────────────────────── ────────────────────────────────────────────────
-const TABS = [
-  { value: "", label: "All", col: "#64748b" },
-  { value: "Identified", label: "Identified", col: "#22d3a5" },
-  { value: "NeedsReview", label: "Needs Review", col: "#f59e0b" },
+const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
+  { value: "today", label: "Today", hint: "Midnight UTC → now" },
+  { value: "week", label: "This week", hint: "Last 7 days" },
+  { value: "month", label: "This month", hint: "Calendar month" },
 ];
 
-// ── Page ───────────────────────────────────────────────────────
+const STATUS_TABS = [
+  { value: "", label: "All", col: "#64748b" },
+  { value: "Identified", label: "Identified", col: "#22d3a5" },
+  { value: "NeedsReview", label: "Needs review", col: "#f59e0b" },
+  { value: "Unrecognized", label: "Unknown", col: "#f87171" },
+];
+
+const LIMIT = 50;
+
 export default function EventsPage() {
   const queryClient = useQueryClient();
-  const [tab, setTab] = useState("");
+  const [period, setPeriod] = useState<EventActivityRange>("today");
+  const [statusTab, setStatusTab] = useState("");
   const [name, setName] = useState("");
   const [page, setPage] = useState(1);
-  const [newAlerts, setNewAlerts] = useState(0);
-  const [mutatingId, setMutatingId] = useState<string | null>(null);
-  const [mutatingOp, setMutatingOp] = useState<"block" | null>(null);
-  const invalidateRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const limit = 50;
+  const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["events", page, name, tab],
-    queryFn: () => fetchEvents(page, limit, name || undefined, tab || undefined),
+  const bounds = useMemo(() => activityRangeBounds(period), [period]);
+
+  const { data: activity, isLoading: activityLoading } = useQuery({
+    queryKey: ["events-activity", period],
+    queryFn: () => fetchEventActivity(period),
     refetchInterval: 30_000,
   });
 
-  const { data: reviewCount } = useQuery({
-    queryKey: ["events-count", "NeedsReview"],
-    queryFn: () => fetchEvents(1, 1, undefined, "NeedsReview"),
-    refetchInterval: 15_000,
+  const { data, isLoading } = useQuery({
+    queryKey: ["events", period, page, name, statusTab, bounds.from, bounds.to],
+    queryFn: () =>
+      fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to),
+    refetchInterval: 30_000,
   });
 
   useGateEventStream({
     onEvent: (evt) => {
-      if (evt.status === "NeedsReview") {
-        setNewAlerts((n) => n + 1);
-      }
-      queryClient.setQueryData(["events", page, name, tab], (old: { items?: GateEvent[]; total?: number } | undefined) => {
-        if (!old?.items) return old;
-        const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
-        return {
-          ...old,
-          items: [evt, ...filtered].slice(0, limit),
-          total: old.total! + (filtered.length === old.items.length ? 1 : 0),
-        };
-      });
-      clearTimeout(invalidateRef.current);
-      invalidateRef.current = setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ["events-count"] });
-      }, 2000);
+      const ts = new Date(evt.timestamp).getTime();
+      const fromMs = new Date(bounds.from).getTime();
+      const toMs = new Date(bounds.to).getTime();
+      if (ts < fromMs || ts >= toMs) return;
+
+      queryClient.setQueryData(
+        ["events", period, page, name, statusTab, bounds.from, bounds.to],
+        (old: { items?: GateEvent[]; total?: number } | undefined) => {
+          if (!old?.items) return old;
+          const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
+          return {
+            ...old,
+            items: [evt, ...filtered].slice(0, LIMIT),
+            total: old.total! + (filtered.length === old.items.length ? 1 : 0),
+          };
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ["events-activity", period] });
     },
   });
 
-  useEffect(() => () => clearTimeout(invalidateRef.current), []);
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
 
-  const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
-
-  const blockMutation = useMutation({
-    mutationFn: (id: string) => deleteEvent(id),
-    onMutate: (id) => { setMutatingId(id); setMutatingOp("block"); },
-    onSettled: () => { setMutatingId(null); setMutatingOp(null); },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["events"] });
-      toast.success("Event removed");
-    },
-    onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to remove event"),
-  });
-
-  const tabCounts: Record<string, number | undefined> = {
-    NeedsReview: reviewCount?.total,
-  };
-
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
+  const periodLabel = PERIOD_TABS.find((p) => p.value === period)?.label ?? period;
 
   return (
     <>
-      <div
-        className="flex flex-col"
-        style={{ minHeight: "calc(100vh - 44px)", background: "#060a15" }}
-      >
-        {/* ── Header ─────────────────────────────────────────── */}
-        <div
-          className="shrink-0 border-b px-6 py-4"
-          style={{ background: "#07090f", borderColor: "#1a2640" }}
-        >
-          <div className="max-w-6xl mx-auto flex items-center justify-between">
-            <div>
-              <h1
-                className="text-base font-semibold tracking-wide text-white"
-                style={{ fontFamily: "'Oxanium', monospace" }}
-              >
-                Gate Events
-              </h1>
-              <p className="text-[11px] text-gray-600 mt-0.5 font-mono">
-                {data ? `${data.total} records` : "—"}
-              </p>
-            </div>
+      <div className="flex min-h-[calc(100vh-44px)] flex-col bg-gv-bg">
+        <PageHeader
+          title="Gate events"
+          subtitle={
+            activity
+              ? `${activity.total} events · ${periodLabel}`
+              : "Activity and event log"
+          }
+        />
 
-            {newAlerts > 0 && (
-              <button
-                onClick={() => { setNewAlerts(0); setTab("NeedsReview"); setPage(1); }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold"
-                style={{
-                  background: "rgba(245,158,11,0.1)",
-                  color: "#f59e0b",
-                  border: "1px solid rgba(245,158,11,0.3)",
-                  fontFamily: "'Oxanium', monospace",
-                  animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite",
-                }}
-              >
-                <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-                {newAlerts} new alert{newAlerts > 1 ? "s" : ""}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* ── Tabs + search ──────────────────────────────────── */}
-        <div
-          className="shrink-0 border-b px-6 py-2.5"
-          style={{ background: "#07090f", borderColor: "#1a2640" }}
-        >
-          <div className="max-w-6xl mx-auto flex items-center gap-3 flex-wrap">
-            {/* Tabs */}
-            <div className="flex gap-0.5">
-              {TABS.map((t) => {
-                const active = tab === t.value;
-                const count = tabCounts[t.value];
-                return (
-                  <button
-                    key={t.value}
-                    onClick={() => { setTab(t.value); setPage(1); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-semibold transition-all"
-                    style={{
-                      fontFamily: "'Oxanium', monospace",
-                      color: active ? t.col : "#475569",
-                      background: active ? `${t.col}12` : "transparent",
-                      border: active ? `1px solid ${t.col}30` : "1px solid transparent",
-                    }}
+        {/* Period tabs */}
+        <div className="shrink-0 border-b border-gv-border bg-gv-panel-header px-4 py-3 sm:px-6">
+          <div className="mx-auto flex max-w-6xl flex-wrap gap-2">
+            {PERIOD_TABS.map((t) => {
+              const active = period === t.value;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => {
+                    setPeriod(t.value);
+                    setPage(1);
+                  }}
+                  className={cn(
+                    "rounded-lg border px-4 py-2 text-left transition-colors",
+                    active
+                      ? "border-blue-600/40 bg-blue-700/25"
+                      : "border-transparent bg-transparent hover:bg-white/5",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "block text-xs font-semibold",
+                      active ? "text-blue-300" : "text-gray-400",
+                    )}
                   >
                     {t.label}
-                    {count != null && count > 0 && (
-                      <span
-                        className="inline-flex items-center justify-center rounded-full text-[9px] font-bold min-w-[16px] h-4 px-1"
-                        style={{ background: `${t.col}20`, color: t.col }}
+                  </span>
+                  <span className="block text-[10px] text-gv-muted">{t.hint}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
+          <div className="mx-auto max-w-6xl space-y-5">
+            <EventActivityStatsPanel stats={activity} isLoading={activityLoading} />
+            <EventActivityChart stats={activity} range={period} isLoading={activityLoading} />
+
+            {/* Event list section */}
+            <div className="rounded-xl border border-gv-border bg-gv-panel">
+              <div className="flex flex-wrap items-center gap-3 border-b border-gv-border-subtle px-4 py-3">
+                <span className="font-display text-xs font-semibold uppercase tracking-widest text-gray-300">
+                  Event log
+                </span>
+                <div className="flex flex-wrap gap-0.5">
+                  {STATUS_TABS.map((t) => {
+                    const active = statusTab === t.value;
+                    return (
+                      <button
+                        key={t.value}
+                        type="button"
+                        onClick={() => {
+                          setStatusTab(t.value);
+                          setPage(1);
+                        }}
+                        className="rounded px-2.5 py-1 text-[11px] font-semibold transition-all"
+                        style={{
+                          color: active ? t.col : "#475569",
+                          background: active ? `${t.col}18` : "transparent",
+                          border: active ? `1px solid ${t.col}35` : "1px solid transparent",
+                        }}
                       >
-                        {count > 99 ? "99+" : count}
-                      </span>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {/* Search */}
-            <div className="relative ml-auto">
-              <svg
-                className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3"
-                style={{ color: "#374151" }}
-                fill="none" viewBox="0 0 24 24" stroke="currentColor"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-              </svg>
-              <input
-                placeholder="Search name…"
-                value={name}
-                onChange={(e) => { setName(e.target.value); setPage(1); }}
-                className="pl-7 pr-3 py-1.5 rounded text-xs"
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  border: "1px solid #1a2640",
-                  color: "#cbd5e1",
-                  outline: "none",
-                  width: 180,
-                }}
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* ── Column headers ─────────────────────────────────── */}
-        <div className="shrink-0 px-6 py-2" style={{ borderBottom: "1px solid #111827" }}>
-          <div
-            className="max-w-6xl mx-auto grid text-[10px] font-semibold uppercase tracking-widest"
-            style={{
-              color: "#374151",
-              fontFamily: "'Oxanium', monospace",
-              gridTemplateColumns: "58px 1fr auto auto auto",
-              gap: "1rem",
-              alignItems: "center",
-            }}
-          >
-            <span>Face</span>
-            <span>Identity</span>
-            <span className="hidden sm:block text-right">Time</span>
-            <span>Status</span>
-            <span>Action</span>
-          </div>
-        </div>
-
-        {/* ── List ───────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto px-6 py-3">
-          <div className="max-w-6xl mx-auto space-y-1.5">
-            {isLoading &&
-              Array.from({ length: 8 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="h-[68px] rounded-lg"
-                  style={{
-                    background: "#0a1020",
-                    border: "1px solid #1a2640",
-                    opacity: 1 - i * 0.1,
-                    animation: "pulse 2s cubic-bezier(0.4,0,0.6,1) infinite",
-                  }}
-                />
-              ))}
-
-            {!isLoading &&
-              data?.items.map((event) => (
-                <EventCard
-                  key={event.eventId}
-                  event={event}
-                  onApprove={() => setReviewEvent(event)}
-                  onBlock={() => blockMutation.mutate(event.eventId)}
-                  blocking={mutatingId === event.eventId && mutatingOp === "block"}
-                />
-              ))}
-
-            {!isLoading && data?.items.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-24 gap-3">
-                <svg className="w-10 h-10" style={{ color: "#1e293b" }} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                </svg>
-                <p className="text-sm text-gray-700">No events found</p>
+                        {t.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="relative ml-auto min-w-[160px] flex-1 sm:max-w-[200px]">
+                  <Input
+                    placeholder="Search name…"
+                    value={name}
+                    onChange={(e) => {
+                      setName(e.target.value);
+                      setPage(1);
+                    }}
+                    className="h-8 border-gv-border bg-gv-bg pl-8 text-xs"
+                  />
+                  <svg
+                    className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-gv-muted"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                    />
+                  </svg>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
 
-        {/* ── Pagination ─────────────────────────────────────── */}
-        {data && data.total > limit && (
-          <div
-            className="shrink-0 border-t px-6 py-3 flex items-center justify-between"
-            style={{ background: "#07090f", borderColor: "#1a2640" }}
-          >
-            <p className="text-xs font-mono text-gray-700">
-              {(page - 1) * limit + 1}–{Math.min(page * limit, data.total)}{" "}
-              <span className="text-gray-800">/ {data.total}</span>
-            </p>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page <= 1}
-                className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-25"
-                style={{ background: "#0d1424", border: "1px solid #1a2640", color: "#6b7280" }}
+              <div
+                className="grid px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-gv-muted"
+                style={{
+                  gridTemplateColumns: "58px 1fr auto auto auto",
+                  gap: "1rem",
+                  alignItems: "center",
+                }}
               >
-                ← Prev
-              </button>
-              <span className="text-xs font-mono px-2" style={{ color: "#374151" }}>
-                {page} / {totalPages}
-              </span>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page >= totalPages}
-                className="px-3 py-1 text-xs rounded transition-colors disabled:opacity-25"
-                style={{ background: "#0d1424", border: "1px solid #1a2640", color: "#6b7280" }}
-              >
-                Next →
-              </button>
+                <span>Face</span>
+                <span>Identity</span>
+                <span className="hidden sm:block text-right">Time</span>
+                <span>Status</span>
+                <span>Action</span>
+              </div>
+
+              <div className="space-y-1.5 px-4 pb-4">
+                {isLoading &&
+                  Array.from({ length: 6 }).map((_, i) => (
+                    <Skeleton key={i} className="h-[68px] w-full rounded-lg bg-gv-bg" />
+                  ))}
+
+                {!isLoading &&
+                  data?.items.map((event) => (
+                    <EventCard
+                      key={event.eventId}
+                      event={event}
+                      onViewDetails={() => setSelectedEvent(event)}
+                    />
+                  ))}
+
+                {!isLoading && data?.items.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <p className="text-sm text-gv-muted">No events in this period</p>
+                    <p className="mt-1 text-xs text-gv-muted/80">
+                      Try another tab or clear filters
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {data && data.total > LIMIT && (
+                <div className="flex items-center justify-between border-t border-gv-border-subtle px-4 py-3">
+                  <p className="font-mono text-xs text-gv-muted">
+                    {(page - 1) * LIMIT + 1}–{Math.min(page * LIMIT, data.total)}{" "}
+                    <span className="text-gv-muted/60">/ {data.total}</span>
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                      className="rounded border border-gv-border bg-gv-bg px-3 py-1 text-xs text-gv-muted transition-colors disabled:opacity-30 hover:text-gray-200"
+                    >
+                      ← Prev
+                    </button>
+                    <span className="px-2 font-mono text-xs text-gv-muted">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                      disabled={page >= totalPages}
+                      className="rounded border border-gv-border bg-gv-bg px-3 py-1 text-xs text-gv-muted transition-colors disabled:opacity-30 hover:text-gray-200"
+                    >
+                      Next →
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
-        )}
+        </div>
       </div>
 
-      {reviewEvent && (
-        <ReviewEventModal
-          event={reviewEvent}
-          onClose={() => setReviewEvent(null)}
-          onDone={() => setReviewEvent(null)}
-        />
+      {selectedEvent && (
+        <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       )}
     </>
   );

@@ -16,12 +16,41 @@ type DragMode = "move" | "nw" | "ne" | "sw" | "se" | "n" | "s" | "e" | "w" | nul
 
 const HANDLE_SIZE = 10;
 
+function getRenderBounds(img: HTMLImageElement) {
+  const ir = img.naturalWidth / img.naturalHeight;
+  const cr = img.clientWidth / img.clientHeight;
+  let renderWidth: number, renderHeight: number, offsetX: number, offsetY: number;
+  if (ir > cr) {
+    renderWidth = img.clientWidth;
+    renderHeight = img.clientWidth / ir;
+    offsetX = 0;
+    offsetY = (img.clientHeight - renderHeight) / 2;
+  } else {
+    renderHeight = img.clientHeight;
+    renderWidth = img.clientHeight * ir;
+    offsetX = (img.clientWidth - renderWidth) / 2;
+    offsetY = 0;
+  }
+  return { renderWidth, renderHeight, offsetX, offsetY };
+}
+
 function displayFromNative(nx: number, ny: number, img: HTMLImageElement) {
-  return { x: nx * (img.clientWidth / img.naturalWidth), y: ny * (img.clientHeight / img.naturalHeight) };
+  const { renderWidth, renderHeight, offsetX, offsetY } = getRenderBounds(img);
+  return { x: offsetX + nx * (renderWidth / img.naturalWidth), y: offsetY + ny * (renderHeight / img.naturalHeight) };
 }
 
 function nativeFromDisplay(dx: number, dy: number, img: HTMLImageElement) {
-  return { x: dx * (img.naturalWidth / img.clientWidth), y: dy * (img.naturalHeight / img.clientHeight) };
+  const { renderWidth, renderHeight, offsetX, offsetY } = getRenderBounds(img);
+  return { x: (dx - offsetX) * (img.naturalWidth / renderWidth), y: (dy - offsetY) * (img.naturalHeight / renderHeight) };
+}
+
+function clampRoi(roi: { x: number; y: number; width: number; height: number }, img: HTMLImageElement) {
+  return {
+    x: Math.max(0, Math.min(roi.x, img.naturalWidth - 20)),
+    y: Math.max(0, Math.min(roi.y, img.naturalHeight - 20)),
+    width: Math.max(20, Math.min(roi.width, img.naturalWidth - roi.x)),
+    height: Math.max(20, Math.min(roi.height, img.naturalHeight - roi.y)),
+  };
 }
 
 export function RoiEditor({ roi, onChange, onSave, onReset, editing, imageRef }: RoiEditorProps) {
@@ -34,67 +63,69 @@ export function RoiEditor({ roi, onChange, onSave, onReset, editing, imageRef }:
     const img = imageRef.current;
     if (!img || !roi) return;
     const d = displayFromNative(roi.x, roi.y, img);
-    dragRef.current = { startMx: e.clientX, startMy: e.clientY, startDx: d.x, startDy: d.y, startDw: roi.width * (img.clientWidth / img.naturalWidth), startDh: roi.height * (img.clientHeight / img.naturalHeight) };
+    const { renderWidth, renderHeight } = getRenderBounds(img);
+    dragRef.current = {
+      startMx: e.clientX, startMy: e.clientY,
+      startDx: d.x, startDy: d.y,
+      startDw: roi.width * (renderWidth / img.naturalWidth),
+      startDh: roi.height * (renderHeight / img.naturalHeight),
+    };
     setDragMode(mode);
   }, [roi, imageRef]);
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!dragMode || !imageRef.current || !roi) return;
     const img = imageRef.current;
+    const { renderWidth, renderHeight } = getRenderBounds(img);
     const d = dragRef.current;
-    const dx = (e.clientX - d.startMx) * (img.naturalWidth / img.clientWidth);
-    const dy = (e.clientY - d.startMy) * (img.naturalHeight / img.clientHeight);
     const sdx = e.clientX - d.startMx;
     const sdy = e.clientY - d.startMy;
+    const scaleX = img.naturalWidth / renderWidth;
+    const scaleY = img.naturalHeight / renderHeight;
     let nx = roi.x, ny = roi.y, nw = roi.width, nh = roi.height;
 
     switch (dragMode) {
       case "move":
-        nx = Math.max(0, roi.x + dx);
-        ny = Math.max(0, roi.y + dy);
+        nx = roi.x + sdx * scaleX;
+        ny = roi.y + sdy * scaleY;
         break;
       case "se":
-        nw = Math.max(20, d.startDw + sdx) * (img.naturalWidth / img.clientWidth);
-        nh = Math.max(20, d.startDh + sdy) * (img.naturalHeight / img.clientHeight);
+        nw = Math.max(20, d.startDw + sdx) * scaleX;
+        nh = Math.max(20, d.startDh + sdy) * scaleY;
         break;
       case "sw":
-        const swW = Math.max(20, d.startDw - sdx) * (img.naturalWidth / img.clientWidth);
-        nx = roi.x + (d.startDw - swW * (img.clientWidth / img.naturalWidth)) * (img.naturalWidth / img.clientWidth);
-        nw = swW;
-        nh = Math.max(20, d.startDh + sdy) * (img.naturalHeight / img.clientHeight);
+        nw = Math.max(20, d.startDw - sdx) * scaleX;
+        nx = roi.x + (roi.width - nw);
+        nh = Math.max(20, d.startDh + sdy) * scaleY;
         break;
       case "ne":
-        nw = Math.max(20, d.startDw + sdx) * (img.naturalWidth / img.clientWidth);
-        const neH = Math.max(20, d.startDh - sdy) * (img.naturalHeight / img.clientHeight);
-        ny = roi.y + (d.startDh - neH * (img.clientHeight / img.naturalHeight)) * (img.naturalHeight / img.clientHeight);
-        nh = neH;
+        nw = Math.max(20, d.startDw + sdx) * scaleX;
+        nh = Math.max(20, d.startDh - sdy) * scaleY;
+        ny = roi.y + (roi.height - nh);
         break;
       case "nw":
-        const nwW = Math.max(20, d.startDw - sdx) * (img.naturalWidth / img.clientWidth);
-        nx = roi.x + (d.startDw - nwW * (img.clientWidth / img.naturalWidth)) * (img.naturalWidth / img.clientWidth);
-        nw = nwW;
-        const nwH = Math.max(20, d.startDh - sdy) * (img.naturalHeight / img.clientHeight);
-        ny = roi.y + (d.startDh - nwH * (img.clientHeight / img.naturalHeight)) * (img.naturalHeight / img.clientHeight);
-        nh = nwH;
+        nw = Math.max(20, d.startDw - sdx) * scaleX;
+        nx = roi.x + (roi.width - nw);
+        nh = Math.max(20, d.startDh - sdy) * scaleY;
+        ny = roi.y + (roi.height - nh);
         break;
       case "n":
-        const nH = Math.max(20, d.startDh - sdy) * (img.naturalHeight / img.clientHeight);
-        ny = roi.y + (d.startDh - nH * (img.clientHeight / img.naturalHeight)) * (img.naturalHeight / img.clientHeight);
-        nh = nH;
+        nh = Math.max(20, d.startDh - sdy) * scaleY;
+        ny = roi.y + (roi.height - nh);
         break;
       case "s":
-        nh = Math.max(20, d.startDh + sdy) * (img.naturalHeight / img.clientHeight);
+        nh = Math.max(20, d.startDh + sdy) * scaleY;
         break;
       case "w":
-        const wW = Math.max(20, d.startDw - sdx) * (img.naturalWidth / img.clientWidth);
-        nx = roi.x + (d.startDw - wW * (img.clientWidth / img.naturalWidth)) * (img.naturalWidth / img.clientWidth);
-        nw = wW;
+        nw = Math.max(20, d.startDw - sdx) * scaleX;
+        nx = roi.x + (roi.width - nw);
         break;
       case "e":
-        nw = Math.max(20, d.startDw + sdx) * (img.naturalWidth / img.clientWidth);
+        nw = Math.max(20, d.startDw + sdx) * scaleX;
         break;
     }
-    onChange({ x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) });
+    const clamped = clampRoi({ x: Math.round(nx), y: Math.round(ny), width: Math.round(nw), height: Math.round(nh) }, img);
+    onChange(clamped);
   }, [dragMode, roi, onChange, imageRef]);
 
   const onPointerUp = useCallback(() => {
@@ -104,11 +135,12 @@ export function RoiEditor({ roi, onChange, onSave, onReset, editing, imageRef }:
   if (!editing || !roi || !imageRef.current || roi.width === 0) return null;
 
   const img = imageRef.current;
+  const { renderWidth, renderHeight, offsetX, offsetY } = getRenderBounds(img);
   const displayRoi = {
-    x: roi.x * (img.clientWidth / img.naturalWidth),
-    y: roi.y * (img.clientHeight / img.naturalHeight),
-    width: roi.width * (img.clientWidth / img.naturalWidth),
-    height: roi.height * (img.clientHeight / img.naturalHeight),
+    x: offsetX + roi.x * (renderWidth / img.naturalWidth),
+    y: offsetY + roi.y * (renderHeight / img.naturalHeight),
+    width: roi.width * (renderWidth / img.naturalWidth),
+    height: roi.height * (renderHeight / img.naturalHeight),
   };
 
   const h = (pos: string) => {

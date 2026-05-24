@@ -73,6 +73,7 @@ export default function DeskPage() {
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const activeEventIdRef = useRef<string | null>(null);
 
   const clearTimers = () => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -81,6 +82,7 @@ export default function DeskPage() {
 
   const showEvent = useCallback((e: GateEvent) => {
     const m = classifyEvent(e);
+    activeEventIdRef.current = e.eventId;
     setEvent(e);
     setMode(m);
     setProgress(1);
@@ -99,6 +101,7 @@ export default function DeskPage() {
 
     dismissRef.current = setTimeout(() => {
       clearTimers();
+      activeEventIdRef.current = null;
       setVisible(false);
       setTimeout(() => {
         setEvent(null);
@@ -113,7 +116,13 @@ export default function DeskPage() {
   }, []);
 
   useGateEventStream({
-    onEvent: showEvent,
+    onEvent: (e) => {
+      if (activeEventIdRef.current === e.eventId) {
+        setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
+      } else {
+        showEvent(e);
+      }
+    },
     onOpen: () => setConnected(true),
     onError: () => setConnected(false),
   });

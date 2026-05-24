@@ -4,7 +4,14 @@
       "Bash(Get-ChildItem -Path \"c:\\\\Users\\\\wahid\\\\Documents\\\\DevelopmentFolder\\\\FACE_RECOGNITION\" -Directory)",
       "Bash(Select-Object Name)",
       "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Get-Process -Id $_ | Select-Object Id, ProcessName })",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(dotnet build *)",
+      "Bash(Select-String -Pattern \"error|warning|Build\")",
+      "Bash(Select-Object -First 30)",
+      "Bash(node -e ' *)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5000/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5001/health)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5274/health)"
     ]
   }
 }

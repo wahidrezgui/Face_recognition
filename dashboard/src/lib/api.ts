@@ -1,10 +1,16 @@
 import { authHeaders, clearToken } from "./auth";
 
+let _redirectingToLogin = false;
+
 async function apiFetch(url: string, options?: RequestInit): Promise<Response> {
   const res = await fetch(url, options);
   if (res.status === 401 && typeof window !== "undefined") {
-    clearToken();
-    window.location.href = "/login";
+    const onLoginPage = window.location.pathname === "/login";
+    if (!_redirectingToLogin && !onLoginPage) {
+      _redirectingToLogin = true;
+      clearToken();
+      window.location.href = "/login";
+    }
   }
   return res;
 }
@@ -23,6 +29,9 @@ export interface GateEvent {
   faceImageUrl?: string | null;
   welcomeMessage?: string | null;
   department?: string | null;
+  emotion?: string | null;
+  age?: number | null;
+  gender?: string | null;
 }
 
 export interface Person {
@@ -35,15 +44,75 @@ export interface Person {
   welcomeMessage?: string | null;
 }
 
+export type EventActivityRange = "today" | "week" | "month";
+
+export interface EventDayBucket {
+  date: string;
+  total: number;
+  identified: number;
+}
+
+export interface EventHourBucket {
+  hour: number;
+  total: number;
+}
+
+export interface EventActivityStats {
+  range: EventActivityRange;
+  from: string;
+  to: string;
+  total: number;
+  identified: number;
+  needsReview: number;
+  unrecognized: number;
+  entries: number;
+  exits: number;
+  uniquePersons: number;
+  avgConfidence: number;
+  byDay: EventDayBucket[];
+  byHour?: EventHourBucket[] | null;
+}
+
+/** UTC range bounds aligned with GET /api/events/activity. */
+export function activityRangeBounds(range: EventActivityRange): { from: string; to: string } {
+  const now = new Date();
+  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const tomorrow = new Date(todayStart);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+
+  if (range === "week") {
+    const from = new Date(todayStart);
+    from.setUTCDate(from.getUTCDate() - 6);
+    return { from: from.toISOString(), to: tomorrow.toISOString() };
+  }
+  if (range === "month") {
+    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    return { from: from.toISOString(), to: tomorrow.toISOString() };
+  }
+  return { from: todayStart.toISOString(), to: tomorrow.toISOString() };
+}
+
+export async function fetchEventActivity(range: EventActivityRange): Promise<EventActivityStats> {
+  const res = await apiFetch(`${API_BASE}/api/events/activity?range=${range}`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to fetch event activity");
+  return res.json();
+}
+
 export async function fetchEvents(
   page = 1,
   limit = 50,
   name?: string,
-  status?: string
+  status?: string,
+  from?: string,
+  to?: string,
 ): Promise<{ items: GateEvent[]; total: number; page: number; limit: number }> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (name) params.set("name", name);
   if (status) params.set("status", status);
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
   const res = await apiFetch(`${API_BASE}/api/events?${params}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Failed to fetch events");
   return res.json();
@@ -85,6 +154,16 @@ export async function updateWelcomeMessage(id: string, welcomeMessage: string | 
     body: JSON.stringify({ welcomeMessage }),
   });
   if (!res.ok) throw new Error("Failed to update welcome message");
+  return res.json();
+}
+
+export async function updatePerson(id: string, data: { fullName?: string; department?: string }) {
+  const res = await apiFetch(`${API_BASE}/api/persons/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) throw new Error("Failed to update person");
   return res.json();
 }
 
@@ -244,6 +323,36 @@ export async function fetchPersonFaces(personId: string): Promise<FaceImage[]> {
   return res.json();
 }
 
+export async function fetchTrainingEvents(
+  page = 1,
+  limit = 50,
+  name?: string,
+  status?: string
+): Promise<{ items: GateEvent[]; total: number; page: number; limit: number }> {
+  const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (name) params.set("name", name);
+  if (status) params.set("status", status);
+  const res = await apiFetch(`${API_BASE}/api/training-events?${params}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch training events");
+  return res.json();
+}
+
+export async function deletePersonFace(personId: string, faceId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}/faces/${faceId}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to delete face");
+}
+
+export async function resetPersonFaces(personId: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/persons/${personId}/faces`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to reset enrollment");
+}
+
 export async function uploadFace(
   personId: string,
   file: File
@@ -336,6 +445,22 @@ export async function setVideoSource(cameraSource: string, direction?: string): 
     try { const b = await res.json(); if (b?.detail) detail = b.detail; } catch { }
     throw new Error(detail);
   }
+  return res.json();
+}
+
+export async function fetchLogUnknown(): Promise<{ enabled: boolean }> {
+  const res = await apiFetch(`${API_BASE}/api/config/log-unknown`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch log unknown setting");
+  return res.json();
+}
+
+export async function setLogUnknown(enabled: boolean): Promise<{ enabled: boolean }> {
+  const res = await apiFetch(`${API_BASE}/api/config/log-unknown`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ enabled }),
+  });
+  if (!res.ok) throw new Error("Failed to set log unknown setting");
   return res.json();
 }
 

@@ -6,13 +6,7 @@
     "tone": "warm",
     "type": "general"
   },
-  {
-    "id": "ww-002",
-    "text": "دام تألقك وإبداعك يا بطل",
-    "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
+
   {
     "id": "ww-003",
     "text": "أنت قدوة حسنة للجميع استمر",
@@ -217,41 +211,6 @@
     "type": "general"
   },
   {
-    "id": "ww-032",
-    "text": "يومك سعيد ومليء بالإنجازات",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-033",
-    "text": "إنتاجك المتميز دليل على إبداعك",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-034",
-    "text": "تميزك في العمل مصدر فخر للجميع",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-035",
-    "text": "أعمالك الرائعة تتحدث عنك",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-036",
-    "text": "إنجازك اليوم كان أكثر من رائع",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-037",
     "text": "الله يزيدك من علمه وفضله",
     "category": "encouragement",
@@ -452,62 +411,6 @@
     "text": "الله يبعث فيك النشاط والحيوية",
     "category": "wellness",
     "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-066",
-    "text": "يوم دراسي موفق ومليء بالعلم",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-067",
-    "text": "أعمالك المنظمة تدل على احترافيتك",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-068",
-    "text": "استمر في العطاء فأنت قدوة",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-069",
-    "text": "إنتاجيتك العالية مصدر إلهام للجميع",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-070",
-    "text": "كل يوم تثبت أنك الأفضل",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-071",
-    "text": "ما شاء الله إنجازك اليوم يفتح النفس",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-072",
-    "text": "الله يبارك لك في وقتك وجهدك",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-073",
-    "text": "انتاجك المتميز دليل على جديتك",
-    "category": "productivity",
-    "tone": "professional",
     "type": "general"
   },
   {
@@ -791,62 +694,6 @@
     "type": "general"
   },
   {
-    "id": "ww-114",
-    "text": "استمرارك في الإبداع يثلج الصدر",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-115",
-    "text": "أعمالك المميزة تتحدث عن نفسها",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-116",
-    "text": "إنجازك اليوم كان ممتازاً",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-117",
-    "text": "الله يبارك لك في وقتك",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-118",
-    "text": "انتاجك متميز دائماً وأبداً",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-119",
-    "text": "نظامك وإتقانك في العمل يلفت الانتباه",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-120",
-    "text": "كل يوم انتاج وتألق",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-121",
-    "text": "أعمالك تنم عن احترافية عالية",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
     "id": "ww-122",
     "text": "مزيداً من التقدم والازدهار",
     "category": "success",
@@ -1099,55 +946,6 @@
     "type": "general"
   },
   {
-    "id": "ww-158",
-    "text": "نشاطك وحيويتك ينعش المكان",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-159",
-    "text": "حماسك للعمل يعدي للجميع",
-    "category": "productivity",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-160",
-    "text": "ما شاء الله على همتك العالية",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-161",
-    "text": "أسلوبك في العمل احترافي جداً",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-162",
-    "text": "إنتاجك اليوم أسعدنا جميعاً",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-163",
-    "text": "نظامك وترتيبك في العمل ممتاز",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-164",
-    "text": "كل عمل تنجزه يزيدنا فخراً",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-165",
     "text": "الله يزيدك من التوفيق والنجاح",
     "category": "success",
@@ -1316,27 +1114,6 @@
     "type": "general"
   },
   {
-    "id": "ww-190",
-    "text": "عملية اتقانك ملفتة للغاية",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-191",
-    "text": "دقة إنجازك تدل على احترافك",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-192",
-    "text": "استمرارية الإنتاج دليل نجاح",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
     "id": "ww-193",
     "text": "بوركت أيامك يا صانع الأمل",
     "category": "wellness",
@@ -1390,27 +1167,6 @@
     "text": "تواصلك الرائع مع الجميع مميز",
     "category": "encouragement",
     "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-201",
-    "text": "كل عمل تقوم به يثلج الصدر",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-202",
-    "text": "ابداعك في العمل يبهر الجميع",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-203",
-    "text": "ما شاء الله أداء ممتاز جداً",
-    "category": "productivity",
-    "tone": "professional",
     "type": "general"
   },
   {
@@ -1491,13 +1247,6 @@
     "type": "general"
   },
   {
-    "id": "ww-215",
-    "text": "كل يوم أنت في تطور وتقدم",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-216",
     "text": "موهبتك الفريدة تأخذك للأفضل",
     "category": "encouragement",
@@ -1530,34 +1279,6 @@
     "text": "عقبال القمة القادمة يا مبدع",
     "category": "success",
     "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-221",
-    "text": "نشاطك وهمتك عالية جداً",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-222",
-    "text": "إنجازك اليوم يستحق وسام الشرف",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-223",
-    "text": "العمل الجميعي معك متعة",
-    "category": "productivity",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-224",
-    "text": "جهدك المتميز لا يخفى على أحد",
-    "category": "productivity",
-    "tone": "professional",
     "type": "general"
   },
   {
@@ -1684,48 +1405,6 @@
     "text": "عساك دائم في قمة السعادة",
     "category": "wellness",
     "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-243",
-    "text": "أعمالك المتقنة ترفع من شأنك",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-244",
-    "text": "تميزك في العمل يلفت الأنظار",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-246",
-    "text": "أداؤك المتميز يفوق التوقعات",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-247",
-    "text": "جهدك المبارك مقدر ومشكور",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-248",
-    "text": "انتاجك المتزايد دليل نجاحك",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-249",
-    "text": "احترافيتك في العمل مصدر فخر",
-    "category": "productivity",
-    "tone": "professional",
     "type": "general"
   },
   {
@@ -1873,48 +1552,6 @@
     "text": "بوركت جهودك المخلصة يا غالي",
     "category": "encouragement",
     "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-271",
-    "text": "تعاونك مع الفريق رائع",
-    "category": "productivity",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-272",
-    "text": "روح الفريق التي تتمتع بها مميزة",
-    "category": "productivity",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-273",
-    "text": "التزامك في العمل محل تقدير",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-274",
-    "text": "دقة مواعيدك واحترامك للوقت",
-    "category": "productivity",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-275",
-    "text": "إنتاجك المتميز عنوان نجاحك",
-    "category": "productivity",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-276",
-    "text": "عملك المتقن يدل على احترافيتك",
-    "category": "productivity",
-    "tone": "professional",
     "type": "general"
   },
   {
@@ -2068,13 +1705,6 @@
     "id": "ww-298",
     "text": "بوركت خطواتك يا ناجح",
     "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-299",
-    "text": "تميزك في العمل يفوق الخيال",
-    "category": "productivity",
     "tone": "warm",
     "type": "general"
   },

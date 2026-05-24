@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/persons", label: "Persons" },
   { href: "/events", label: "Events" },
+  { href: "/training-events", label: "Training" },
   { href: "/config", label: "Config" },
 ];
 
@@ -30,12 +31,13 @@ const DISPLAY_LINKS = [
 
 export default function NavBar() {
   const pathname = usePathname();
-  const { logout } = useAuth();
+  const { logout, authenticated } = useAuth();
   const { data: training } = useQuery({
     queryKey: ["training-mode"],
     queryFn: fetchTrainingMode,
     staleTime: 60_000,
     retry: false,
+    enabled: authenticated,
   });
 
   const hideNav = pathname === "/login" || pathname.startsWith("/kiosk");
@@ -55,6 +57,8 @@ export default function NavBar() {
       {NAV_ITEMS.map(({ href, label }) => {
         const active = pathname.startsWith(href);
         const showTrainingBadge = href === "/config" && training?.enabled;
+        const showReviewBadge = href === "/training-events";
+
         return (
           <Link
             key={href}
@@ -67,6 +71,14 @@ export default function NavBar() {
             )}
           >
             {label}
+            {showReviewBadge && (
+              <Badge
+                variant="outline"
+                className="h-4 border-amber-600/40 bg-amber-950/50 px-1 text-[9px] text-amber-400"
+              >
+                Review
+              </Badge>
+            )}
             {showTrainingBadge && (
               <Badge
                 variant="outline"

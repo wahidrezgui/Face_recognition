@@ -17,6 +17,12 @@ public interface IVectorStore
     /// <summary>Delete all embedding points belonging to a person.</summary>
     Task DeleteByPersonAsync(Guid personId);
 
+    /// <summary>Delete a single embedding point by its ID.</summary>
+    Task DeleteByIdAsync(Guid embeddingId);
+
     /// <summary>Ensure the target collection exists (idempotent).</summary>
     Task EnsureCollectionAsync();
+
+    /// <summary>Return the distinct pose labels stored for a person (e.g. "frontal", "left").</summary>
+    Task<IReadOnlyList<string>> GetPosesByPersonAsync(Guid personId);
 }

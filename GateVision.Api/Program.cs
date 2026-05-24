@@ -43,6 +43,7 @@ if (!string.IsNullOrEmpty(redisConnection))
 
 builder.Services.AddSingleton(new CacheService(redis));
 builder.Services.AddSingleton<TrainingModeService>();
+builder.Services.AddSingleton<LogUnknownService>();
 builder.Services.AddSingleton<EventBufferService>();
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
@@ -150,7 +151,6 @@ _ = Task.Run(async () =>
 app.MapIdentifyEndpoints();
 app.MapPersonEndpoints();
 app.MapEventEndpoints();
-app.MapImageEndpoints();
 app.MapConfigEndpoints();
 
 app.MapPost("/api/auth/login", (LoginDto dto, HttpRequest request, ILogger<Program> logger) =>

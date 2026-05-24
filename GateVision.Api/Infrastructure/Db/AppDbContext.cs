@@ -9,6 +9,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Person> Persons => Set<Person>();
     public DbSet<GateEvent> GateEvents => Set<GateEvent>();
+    public DbSet<TrainingEvent> TrainingEvents => Set<TrainingEvent>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,17 +29,24 @@ public class AppDbContext : DbContext
         {
             e.ToTable("gate_events");
             e.HasKey(g => g.Id);
-            e.Property(g => g.PersonName).HasMaxLength(200);
             e.Property(g => g.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
             e.Property(g => g.Direction)
                 .HasConversion<string>()
                 .HasMaxLength(10);
-            e.Property(g => g.FaceImageBase64).HasColumnName("FaceImageBase64");
-            e.Property(g => g.FaceImagePath).HasColumnName("FaceImagePath");
-            e.Property(g => g.WelcomeMessage).HasMaxLength(500);
-            e.Property(g => g.Department).HasMaxLength(100);
+        });
+
+        modelBuilder.Entity<TrainingEvent>(e =>
+        {
+            e.ToTable("training_events");
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Status)
+                .HasConversion<string>()
+                .HasMaxLength(20);
+            e.Property(t => t.Direction)
+                .HasConversion<string>()
+                .HasMaxLength(10);
         });
     }
 }

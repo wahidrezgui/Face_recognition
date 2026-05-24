@@ -62,7 +62,7 @@ class NetBackendClient:
             reset_timeout=settings.net_circuit_reset_timeout,
         )
 
-    async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0) -> dict | None:
+    async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> dict | None:
         if not self.circuit_breaker.allow_request():
             logger.warning("Circuit breaker OPEN — skipping identify request")
             return {"circuit_open": True}
@@ -74,6 +74,9 @@ class NetBackendClient:
             "direction": direction,
             "face_crop": face_crop_b64,
             "track_id": track_id,
+            "age": int(age) if age is not None else None,
+            "gender": gender,
+            "emotion": emotion,
         }
         try:
             resp = await self.client.post(settings.net_identify_path, json=body)

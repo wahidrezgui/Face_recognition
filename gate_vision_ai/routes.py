@@ -155,6 +155,7 @@ def register_routes(app, state: dict):
         face = faces[0]
         if face.get("pose"):
             pitch, yaw, _roll = face["pose"]
+            pitch = -pitch  # InsightFace: +pitch=up; our convention: +pitch=down
         else:
             yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
         return {"detected": True, "yaw": round(float(yaw), 1), "pitch": round(float(pitch), 1)}
@@ -193,6 +194,7 @@ def register_routes(app, state: dict):
                 # ── Detect pose for this frame ──
                 if face.get("pose"):
                     pitch, yaw, _roll = face["pose"]
+                    pitch = -pitch
                 else:
                     yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
                 poses.append(classify_pose(yaw, pitch))
@@ -224,16 +226,39 @@ def register_routes(app, state: dict):
         frame = decode_base64_frame(req.frame)
         if frame is None or frame.size == 0:
             raise HTTPException(400, "Failed to decode image")
-        faces = det.detect(frame)
+
+        # Gate camera crops are tight bbox cuts — no margin.
+        # SCRFD (InsightFace detector) needs the face to occupy a fraction of the
+        # image to locate landmarks and score confidence. Add ~40% padding on each
+        # side using BORDER_REPLICATE to avoid black-edge artifacts.
+        h, w = frame.shape[:2]
+        pad_y = max(int(h * 0.4), 20)
+        pad_x = max(int(w * 0.4), 20)
+        detect_frame = cv2.copyMakeBorder(
+            frame, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REPLICATE
+        )
+        # Upscale if still too small for the detector (min 160px on shorter side)
+        dh, dw = detect_frame.shape[:2]
+        if dw < 160 or dh < 160:
+            scale = max(160 / dw, 160 / dh)
+            detect_frame = cv2.resize(
+                detect_frame,
+                (int(dw * scale), int(dh * scale)),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
+
+        faces = det.detect(detect_frame)
         if not faces:
             raise HTTPException(400, "No face detected in image")
         face = faces[0]
         emb = extract_embedding(face)
         if emb is None:
             raise HTTPException(400, "Failed to extract embedding from image")
-        crop = crop_face_b64(frame, face["bbox"])
+        # Crop from detect_frame so bbox coords are consistent with the detection
+        crop = crop_face_b64(detect_frame, face["bbox"])
         if face.get("pose"):
             pitch, yaw, _roll = face["pose"]
+            pitch = -pitch
         else:
             yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
         pose = classify_pose(yaw, pitch)
@@ -257,6 +282,9 @@ def register_routes(app, state: dict):
             "camera_open": cap is not None and cap.cap.isOpened() if cap else False,
             "detector_loaded": s["detector"] is not None,
             "capture_interval_ms": settings.capture_interval_ms,
+            "window_duration_ms": settings.window_duration_ms,
+            "max_identity_requests_per_window": settings.max_identity_requests_per_window,
+            "greeting_delay_ms": settings.greeting_delay_ms,
             "camera_source": settings.camera_source,
             "direction": settings.direction,
             "stats": s["stats"],

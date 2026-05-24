@@ -11,6 +11,14 @@ public static class PersonEndpoints
 {
     private static readonly string FaceImagesDir = Path.Combine(Directory.GetCurrentDirectory(), "FaceImages");
 
+    private static int CountEnrolledFaces(Guid personId)
+    {
+        var dir = Path.Combine(FaceImagesDir, personId.ToString());
+        if (!Directory.Exists(dir)) return 0;
+        return Directory.EnumerateFiles(dir)
+            .Count(f => Guid.TryParse(Path.GetFileNameWithoutExtension(f), out _));
+    }
+
     public static void MapPersonEndpoints(this WebApplication app)
     {
         app.MapGet("/api/persons/count", async (AppDbContext db, CancellationToken ct) =>
@@ -32,15 +40,54 @@ public static class PersonEndpoints
                 person.Department,
                 enrollmentStatus = person.EnrollmentStatus.ToString(),
                 person.CreatedAt,
-                faceCount = 0, // Embeddings stored in Qdrant
+                faceCount = CountEnrolledFaces(id),
                 person.WelcomeMessage,
             });
         });
 
-        app.MapGet("/api/persons/{id:guid}/faces", async (Guid id) =>
+        app.MapGet("/api/persons/{id:guid}/faces", (Guid id) =>
         {
-            // Face images stored on disk; index metadata in Qdrant
-            return Results.Ok(Array.Empty<object>());
+            var dir = Path.Combine(FaceImagesDir, id.ToString());
+            if (!Directory.Exists(dir)) return Results.Ok(Array.Empty<object>());
+
+            var faces = Directory.EnumerateFiles(dir)
+                .Where(f => Guid.TryParse(Path.GetFileNameWithoutExtension(f), out _))
+                .Select(f =>
+                {
+                    var faceId = Path.GetFileNameWithoutExtension(f);
+                    return new { id = faceId, imageUrl = $"/api/persons/{id}/face-image/{faceId}" };
+                })
+                .ToArray();
+
+            return Results.Ok(faces);
+        });
+
+        app.MapDelete("/api/persons/{id:guid}/faces/{faceId:guid}", async (Guid id, Guid faceId, IVectorStore vectorStore, ILogger<Program> logger) =>
+        {
+            await vectorStore.DeleteByIdAsync(faceId);
+
+            var dir = Path.Combine(FaceImagesDir, id.ToString());
+            if (Directory.Exists(dir))
+            {
+                foreach (var file in Directory.GetFiles(dir, $"{faceId}.*"))
+                    try { File.Delete(file); } catch (Exception ex) { logger.LogWarning(ex, "Could not delete {File}", file); }
+            }
+
+            return Results.Ok(new { status = "deleted" });
+        });
+
+        app.MapDelete("/api/persons/{id:guid}/faces", async (Guid id, IVectorStore vectorStore, ILogger<Program> logger) =>
+        {
+            await vectorStore.DeleteByPersonAsync(id);
+
+            var dir = Path.Combine(FaceImagesDir, id.ToString());
+            if (Directory.Exists(dir))
+            {
+                foreach (var file in Directory.GetFiles(dir).Where(f => Guid.TryParse(Path.GetFileNameWithoutExtension(f), out _)))
+                    try { File.Delete(file); } catch (Exception ex) { logger.LogWarning(ex, "Could not delete {File}", file); }
+            }
+
+            return Results.Ok(new { status = "reset" });
         });
 
         app.MapGet("/api/persons/{id:guid}/face-image/{faceId:guid}", async (Guid id, Guid faceId) =>
@@ -112,7 +159,7 @@ public static class PersonEndpoints
                 p.Department,
                 enrollmentStatus = p.EnrollmentStatus.ToString(),
                 p.CreatedAt,
-                faceCount = 0, // Embeddings stored in Qdrant
+                faceCount = CountEnrolledFaces(p.Id),
                 welcomeMessage = p.WelcomeMessage,
             }));
         });
@@ -139,10 +186,11 @@ public static class PersonEndpoints
             return Results.Ok(new { status = "enrolled" });
         });
 
-        app.MapGet("/api/persons/{id:guid}/poses", async (Guid id) =>
+        app.MapGet("/api/persons/{id:guid}/poses", async (Guid id, IVectorStore vectorStore) =>
         {
-            // Pose metadata stored in Qdrant payload — returns empty until Qdrant-based lookup is added
-            return Results.Ok(Array.Empty<object>());
+            var poses = await vectorStore.GetPosesByPersonAsync(id);
+            var now = DateTime.UtcNow.ToString("o");
+            return Results.Ok(poses.Select(p => new { pose = p, enrolledAt = now }));
         });
 
         app.MapPatch("/api/persons/{id:guid}/status", async (Guid id, UpdateStatusDto dto, AppDbContext db, CancellationToken ct) =>
@@ -174,7 +222,7 @@ public static class PersonEndpoints
 
             // Nullify person references in gate events — preserve audit trail
             await db.Database.ExecuteSqlAsync(
-                $"""UPDATE gate_events SET "PersonId" = NULL, "PersonName" = 'UNKNOWN', "Status" = 'Unrecognized' WHERE "PersonId" = {id}""", ct);
+                $"""UPDATE gate_events SET "PersonId" = NULL, "Status" = 'Unrecognized' WHERE "PersonId" = {id}""", ct);
 
             // Remove person record
             db.Persons.Remove(person);
@@ -191,6 +239,29 @@ public static class PersonEndpoints
             logger.LogInformation("Person {PersonId} ({Name}) deleted", id, person.FullName);
             return Results.Ok(new { status = "deleted" });
         }).RequireAuthorization();
+
+        app.MapPatch("/api/persons/{id:guid}", async (Guid id, UpdatePersonDto dto, AppDbContext db, CacheService cache, CancellationToken ct) =>
+        {
+            var person = await db.Persons.FindAsync([id], ct);
+            if (person is null) return Results.NotFound();
+
+            if (!string.IsNullOrWhiteSpace(dto.FullName))
+                person.FullName = dto.FullName.Trim();
+            if (dto.Department is not null)
+                person.Department = dto.Department.Trim();
+
+            await db.SaveChangesAsync(ct);
+            await cache.RemovePersonAsync(id);
+
+            return Results.Ok(new
+            {
+                person.Id,
+                person.FullName,
+                person.Department,
+                enrollmentStatus = person.EnrollmentStatus.ToString(),
+                person.WelcomeMessage,
+            });
+        });
 
         app.MapPatch("/api/persons/{id:guid}/welcome-message", async (Guid id, UpdateWelcomeMessageDto dto, AppDbContext db, CacheService cache, CancellationToken ct) =>
         {
@@ -230,6 +301,12 @@ public class EnrollDto
     /// <summary>When true, all existing embeddings for this person are deleted before inserting the new ones.
     /// Use this when replacing gate-camera embeddings with higher-quality webcam frames.</summary>
     public bool Replace { get; set; } = false;
+}
+
+public class UpdatePersonDto
+{
+    public string? FullName { get; set; }
+    public string? Department { get; set; }
 }
 
 public class UpdateStatusDto

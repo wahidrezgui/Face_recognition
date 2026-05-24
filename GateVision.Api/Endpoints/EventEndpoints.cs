@@ -17,15 +17,25 @@ public static class EventEndpoints
     {
         app.MapGet("/api/events", async (AppDbContext db, CancellationToken ct,
             int page = 1, int limit = 50,
-            string? name = null, string? status = null) =>
+            string? name = null, string? status = null,
+            DateTime? from = null, DateTime? to = null) =>
         {
             limit = Math.Min(limit, 200);
             var query = db.GateEvents.AsQueryable();
 
+            if (from.HasValue)
+                query = query.Where(e => e.CapturedAt >= from.Value);
+            if (to.HasValue)
+                query = query.Where(e => e.CapturedAt < to.Value);
+
             if (!string.IsNullOrWhiteSpace(name))
             {
                 var pattern = $"%{name}%";
-                query = query.Where(e => EF.Functions.ILike(e.PersonName, pattern));
+                var matchingIds = await db.Persons
+                    .Where(p => EF.Functions.ILike(p.FullName, pattern))
+                    .Select(p => p.Id)
+                    .ToListAsync(ct);
+                query = query.Where(e => e.PersonId.HasValue && matchingIds.Contains(e.PersonId!.Value));
             }
 
             if (!string.IsNullOrWhiteSpace(status))
@@ -37,9 +47,7 @@ public static class EventEndpoints
                     .Select(s => s!.Value)
                     .ToList();
                 if (parsed.Count != 0)
-                {
                     query = query.Where(e => parsed.Contains(e.Status));
-                }
             }
 
             var total = await query.CountAsync(ct);
@@ -50,17 +58,32 @@ public static class EventEndpoints
                 .Take(limit)
                 .ToListAsync(ct);
 
-            var events = rawEvents.Select(e => new
+            var personIds = rawEvents
+                .Where(e => e.PersonId.HasValue)
+                .Select(e => e.PersonId!.Value)
+                .Distinct()
+                .ToList();
+            var persons = personIds.Count > 0
+                ? await db.Persons.Where(p => personIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct)
+                : new Dictionary<Guid, Person>();
+
+            var events = rawEvents.Select(e =>
             {
-                eventId = e.Id,
-                personId = e.PersonId.HasValue ? e.PersonId.Value.ToString() : null,
-                personName = e.PersonName,
-                confidence = e.Confidence,
-                timestamp = e.CapturedAt.ToString("O"),
-                direction = e.Direction.ToString().ToLower(),
-                status = e.Status.ToString(),
-                faceImageUrl = e.FaceImagePath is not null ? $"/api/events/{e.Id}/image" : null,
-                faceImageBase64 = e.FaceImagePath is null ? e.FaceImageBase64 : null,
+                var person = e.PersonId.HasValue ? persons.GetValueOrDefault(e.PersonId.Value) : null;
+                return new
+                {
+                    eventId = e.Id,
+                    personId = e.PersonId.HasValue ? e.PersonId.Value.ToString() : (string?)null,
+                    personName = person?.FullName ?? "UNKNOWN",
+                    confidence = e.Confidence,
+                    timestamp = e.CapturedAt.ToString("O"),
+                    direction = e.Direction.ToString().ToLower(),
+                    status = e.Status.ToString(),
+                    faceImageBase64 = e.FaceImageBase64,
+                    emotion = e.Emotion,
+                    age = e.Age,
+                    gender = e.Gender,
+                };
             });
 
             return Results.Ok(new { items = events, total, page, limit });
@@ -71,67 +94,235 @@ public static class EventEndpoints
             var todayStart = DateTime.UtcNow.Date;
             var todayEnd = todayStart.AddDays(1);
 
-            var stats = await db.GateEvents
-                .GroupBy(_ => 1)
-                .Select(g => new
-                {
-                    todayEntries = g.Count(e => e.CapturedAt >= todayStart && e.CapturedAt < todayEnd),
-                    pendingReview = g.Count(e => e.Status == EventStatus.NeedsReview || e.Status == EventStatus.Unrecognized),
-                })
-                .OrderByDescending(_ => _.todayEntries)
-                .FirstOrDefaultAsync(ct);
+            var todayEntries = await db.GateEvents
+                .CountAsync(e => e.CapturedAt >= todayStart && e.CapturedAt < todayEnd, ct);
 
-            return Results.Ok(stats ?? new { todayEntries = 0, pendingReview = 0 });
+            var pendingReview = await db.TrainingEvents
+                .CountAsync(e => e.Status == EventStatus.NeedsReview || e.Status == EventStatus.Unrecognized, ct);
+
+            return Results.Ok(new { todayEntries, pendingReview });
+        });
+
+        app.MapGet("/api/events/activity", async (AppDbContext db, CancellationToken ct, string range = "today") =>
+        {
+            var (from, to, normalized) = ResolveActivityRange(range);
+            var query = db.GateEvents.Where(e => e.CapturedAt >= from && e.CapturedAt < to);
+
+            var total = await query.CountAsync(ct);
+            var identified = await query.CountAsync(e => e.Status == EventStatus.Identified, ct);
+            var needsReview = await query.CountAsync(e => e.Status == EventStatus.NeedsReview, ct);
+            var unrecognized = await query.CountAsync(e => e.Status == EventStatus.Unrecognized, ct);
+            var entries = await query.CountAsync(e => e.Direction == Direction.Entry, ct);
+            var exits = await query.CountAsync(e => e.Direction == Direction.Exit, ct);
+            var uniquePersons = await query
+                .Where(e => e.PersonId.HasValue)
+                .Select(e => e.PersonId!.Value)
+                .Distinct()
+                .CountAsync(ct);
+            var avgConfidence = total > 0
+                ? await query.AverageAsync(e => (double)e.Confidence, ct)
+                : 0.0;
+
+            object? byHour = null;
+            List<object> byDay;
+
+            if (normalized == "today")
+            {
+                var hourly = await query
+                    .GroupBy(e => e.CapturedAt.Hour)
+                    .Select(g => new { hour = g.Key, total = g.Count() })
+                    .ToListAsync(ct);
+                byHour = Enumerable.Range(0, 24)
+                    .Select(h => new
+                    {
+                        hour = h,
+                        total = hourly.FirstOrDefault(x => x.hour == h)?.total ?? 0,
+                    })
+                    .ToList();
+                var dayKey = from.ToString("yyyy-MM-dd");
+                byDay = [new { date = dayKey, total, identified }];
+            }
+            else
+            {
+                var daily = await query
+                    .GroupBy(e => e.CapturedAt.Date)
+                    .Select(g => new
+                    {
+                        date = g.Key,
+                        total = g.Count(),
+                        identified = g.Count(e => e.Status == EventStatus.Identified),
+                    })
+                    .OrderBy(x => x.date)
+                    .ToListAsync(ct);
+
+                byDay = FillDailySeries(from, to, daily.Select(d => (
+                    d.date.ToString("yyyy-MM-dd"),
+                    d.total,
+                    d.identified)));
+            }
+
+            return Results.Ok(new
+            {
+                range = normalized,
+                from = from.ToString("O"),
+                to = to.ToString("O"),
+                total,
+                identified,
+                needsReview,
+                unrecognized,
+                entries,
+                exits,
+                uniquePersons,
+                avgConfidence = Math.Round(avgConfidence, 3),
+                byDay,
+                byHour,
+            });
         });
 
         app.MapPost("/api/events/{id:guid}/review", async (Guid id, ReviewEventDto dto, AppDbContext db, EventBufferService buffer, ILogger<Program> logger, CancellationToken ct) =>
         {
-            var evt = await db.GateEvents.FindAsync([id], ct);
+            // Search gate_events, then training_events, then in-memory buffer
+            GateEvent? gateEvt = await db.GateEvents.FindAsync([id], ct);
 
-            // Event may still be in the in-memory buffer (not yet flushed to DB).
-            // Force-flush it immediately so we can proceed with review.
-            if (evt is null)
-                evt = await buffer.FindAndFlushAsync(db, id);
+            TrainingEvent? trainingEvt = null;
+            if (gateEvt is null)
+                trainingEvt = await db.TrainingEvents.FindAsync([id], ct);
 
-            if (evt is null)
+            if (gateEvt is null && trainingEvt is null)
+            {
+                var flushed = await buffer.FindAndFlushAsync(db, id);
+                if (flushed is not null)
+                {
+                    gateEvt = flushed.GateEvent;
+                    trainingEvt = flushed.TrainingEvent;
+                }
+            }
+
+            if (gateEvt is null && trainingEvt is null)
                 return Results.NotFound(new { error = "Event not found" });
 
             var person = await db.Persons.FindAsync([dto.PersonId], ct);
             if (person is null)
                 return Results.NotFound(new { error = "Person not found" });
 
-            evt.Status = EventStatus.Identified;
-            evt.PersonId = dto.PersonId;
-            evt.PersonName = person.FullName;
-            evt.Department = person.Department;
-            evt.WelcomeMessage = person.WelcomeMessage;
+            Guid eventId;
+            if (gateEvt is not null)
+            {
+                gateEvt.Status = EventStatus.Identified;
+                gateEvt.PersonId = dto.PersonId;
+                eventId = gateEvt.Id;
+            }
+            else
+            {
+                trainingEvt!.Status = EventStatus.Identified;
+                trainingEvt.PersonId = dto.PersonId;
+                eventId = trainingEvt.Id;
+            }
 
             await db.SaveChangesAsync(ct);
-            logger.LogInformation("Event {EventId} reviewed and linked to person {PersonId}", id, dto.PersonId);
+            logger.LogInformation("Event {EventId} reviewed and linked to person {PersonId}", eventId, dto.PersonId);
 
             return Results.Ok(new
             {
-                eventId = evt.Id,
-                personId = evt.PersonId.ToString(),
-                personName = evt.PersonName,
-                status = evt.Status.ToString(),
-                department = evt.Department,
-                welcomeMessage = evt.WelcomeMessage,
+                eventId,
+                personId = dto.PersonId.ToString(),
+                personName = person.FullName,
+                status = EventStatus.Identified.ToString(),
+                department = person.Department,
+                welcomeMessage = person.WelcomeMessage,
             });
         }).RequireAuthorization();
 
         app.MapDelete("/api/events/{id:guid}", async (Guid id, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
         {
-            var evt = await db.GateEvents.FindAsync([id], ct);
-            if (evt is null)
-                return Results.NotFound(new { error = "Event not found" });
+            var gateEvt = await db.GateEvents.FindAsync([id], ct);
+            if (gateEvt is not null)
+            {
+                db.GateEvents.Remove(gateEvt);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Gate event {EventId} deleted", id);
+                return Results.Ok(new { status = "deleted" });
+            }
 
-            db.GateEvents.Remove(evt);
-            await db.SaveChangesAsync(ct);
-            logger.LogInformation("Event {EventId} deleted", id);
+            var trainingEvt = await db.TrainingEvents.FindAsync([id], ct);
+            if (trainingEvt is not null)
+            {
+                db.TrainingEvents.Remove(trainingEvt);
+                await db.SaveChangesAsync(ct);
+                logger.LogInformation("Training event {EventId} deleted", id);
+                return Results.Ok(new { status = "deleted" });
+            }
 
-            return Results.Ok(new { status = "deleted" });
+            return Results.NotFound(new { error = "Event not found" });
         }).RequireAuthorization();
+
+        app.MapGet("/api/training-events", async (AppDbContext db, CancellationToken ct,
+            int page = 1, int limit = 50,
+            string? name = null, string? status = null) =>
+        {
+            limit = Math.Min(limit, 200);
+            var query = db.TrainingEvents.AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(name))
+            {
+                var pattern = $"%{name}%";
+                var matchingIds = await db.Persons
+                    .Where(p => EF.Functions.ILike(p.FullName, pattern))
+                    .Select(p => p.Id)
+                    .ToListAsync(ct);
+                query = query.Where(e => e.PersonId.HasValue && matchingIds.Contains(e.PersonId!.Value));
+            }
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var statuses = status.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries);
+                var parsed = statuses
+                    .Select(s => Enum.TryParse<EventStatus>(s, true, out var st) ? st : (EventStatus?)null)
+                    .Where(s => s.HasValue)
+                    .Select(s => s!.Value)
+                    .ToList();
+                if (parsed.Count != 0)
+                    query = query.Where(e => parsed.Contains(e.Status));
+            }
+
+            var total = await query.CountAsync(ct);
+
+            var rawEvents = await query
+                .OrderByDescending(e => e.CapturedAt)
+                .Skip((page - 1) * limit)
+                .Take(limit)
+                .ToListAsync(ct);
+
+            var personIds = rawEvents
+                .Where(e => e.PersonId.HasValue)
+                .Select(e => e.PersonId!.Value)
+                .Distinct()
+                .ToList();
+            var persons = personIds.Count > 0
+                ? await db.Persons.Where(p => personIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct)
+                : new Dictionary<Guid, Person>();
+
+            var events = rawEvents.Select(e =>
+            {
+                var person = e.PersonId.HasValue ? persons.GetValueOrDefault(e.PersonId.Value) : null;
+                return new
+                {
+                    eventId = e.Id,
+                    personId = e.PersonId.HasValue ? e.PersonId.Value.ToString() : (string?)null,
+                    personName = person?.FullName ?? "UNKNOWN",
+                    confidence = e.Confidence,
+                    timestamp = e.CapturedAt.ToString("O"),
+                    direction = e.Direction.ToString().ToLower(),
+                    status = e.Status.ToString(),
+                    faceImageBase64 = e.FaceImageBase64,
+                    emotion = e.Emotion,
+                    age = e.Age,
+                    gender = e.Gender,
+                };
+            });
+
+            return Results.Ok(new { items = events, total, page, limit });
+        });
 
         app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, CancellationToken ct) =>
         {
@@ -167,8 +358,24 @@ public static class EventEndpoints
                     .ToListAsync(ct);
             }
 
+            // Batch-load persons to populate [NotMapped] display fields before writing SSE
+            var initPersonIds = initialEvents
+                .Where(e => e.PersonId.HasValue)
+                .Select(e => e.PersonId!.Value)
+                .Distinct()
+                .ToList();
+            var initPersons = initPersonIds.Count > 0
+                ? await db.Persons.Where(p => initPersonIds.Contains(p.Id)).ToDictionaryAsync(p => p.Id, ct)
+                : new Dictionary<Guid, Person>();
+
             foreach (var evt in initialEvents)
             {
+                if (evt.PersonId.HasValue && initPersons.TryGetValue(evt.PersonId.Value, out var p))
+                {
+                    evt.PersonName = p.FullName;
+                    evt.WelcomeMessage = p.WelcomeMessage;
+                    evt.Department = p.Department;
+                }
                 if (evt.CapturedAt > lastTimestamp)
                     lastTimestamp = evt.CapturedAt;
                 await WriteEvent(ctx, evt, ct);
@@ -210,6 +417,33 @@ public static class EventEndpoints
         });
     }
 
+    static (DateTime from, DateTime to, string range) ResolveActivityRange(string range)
+    {
+        var todayStart = DateTime.UtcNow.Date;
+        var tomorrow = todayStart.AddDays(1);
+        return range.Trim().ToLowerInvariant() switch
+        {
+            "week" => (todayStart.AddDays(-6), tomorrow, "week"),
+            "month" => (new DateTime(todayStart.Year, todayStart.Month, 1, 0, 0, 0, DateTimeKind.Utc), tomorrow, "month"),
+            _ => (todayStart, tomorrow, "today"),
+        };
+    }
+
+    static List<object> FillDailySeries(DateTime from, DateTime to, IEnumerable<(string date, int total, int identified)> rows)
+    {
+        var map = rows.ToDictionary(r => r.date, r => r);
+        var list = new List<object>();
+        for (var d = from.Date; d < to.Date; d = d.AddDays(1))
+        {
+            var key = d.ToString("yyyy-MM-dd");
+            if (map.TryGetValue(key, out var row))
+                list.Add(new { date = key, total = row.total, identified = row.identified });
+            else
+                list.Add(new { date = key, total = 0, identified = 0 });
+        }
+        return list;
+    }
+
     static async Task WriteEvent(HttpContext ctx, GateEvent evt, CancellationToken ct)
     {
         var payload = JsonSerializer.Serialize(new
@@ -221,53 +455,14 @@ public static class EventEndpoints
             timestamp = evt.CapturedAt.ToString("O"),
             direction = evt.Direction.ToString().ToLower(),
             status = evt.Status.ToString(),
-            faceImageUrl = evt.FaceImagePath is not null ? $"/api/events/{evt.Id}/image" : null,
-            faceImageBase64 = evt.FaceImagePath is null ? evt.FaceImageBase64 : null,
+            faceImageBase64 = evt.FaceImageBase64,
             welcomeMessage = evt.WelcomeMessage,
             department = evt.Department,
+            emotion = evt.Emotion,
+            age = evt.Age,
+            gender = evt.Gender,
         }, JsonOpts);
         await ctx.Response.WriteAsync($"id: {evt.CapturedAt:O}\ndata: {payload}\n\n", ct);
-    }
-}
-
-internal static class ImageEndpoints
-{
-    private static readonly string ImageDir = Path.Combine(Directory.GetCurrentDirectory(), "EventImages");
-
-    public static void MapImageEndpoints(this WebApplication app)
-    {
-        app.MapGet("/api/events/{id:guid}/image", async (Guid id, AppDbContext db, HttpContext ctx, CancellationToken ct) =>
-        {
-            var evt = await db.GateEvents
-                .Where(e => e.Id == id)
-                .Select(e => new { e.FaceImagePath, e.FaceImageBase64 })
-                .OrderByDescending(_ => _.FaceImagePath != null) // Prefer file path if available
-                .FirstOrDefaultAsync(ct);
-
-            if (evt is null)
-                return Results.NotFound();
-
-            if (evt.FaceImagePath is not null)
-            {
-                var filePath = Path.GetFullPath(Path.Combine(ImageDir, evt.FaceImagePath));
-                if (!filePath.StartsWith(ImageDir + Path.DirectorySeparatorChar, StringComparison.Ordinal))
-                    return Results.NotFound();
-                if (File.Exists(filePath))
-                    return Results.File(filePath, "image/jpeg");
-            }
-
-            if (evt.FaceImageBase64 is not null)
-            {
-                try
-                {
-                    var bytes = Convert.FromBase64String(evt.FaceImageBase64);
-                    return Results.File(bytes, "image/jpeg");
-                }
-                catch { }
-            }
-
-            return Results.NotFound();
-        });
     }
 }
 

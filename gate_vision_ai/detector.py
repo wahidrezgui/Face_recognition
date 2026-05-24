@@ -51,7 +51,7 @@ class FaceDetector:
             if hasattr(face, 'age') and face.age is not None:
                 face_data["age"] = float(face.age)
             if hasattr(face, 'gender') and face.gender is not None:
-                face_data["gender"] = face.gender
+                face_data["gender"] = "Male" if int(face.gender) == 1 else "Female"
                 if hasattr(face, 'gender_probability') and face.gender_probability is not None:
                     face_data["gender_probability"] = float(face.gender_probability)
             results.append(face_data)

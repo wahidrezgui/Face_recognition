@@ -10,6 +10,10 @@ class Settings(BaseSettings):
     camera_fps: int = 25
     capture_interval_ms: int = 500
 
+    window_duration_ms: int = 250
+    max_identity_requests_per_window: int = 3
+    greeting_delay_ms: int = 300
+
     detector_confidence: float = 0.5
     detector_nms: float = 0.4
     detector_input_size: tuple = (640, 640)

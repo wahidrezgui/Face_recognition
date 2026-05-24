@@ -33,7 +33,14 @@ async def process_single_face(face: dict, frame: np.ndarray, captured_at: str, d
         return {"quality": False, "reason": "no_embedding"}
     confidence = face["confidence"]
     face_crop_b64 = crop_face_b64(frame, face["bbox"])
-    result = await backend.identify(embedding, confidence, captured_at, direction, face_crop_b64, track_id) if backend else None
+    age = face.get("age")
+    gender = face.get("gender")
+    emotion = None  # not yet detected by InsightFace
+    result = await backend.identify(embedding, confidence, captured_at, direction, face_crop_b64, track_id, age, gender, emotion) if backend else None
+
+    # Propagate backend error states to the top level so callers can branch on them directly.
+    if result and (result.get("circuit_open") or result.get("backend_down")):
+        return result
 
     # ── Phase 3: auto-improve embeddings for moderate-confidence identifications ──
     if result and backend:

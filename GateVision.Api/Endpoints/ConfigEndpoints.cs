@@ -28,6 +28,16 @@ public static class ConfigEndpoints
             return Results.Ok(new { enabled = svc.Enabled });
         }).RequireAuthorization();
 
+        app.MapGet("/api/config/log-unknown", (LogUnknownService svc) =>
+            Results.Ok(new { enabled = svc.Enabled }));
+
+        app.MapPost("/api/config/log-unknown", (LogUnknownRequest req, LogUnknownService svc, ILogger<Program> logger) =>
+        {
+            svc.Enabled = req.Enabled;
+            logger.LogInformation("Log unknown set to {Enabled}", req.Enabled);
+            return Results.Ok(new { enabled = svc.Enabled });
+        }).RequireAuthorization();
+
         app.MapPost("/api/config/video-source", async (VideoSourceRequest req, IWebHostEnvironment env, ILogger<Program> logger) =>
         {
             if (string.IsNullOrWhiteSpace(req.CameraSource))
@@ -77,20 +87,25 @@ public static class ConfigEndpoints
                 }
 
                 if (cameraReady)
-                    return Results.Ok(new { status = "ok", camera_source = req.CameraSource });
+                    return Results.Ok(new { status = "ok", camera_source = req.CameraSource, direction });
                 else
-                    return Results.Ok(new { status = "warning", message = "Config saved and restart signal sent, but camera not yet ready. Verify camera source.", camera_source = req.CameraSource });
+                    return Results.Ok(new { status = "warning", message = "Config saved and restart signal sent, but camera not yet ready. Verify camera source.", camera_source = req.CameraSource, direction });
             }
             catch (Exception ex)
             {
                 logger.LogError(ex, "Failed to signal Python service restart");
-                return Results.Ok(new { status = "warning", message = "Config saved but Python restart failed. Restart the AI service manually.", camera_source = req.CameraSource });
+                return Results.Ok(new { status = "warning", message = "Config saved but AI service is not running. Start the AI service and the new source will be picked up automatically.", camera_source = req.CameraSource, direction });
             }
         });
     }
 }
 
 public class TrainingModeRequest
+{
+    public bool Enabled { get; set; }
+}
+
+public class LogUnknownRequest
 {
     public bool Enabled { get; set; }
 }

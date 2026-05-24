@@ -129,6 +129,47 @@ public class QdrantVectorStore : IVectorStore, IAsyncDisposable
         }
     }
 
+    public async Task DeleteByIdAsync(Guid embeddingId)
+    {
+        try
+        {
+            await EnsureCollectionAsync();
+            await _client.DeleteAsync(_collectionName, [embeddingId]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Qdrant delete by id {EmbeddingId} failed", embeddingId);
+        }
+    }
+
+    public async Task<IReadOnlyList<string>> GetPosesByPersonAsync(Guid personId)
+    {
+        try
+        {
+            await EnsureCollectionAsync();
+
+            var response = await _client.ScrollAsync(
+                _collectionName,
+                filter: Conditions.MatchKeyword("person_id", personId.ToString()),
+                limit: 1000,
+                payloadSelector: new WithPayloadSelector { Enable = true },
+                vectorsSelector: new WithVectorsSelector { Enable = false });
+
+            var points = response.Result;
+            return points
+                .Where(p => p.Payload.ContainsKey("pose"))
+                .Select(p => p.Payload["pose"].StringValue)
+                .Where(s => !string.IsNullOrEmpty(s))
+                .Distinct()
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Qdrant scroll poses failed for person {PersonId}", personId);
+            return [];
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
         _client.Dispose();

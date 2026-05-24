@@ -16,13 +16,14 @@ from .config import settings
 from .capture import CameraCapture
 from .detector import FaceDetector
 from .client import NetBackendClient
-from .processing import process_single_face
+from .window import InteractionWindowManager, IdentityScheduler
 from .routes import register_routes
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
 )
+logging.getLogger("httpx").setLevel(logging.WARNING)
 logger = logging.getLogger("gate_vision_ai")
 
 # Override camera_source from persisted config file if it exists
@@ -46,7 +47,7 @@ backend: NetBackendClient | None = None
 
 _last_process_time: float = 0
 _events_log: deque = deque(maxlen=100)
-_stats = {"frames_captured": 0, "faces_detected": 0, "events_sent": 0, "rejected": 0, "backend_errors": 0, "circuit_open": False}
+_stats = {"frames_captured": 0, "faces_detected": 0, "events_sent": 0, "rejected": 0, "backend_errors": 0, "circuit_open": False, "windows_processed": 0}
 _latest_frame_jpg: bytes | None = None
 
 _roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_width, "height": settings.roi_height}
@@ -54,7 +55,8 @@ _roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_wi
 # Simple bbox-based face tracker for track_id assignment
 _track_last_bbox: list[float] | None = None
 _track_counter: int = 0
-_track_best_conf: dict[int, float] = {}
+_window_manager = InteractionWindowManager(settings.window_duration_ms)
+_scheduler = IdentityScheduler(settings.max_identity_requests_per_window, settings.greeting_delay_ms)
 
 
 def _bbox_iou(a: list[float], b: list[float]) -> float:
@@ -89,8 +91,40 @@ _state = {
 }
 
 
+async def _process_snapshot(snapshot, backend) -> None:
+    global _stats
+    results = await _scheduler.schedule(snapshot, settings.direction, backend)
+    window_ms = (snapshot.window_end - snapshot.window_start) * 1000
+    _stats["windows_processed"] += 1
+
+    for identity_result in results:
+        r = identity_result.result
+        if isinstance(r, Exception):
+            logger.error("Face processing error: %s", r)
+        elif r.get("circuit_open"):
+            _stats["circuit_open"] = True
+        elif r.get("backend_down"):
+            _stats["backend_errors"] += 1
+        elif r.get("quality"):
+            _stats["events_sent"] += 1
+            _stats["circuit_open"] = False
+            _events_log.append({
+                "timestamp": snapshot.persons[0].timestamp if snapshot.persons else "",
+                "confidence": r["match"]["confidence"] if r.get("match") else 0,
+                "personName": r["match"]["personName"] if r.get("match") else "UNKNOWN",
+            })
+        else:
+            _stats["rejected"] += 1
+            logger.info("Frame rejected: %s", r.get("reason"))
+
+    logger.debug(
+        "Window: %.0fms, %d faces, %d identities resolved",
+        window_ms, len(snapshot), len(results),
+    )
+
+
 async def _capture_loop():
-    global _last_process_time, _stats, _latest_frame_jpg, _track_best_conf
+    global _last_process_time, _stats, _latest_frame_jpg
     logger.info("Background capture loop started (interval=%dms)", settings.capture_interval_ms)
     last_detect_time = 0.0
     detect_interval = settings.capture_interval_ms / 1000.0
@@ -160,34 +194,16 @@ async def _capture_loop():
                             lm[0] += rx
                             lm[1] += ry
 
-            _stats["faces_detected"] += 1
+            _stats["faces_detected"] += len(faces)
             now_iso = datetime.now(timezone.utc).isoformat()
 
-            best_face = max(faces, key=lambda f: f["confidence"])
-            tid = _next_track_id(best_face["bbox"])
-            if best_face["confidence"] <= _track_best_conf.get(tid, 0):
-                continue
-            _track_best_conf[tid] = best_face["confidence"]
-            if tid % 50 == 0:
-                _track_best_conf = {k: v for k, v in _track_best_conf.items() if k >= tid - 10}
-            r = await process_single_face(best_face, frame, now_iso, settings.direction, backend, track_id=tid)
-            if isinstance(r, Exception):
-                logger.error("Face processing error: %s", r)
-            elif r.get("circuit_open"):
-                _stats["circuit_open"] = True
-            elif r.get("backend_down"):
-                _stats["backend_errors"] += 1
-            elif r.get("quality"):
-                _stats["events_sent"] += 1
-                _stats["circuit_open"] = False
-                _events_log.append({
-                    "timestamp": now_iso,
-                    "confidence": r["match"]["confidence"] if r.get("match") else 0,
-                    "personName": r["match"]["personName"] if r.get("match") else "UNKNOWN",
-                })
-            else:
-                _stats["rejected"] += 1
-                logger.info("Frame rejected: %s", r.get("reason"))
+            for face in faces:
+                tid = _next_track_id(face["bbox"])
+                _window_manager.collect(tid, face, frame, face["confidence"], now_iso)
+
+            if not _window_manager.is_window_open() and _window_manager.has_faces():
+                snapshot = _window_manager.finalize()
+                asyncio.create_task(_process_snapshot(snapshot, backend))
 
         except Exception as e:
             logger.error("Capture loop error: %s", e, exc_info=True)

@@ -9,7 +9,7 @@ public static class IdentifyEndpoints
 {
     public static void MapIdentifyEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/identify", async (IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, ILogger<Program> logger, CancellationToken ct) =>
+        app.MapPost("/api/identify", async (IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, TrainingModeService trainingMode, LogUnknownService logUnknown, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (dto.Embedding.Length != 512)
                 return Results.BadRequest($"Embedding must have exactly 512 dimensions, got {dto.Embedding.Length}");
@@ -20,40 +20,68 @@ public static class IdentifyEndpoints
                 ? Direction.Exit
                 : Direction.Entry;
 
-            var eventId = Guid.NewGuid(); // Single ID shared by SSE + DB
+            bool isIdentified = result.Status == EventStatus.Identified;
+            // LogUnknown: store all detections in gate_events regardless of status
+            bool isTrainingEvent = !isIdentified && !logUnknown.Enabled;
+            bool willPersist = isIdentified || logUnknown.Enabled || trainingMode.Enabled;
 
-            buffer.BufferOrUpdate(new BufferedTrack
+            // Determine stable event ID: buffered tracks get a persistent ID; ephemeral events get a
+            // one-shot Guid that is never stored (no review possible, just gate display).
+            Guid eventId;
+            bool publishToSse;
+            if (willPersist)
             {
-                Id = eventId,
-                TrackId = dto.TrackId,
-                PersonId = result.PersonId,
-                PersonName = result.PersonName,
-                Confidence = result.Confidence,
-                Status = result.Status,
-                Direction = direction,
-                CapturedAt = capturedAt,
-                FaceImageBase64 = dto.FaceCrop,
-                WelcomeMessage = result.WelcomeMessage,
-                Department = result.Department,
-            });
-
-            logger.LogDebug("Track {TrackId} buffered ({Person}, conf={Confidence})", dto.TrackId, result.PersonName, result.Confidence);
-
-            var gateEvent = new GateEvent
+                var (eid, isNewBest) = buffer.BufferOrUpdate(new BufferedTrack
+                {
+                    Id = Guid.NewGuid(),
+                    TrackId = dto.TrackId,
+                    PersonId = result.PersonId,
+                    PersonName = result.PersonName,
+                    Confidence = result.Confidence,
+                    Status = result.Status,
+                    Direction = direction,
+                    CapturedAt = capturedAt,
+                    FaceImageBase64 = dto.FaceCrop,
+                    WelcomeMessage = result.WelcomeMessage,
+                    Department = result.Department,
+                    Emotion = dto.Emotion,
+                    Age = dto.Age,
+                    Gender = dto.Gender,
+                    IsTrainingEvent = isTrainingEvent,
+                });
+                eventId = eid;
+                publishToSse = isNewBest;
+                logger.LogDebug("Track {TrackId} buffered ({Person}, conf={Confidence}, newBest={IsNewBest}, training={IsTraining})",
+                    dto.TrackId, result.PersonName, result.Confidence, isNewBest, isTrainingEvent);
+            }
+            else
             {
-                Id = eventId,
-                PersonId = result.PersonId,
-                PersonName = result.PersonName,
-                Confidence = result.Confidence,
-                Status = result.Status,
-                Direction = direction,
-                CapturedAt = capturedAt,
-                FaceImageBase64 = dto.FaceCrop,
-                WelcomeMessage = result.WelcomeMessage,
-                Department = result.Department,
-            };
+                // Ephemeral (unrecognized, training off): one-shot Guid, always show on gate display.
+                eventId = Guid.NewGuid();
+                publishToSse = true;
+                logger.LogDebug("Track {TrackId} skipped (NeedsReview + training mode off)", dto.TrackId);
+            }
 
-            GateEventChannel.Publish(gateEvent);
+            // Publish to gate display only when this frame is the confidence best for its track.
+            if (publishToSse)
+            {
+                GateEventChannel.Publish(new GateEvent
+                {
+                    Id = eventId,
+                    PersonId = result.PersonId,
+                    PersonName = result.PersonName,
+                    Confidence = result.Confidence,
+                    Status = result.Status,
+                    Direction = direction,
+                    CapturedAt = capturedAt,
+                    FaceImageBase64 = dto.FaceCrop,
+                    WelcomeMessage = result.WelcomeMessage,
+                    Department = result.Department,
+                    Emotion = dto.Emotion,
+                    Age = dto.Age,
+                    Gender = dto.Gender,
+                });
+            }
 
             return Results.Ok(new
             {
@@ -85,4 +113,13 @@ public class IdentifyRequestDto
 
     [JsonPropertyName("track_id")]
     public int TrackId { get; set; }
+
+    [JsonPropertyName("emotion")]
+    public string? Emotion { get; set; }
+
+    [JsonPropertyName("age")]
+    public int? Age { get; set; }
+
+    [JsonPropertyName("gender")]
+    public string? Gender { get; set; }
 }

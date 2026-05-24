@@ -158,17 +158,33 @@ Proxied via dashboard/next.config.js
 ## [GATEVISION SYSTEM DETAILS]
 
 ### GateVision AI Microservice (`gate_vision_ai/`)
-- `main.py` — FastAPI lifespan, background capture loop with circuit breaker tracking, state dict for route closures. On startup reads `config/video_source.json` to override `GV_CAMERA_SOURCE`. Assigns `track_id` per face via bbox-IoU tracker (`_bbox_iou`, `_next_track_id`) — same face keeps same ID across frames, new face gets incremented ID.
+- `main.py` — FastAPI lifespan, **event-window-driven** capture loop. All detected faces per frame are fed into `_window_manager.collect()`; when the 250 ms window expires `_window_manager.finalize()` produces a frozen `InteractionSnapshot` and `_process_snapshot()` is dispatched as an asyncio task. Assigns `track_id` per face via bbox-IoU tracker (`_bbox_iou`, `_next_track_id`). State dict for route closures.
+- `window.py` — **InteractionWindowManager**: collects detections over a fixed window, deduplicates by `track_id` (highest confidence wins), locks ordering at `finalize()`. **IdentityScheduler**: resolves at most `max_identity_requests_per_window` identities per snapshot in rank order, with `greeting_delay_ms` sleep between each to pace output. **InteractionSnapshot** / **SnapshotPerson** / **IdentityResult** data classes.
 - `capture.py` — OpenCV video source (reads `GV_CAMERA_SOURCE` — mp4, RTSP, or device index). Accepts optional `source` param for runtime re-initialization.
 - `detector.py` — InsightFace SCRFD detector wrapper with age/gender recognition
 - `embedder.py` — ArcFace 512-dim extraction + embedding averaging
 - `quality.py` — pose estimation (yaw/pitch), quality checking, face crop, base64 decode
-- `routes.py` — all route handlers via `register_routes(app, state: dict)` pattern. `POST /restart` accepts source in body, warm-up test frame before swap, atomic config write via `os.replace()`.
+- `routes.py` — all route handlers via `register_routes(app, state: dict)` pattern. `POST /restart` accepts source in body, warm-up test frame before swap, atomic config write via `os.replace()`. `/stream/status` exposes `window_duration_ms`, `max_identity_requests_per_window`, `greeting_delay_ms` alongside existing stats.
 - `client.py` — httpx client with circuit breaker (CLOSED/OPEN/HALF_OPEN), failure counting, error differentiation
-- `config.py` — pydantic-settings, prefix `GV_` (includes `net_api_key`, `net_circuit_threshold`, `net_circuit_reset_timeout`)
-- `processing.py` — shared `process_single_face()` extracted from main.py/routes.py duplicates
+- `config.py` — pydantic-settings, prefix `GV_` (includes `net_api_key`, `net_circuit_threshold`, `net_circuit_reset_timeout`, `window_duration_ms`, `max_identity_requests_per_window`, `greeting_delay_ms`)
+- `processing.py` — shared `process_single_face()` called by `IdentityScheduler` per confirmed face
 - `__main__.py` — `uvicorn.run("gate_vision_ai.main:app")` entry point
 - `pyproject.toml` — package config for clean relative imports
+
+**State machine (DETECTED → STABILIZING → CONFIRMED → SCHEDULED → GREETED → COOLDOWN):**
+| State | Meaning |
+|-------|---------|
+| DETECTED | bbox seen for first time |
+| STABILIZING | inside 250 ms collection window |
+| CONFIRMED | window closed, track survived dedup |
+| SCHEDULED | slot reserved in identity queue |
+| GREETED | identity resolved, result emitted |
+| COOLDOWN | suppress re-greeting same person |
+
+**Interaction KPIs** (tracked in `_stats`, exposed via `/stream/status`):
+- `windows_processed` — total interaction windows finalized
+- `faces_detected` — cumulative faces seen (all frames, not just best)
+- `events_sent` — identity results successfully forwarded
 
 ### GateVision .NET Backend (`GateVision.Api/`)
 - ASP.NET Core 9 Minimal API, port 5000
@@ -177,7 +193,7 @@ Proxied via dashboard/next.config.js
 - EF Core for Person + GateEvent entities
 - Redis caching at `localhost:6379` for person metadata. Combined key `person:{id}` (Name, Department, WelcomeMessage) — 1 read instead of 3 round-trips.
 - `Services/GateEventChannel.cs` — static `Channel<GateEvent>` (bounded 200, DropOldest) for push-based SSE
-- `Services/EventBufferService.cs` — `ConcurrentDictionary<int, BufferedTrack>` buffers detections by `track_id`. `BufferOrUpdate()` keeps highest-confidence detection per track. Background `FlushExpiredAsync()` persists tracks idle >3s to `gate_events`. Registered as singleton.
+- `Services/EventBufferService.cs` — `ConcurrentDictionary<int, BufferedTrack>` buffers detections by `track_id`. `BufferOrUpdate()` keeps highest-confidence detection per track. Background `FlushExpiredAsync()` routes expired tracks: Identified → `gate_events`; NeedsReview/Unrecognized → `training_events` (only when training mode ON; ephemeral SSE-only otherwise). `FindAndFlushAsync()` returns `FlushResult(GateEvent?, TrainingEvent?)` for review endpoint. Registered as singleton.
 - JWT bearer authentication + X-API-Key header middleware (`Infrastructure/Middleware/AuthMiddleware.cs`)
 - `POST /api/auth/login` returns JWT from shared API key
 - Developer exception page gated behind `IsDevelopment()`
@@ -256,7 +272,7 @@ Proxied via dashboard/next.config.js
 | G13 | Channel-based SSE push | ✅ ADDED v4 | Replaced DB polling with Channel&lt;T&gt; push, zero steady-state queries |
 | G14 | Shared processing module | ✅ ADDED v4 | Extracted duplicate `_process_single_face` to `processing.py` |
 | G15 | Smoke test removal | ✅ ADDED v4 | Deleted broken `scripts/smoke_test.py` |
-| G16 | Filesystem face image storage | 🔄 DEPRECATED v5 | Replaced by base64 TEXT in `gate_events.FaceImageBase64`. `/api/events/{id}/image` still serves old files if they exist but no new files are written. |
+| G16 | Filesystem face image storage | 🔄 DEPRECATED v5 | Replaced by base64 TEXT in `gate_events.FaceImageBase64`. `FaceImagePath` column dropped in migration 011. `/api/events/{id}/image` endpoint removed. |
 | G17 | SSE query string token auth | ✅ ADDED v4 | H12/M8 fixed: `?token=` query param validated against API key |
 | G18 | User Secrets + .env.example | ✅ ADDED v4 | H15/M12 fixed: `.env` deleted, `.env.example` templates created |
 | G19 | Circuit breaker metrics | ✅ ADDED v4 | Added `open_count` counter + state transition logging |
@@ -313,6 +329,12 @@ Proxied via dashboard/next.config.js
 | G72 | React.memo on dashboard cards | ✅ ADDED v12 | `EventCard` + `CaptureThumb` wrapped with `React.memo`. Custom comparator checks `eventId` + `confidence` to skip unnecessary re-renders. |
 | G73 | Lazy JPEG encoding | ✅ ADDED v12 | MJPEG stream only encodes JPEG when `stream_connections > 0`. Counter tracks active viewers via `finally` block. Saves ~2-5ms CPU per frame when dashboard is closed. |
 | P3 | **Phase 3: Remove pgvector** — fully migrated to Qdrant | ✅ COMPLETED | Deleted `face_embeddings` table (migration 009), dropped pgvector extension (migration 010), switched docker image to `postgres:16-alpine`, removed dead `FaceEmbedding.cs`, cleaned up legacy scripts, updated all documentation. Qdrant is the sole vector store. |
+| G74 | Interaction-window config knobs | ✅ ADDED v14 | `config.py`: `window_duration_ms=250`, `max_identity_requests_per_window=3`, `greeting_delay_ms=300` — all overridable via `GV_` env vars. |
+| G75 | `InteractionWindowManager` | ✅ ADDED v14 | `window.py`: collects detections per 250 ms window, deduplicates by `track_id` (highest confidence wins), emits frozen `InteractionSnapshot` with rank-locked ordering at `finalize()`. |
+| G76 | `IdentityScheduler` | ✅ ADDED v14 | `window.py`: resolves at most `max_identity_requests_per_window` identities per snapshot in rank order with `greeting_delay_ms` pacing between calls. Queue ordering is immutable once `schedule()` starts. |
+| G77 | `_capture_loop()` rewired to event-window model | ✅ ADDED v14 | `main.py`: replaced immediate per-face `process_single_face()` call with `_window_manager.collect()` for all detected faces; `_process_snapshot()` task fired when window expires. Removed `_track_best_conf` guard/cleanup. `faces_detected` now counts all faces per frame, not just one. |
+| G78 | Interaction metrics in `/stream/status` | ✅ ADDED v14 | `routes.py`: `window_duration_ms`, `max_identity_requests_per_window`, `greeting_delay_ms` added to status response. `windows_processed` counter added to `_stats`. |
+| G79 | Dual-table event schema | ✅ ADDED v15 | `gate_events` slimmed to 7 cols (Id, PersonId, Confidence, Status, Direction, CapturedAt, FaceImageBase64). PersonName/WelcomeMessage/Department dropped from DB; populated at read time via persons JOIN. New `training_events` table for sub-threshold captures when training mode ON. `GateEvent.PersonName` is `[NotMapped]` — present in-memory for SSE but never stored. SSE always fires for gate display; DB persistence gated by training mode for unidentified faces. Review endpoint searches gate_events → training_events → buffer (FlushResult). Stats `pendingReview` now counts from training_events. |
 
 ## [CONFIGURATION]
 
