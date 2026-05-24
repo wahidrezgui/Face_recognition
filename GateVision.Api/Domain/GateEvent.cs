@@ -5,8 +5,7 @@ namespace GateVision.Api.Domain;
 public enum EventStatus
 {
     Identified,
-    NeedsReview,
-    Unrecognized
+    NeedsReview
 }
 
 public enum Direction

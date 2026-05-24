@@ -416,15 +416,6 @@ export default function PersonDetailPage() {
           >
             Suspend
           </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            className="border-red-900/50 text-red-300 hover:bg-red-950/40"
-            disabled={statusMutation.isPending}
-            onClick={() => statusMutation.mutate("Revoked")}
-          >
-            Revoke
-          </Button>
           <Separator orientation="vertical" className="mx-1 hidden h-8 sm:block" />
           <Button
             size="sm"

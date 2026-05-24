@@ -98,7 +98,7 @@ public static class EventEndpoints
                 .CountAsync(e => e.CapturedAt >= todayStart && e.CapturedAt < todayEnd, ct);
 
             var pendingReview = await db.TrainingEvents
-                .CountAsync(e => e.Status == EventStatus.NeedsReview || e.Status == EventStatus.Unrecognized, ct);
+                .CountAsync(e => e.Status == EventStatus.NeedsReview, ct);
 
             return Results.Ok(new { todayEntries, pendingReview });
         });
@@ -111,7 +111,6 @@ public static class EventEndpoints
             var total = await query.CountAsync(ct);
             var identified = await query.CountAsync(e => e.Status == EventStatus.Identified, ct);
             var needsReview = await query.CountAsync(e => e.Status == EventStatus.NeedsReview, ct);
-            var unrecognized = await query.CountAsync(e => e.Status == EventStatus.Unrecognized, ct);
             var entries = await query.CountAsync(e => e.Direction == Direction.Entry, ct);
             var exits = await query.CountAsync(e => e.Direction == Direction.Exit, ct);
             var uniquePersons = await query
@@ -169,7 +168,6 @@ public static class EventEndpoints
                 total,
                 identified,
                 needsReview,
-                unrecognized,
                 entries,
                 exits,
                 uniquePersons,

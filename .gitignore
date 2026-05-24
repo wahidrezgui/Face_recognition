@@ -27,6 +27,9 @@ Thumbs.db
 .env
 !.env.example
 
+# Face image uploads
+GateVision.Api/FaceImages/
+
 # Binary / media
 *.mp4
 *.avi

@@ -152,7 +152,7 @@ export default function TrainingEventsPage() {
               >
                 <EventCard event={event} onViewDetails={() => setSelectedEvent(event)} />
                 <div className="flex gap-1.5 shrink-0">
-                  {(event.status === "NeedsReview" || event.status === "Unrecognized") && (
+                  {event.status === "NeedsReview" && (
                     <>
                       <button
                         onClick={() => setReviewEvent(event)}

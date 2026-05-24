@@ -29,7 +29,6 @@ const STATUS_TABS = [
   { value: "", label: "All", col: "#64748b" },
   { value: "Identified", label: "Identified", col: "#22d3a5" },
   { value: "NeedsReview", label: "Needs review", col: "#f59e0b" },
-  { value: "Unrecognized", label: "Unknown", col: "#f87171" },
 ];
 
 const LIMIT = 50;
@@ -59,6 +58,8 @@ export default function EventsPage() {
 
   useGateEventStream({
     onEvent: (evt) => {
+      if (statusTab && evt.status !== statusTab) return;
+
       const ts = new Date(evt.timestamp).getTime();
       const fromMs = new Date(bounds.from).getTime();
       const toMs = new Date(bounds.to).getTime();

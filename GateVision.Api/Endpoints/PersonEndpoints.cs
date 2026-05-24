@@ -222,7 +222,7 @@ public static class PersonEndpoints
 
             // Nullify person references in gate events — preserve audit trail
             await db.Database.ExecuteSqlAsync(
-                $"""UPDATE gate_events SET "PersonId" = NULL, "Status" = 'Unrecognized' WHERE "PersonId" = {id}""", ct);
+                $"""UPDATE gate_events SET "PersonId" = NULL, "Status" = 'NeedsReview' WHERE "PersonId" = {id}""", ct);
 
             // Remove person record
             db.Persons.Remove(person);

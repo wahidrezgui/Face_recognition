@@ -24,7 +24,7 @@ export interface GateEvent {
   confidence: number;
   timestamp: string;
   direction: "entry" | "exit";
-  status?: "Identified" | "NeedsReview" | "Unrecognized";
+  status?: "Identified" | "NeedsReview";
   faceImageBase64?: string | null;
   faceImageUrl?: string | null;
   welcomeMessage?: string | null;
@@ -38,7 +38,7 @@ export interface Person {
   id: string;
   fullName: string;
   department: string;
-  enrollmentStatus: "Pending" | "Active" | "Revoked" | "Suspended";
+  enrollmentStatus: "Pending" | "Active" | "Suspended";
   createdAt: string;
   faceCount: number;
   welcomeMessage?: string | null;
@@ -64,7 +64,6 @@ export interface EventActivityStats {
   total: number;
   identified: number;
   needsReview: number;
-  unrecognized: number;
   entries: number;
   exits: number;
   uniquePersons: number;

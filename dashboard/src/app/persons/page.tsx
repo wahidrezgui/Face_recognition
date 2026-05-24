@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 
-const STATUS_FILTERS = ["All", "Active", "Pending", "Revoked", "Suspended"] as const;
+const STATUS_FILTERS = ["All", "Active", "Pending", "Suspended"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
 function PersonAvatar({ personId, fullName }: { personId: string; fullName: string }) {
