@@ -1,5 +1,6 @@
 import logging
 import time
+import asyncio
 import httpx
 import numpy as np
 from datetime import datetime, timezone
@@ -64,6 +65,7 @@ class NetBackendClient:
             reset_timeout=settings.net_circuit_reset_timeout,
         )
         self._local_buffer = LocalEventBuffer(settings.local_buffer_path)
+        logger.info("Local event buffer initialised at %s", settings.local_buffer_path)
 
     async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> dict | None:
         if not self.circuit_breaker.allow_request():
@@ -98,7 +100,8 @@ class NetBackendClient:
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             self.circuit_breaker.on_failure()
-            logger.error("Backend unreachable: %s — buffering locally", e)
+            logger.error("Backend unreachable (%s) at %s — buffering locally",
+                         repr(e), settings.net_backend_url)
             self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
             return {"backend_down": True}
         except Exception as e:
@@ -108,9 +111,9 @@ class NetBackendClient:
             return None
 
     def _buffer_identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> None:
-        body = {
+        payload = {
             "gate_id": self.gate_id,
-            "embedding": embedding.tolist() if hasattr(embedding, 'tolist') else embedding,
+            "embedding": embedding.tolist(),
             "frame_quality": frame_quality,
             "captured_at": captured_at,
             "direction": direction,
@@ -120,34 +123,40 @@ class NetBackendClient:
             "gender": gender,
             "emotion": emotion,
         }
-        self._local_buffer.enqueue(self.gate_id, body)
-        pending = self._local_buffer.pending_count()
-        logger.info("Buffered identify request locally (%d pending)", pending)
+        self._local_buffer.enqueue(self.gate_id, payload)
+        logger.info("Buffered identify event for gate=%s (pending=%d)", self.gate_id, self._local_buffer.pending_count())
 
     async def drain_local_buffer(self) -> int:
         drained = 0
         while True:
-            batch = self._local_buffer.dequeue_batch(20)
+            batch = self._local_buffer.dequeue_batch(8)
             if not batch:
                 break
             for item in batch:
-                body = item["payload"]
-                body["replayed"] = True
                 try:
-                    resp = await self.client.post(settings.net_identify_path, json=body)
-                    if resp.is_success:
-                        drained += 1
-                    else:
-                        # Re-enqueue on transient failure
-                        self._local_buffer.enqueue(item["gate_id"], body)
-                        logger.warning("Replay failed (%d) — re-buffered", resp.status_code)
-                        return drained
-                except (httpx.ConnectError, httpx.TimeoutException) as e:
-                    self._local_buffer.enqueue(item["gate_id"], body)
-                    logger.warning("Backend unreachable during drain — re-buffered: %s", e)
+                    body = item["payload"]
+                    resp = await self.client.post(
+                        settings.net_identify_path + "?replayed=true",
+                        json=body,
+                    )
+                    resp.raise_for_status()
+                    drained += 1
+                    # Avoid replay bursts that can trigger backend rate limiting.
+                    await asyncio.sleep(0.05)
+                except httpx.HTTPStatusError as e:
+                    status = e.response.status_code
+                    logger.error("Failed to replay buffered event (%d): %s — re-enqueueing", status, e)
+                    self._local_buffer.enqueue(item["gate_id"], item["payload"])
+                    if status in (429, 503):
+                        # Back off quickly on overload and stop this drain pass.
+                        await asyncio.sleep(1.0)
+                    return drained
+                except Exception as e:
+                    logger.error("Failed to replay buffered event: %s — re-enqueueing", e)
+                    self._local_buffer.enqueue(item["gate_id"], item["payload"])
                     return drained
         if drained > 0:
-            logger.info("Drained %d buffered events to central", drained)
+            logger.info("Drained %d buffered events from local buffer", drained)
         return drained
 
     async def enroll(self, person_id: str, embeddings: list[np.ndarray],

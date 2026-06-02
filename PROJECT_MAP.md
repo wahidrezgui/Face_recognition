@@ -175,6 +175,10 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | `GET /api/config/log-unknown` | JWT/API Key | Check if unknown face logging enabled |
 | `POST /api/config/log-unknown` | JWT/API Key | Toggle unknown face logging |
 | `POST /api/config/video-source` | JWT/API Key | Set camera source + direction. Writes `config/video_source.json`, POSTs to Python `/restart`, polls `/health` up to 10×300ms |
+| `GET /api/admin/gates` | JWT/API Key | List all gates (id, name, pythonUrl, apiKey, createdAt) |
+| `POST /api/admin/gates` | JWT/API Key | Create a new gate (id, name, pythonUrl, apiKey) |
+| `PATCH /api/admin/gates/{id}` | JWT/API Key | Update gate name, pythonUrl, or apiKey |
+| `DELETE /api/admin/gates/{id}` | JWT/API Key | Delete a gate |
 
 ### GateVision AI Endpoints (port 8000)
 
@@ -202,6 +206,8 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 
 ### GateVision AI Microservice (`gate_vision_ai/`)
 
+Two sample edge-node configurations are provided at `run-gate-a.sh` and `run-gate-b.sh` in the project root. Each sets the required `GV_*` env vars and starts the service on its own port (8000 / 8001). Source config files are in `gate_vision_ai/env/`.
+
 | File | Role |
 |------|------|
 | `main.py` | FastAPI lifespan, **event-window-driven** capture loop. Detected faces fed to `_window_manager.collect()`; when 250 ms window expires, `_window_manager.finalize()` produces a frozen `InteractionSnapshot` and `_process_snapshot()` is dispatched as an asyncio task. Assigns `track_id` per face via bbox-IoU tracker (`_bbox_iou`, `_match_or_create_track`, 3s track expiry). State dict for route closures. Contains `_drain_loop()` background task that replays buffered events every 10s. |
@@ -215,7 +221,9 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | `local_buffer.py` | `LocalEventBuffer`: SQLite-backed event queue. `enqueue()`, `dequeue_batch()`, `pending_count()`. Thread-safe via `threading.Lock`. Activates when circuit breaker is OPEN or backend unreachable. |
 | `config.py` | pydantic-settings, prefix `GV_`. All tunable parameters including `gate_id`, `local_buffer_path`, window settings. |
 | `routes.py` | All route handlers via `register_routes(app, state)` pattern. Exposes `GET /metrics` (Prometheus) and `GET /api/gates` proxy. |
-| `__main__.py` | `uvicorn.run("gate_vision_ai.main:app")` entry point. |
+| `__main__.py` | `uvicorn.run("gate_vision_ai.main:app")` entry point. Supports `GV_PORT` env var (default 8000). |
+| `env/gate-a.env` | Sample env config for Gate A edge node — webcam index 1, port 8000 |
+| `env/gate-b.env` | Sample env config for Gate B edge node — sample1.mp4, port 8001 |
 
 **Interaction state machine:**
 
@@ -247,10 +255,11 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | `Services/CacheService.cs` | Redis key `person:{id}` → `(Name, Department, WelcomeMessage)`. Gracefully degrades if Redis unavailable. |
 | `Services/EnrollmentService.cs` | Stores embeddings in Qdrant with per-pose tags. Face crops saved to `FaceImages/{personId}/{embeddingId}.jpg`. |
 | `Services/TrainingModeService.cs` | Boolean flag. When ON: sub-threshold events persist as `training_events`. |
-| `Infrastructure/Middleware/AuthMiddleware.cs` | Validates JWT Bearer and X-API-Key. `?token=` param accepted for SSE. |
-| `Db/Scripts/` | 13 DbUp migrations (001–013 planned). Runs automatically on startup. |
+| `Services/GateService.cs` | Singleton. Loads gates from the `gates` DB table with a 60s in-memory cache. Exposes `GetAllAsync`, `GetByIdAsync`, `InvalidateCache`. Used by `AuthMiddleware` (per-gate API key lookup) and all gate config endpoints. |
+| `Infrastructure/Middleware/AuthMiddleware.cs` | Validates JWT Bearer and X-API-Key. Per-gate API keys are resolved from `GateService` (DB-backed, cached). `?token=` param accepted for SSE. |
+| `Db/Scripts/` | 15 DbUp migrations (001–015). Runs automatically on startup. |
 
-**Database tables:** `persons`, `gate_events`, `training_events`
+**Database tables:** `persons`, `gate_events`, `training_events`, `gates`
 **Vector store:** Qdrant collection `face_embeddings`, 512-dim, cosine distance
 
 ---
@@ -265,6 +274,7 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | `app/training-events/page.tsx` | Training mode event log. Review/link events to persons. |
 | `app/persons/page.tsx` + `app/persons/[id]/page.tsx` | Person CRUD. Webcam-guided enrollment (5 poses, countdown). Profile picture upload. Face image gallery. |
 | `app/config/page.tsx` | Video source switcher (webcam/file/RTSP). Training mode + unknown logging toggles. Processing FPS slider. |
+| `app/gates/page.tsx` | Gate status dashboard + management. Create, edit (name/URL/API key), and delete gates. Auto-refreshes every 15s. |
 | `hooks/useGateEventStream.ts` | `EventSource` wrapper. Auto-resolves JWT token. Parses SSE messages as `GateEvent`. Optional event filter. |
 | `lib/api.ts` | Typed fetch functions for all .NET endpoints. |
 | `components/ReviewEventModal.tsx` | Link/create/delete person from an unidentified event. Inline face enrollment from event crop. |
@@ -283,6 +293,7 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | M2 | **Missing DB indexes** on `gate_events(CapturedAt)`, `gate_events(Status)`, `persons(FullName)` | 🟡 MEDIUM | ✅ FIXED — migration `014_AddIndexes.sql` adds all three |
 | M5 | **Unbounded `gate_events` growth** — no TTL, archival, or row limit policy | 🟡 MEDIUM | ✅ FIXED — background cleanup task deletes events older than 90 days (hourly check) |
 | D2 | **Dead component: `StatCard.tsx`** — imported nowhere | 🟡 MEDIUM | ✅ FIXED — file removed |
+| D3 | **Module-level `_track_best_conf` dict in `main.py`** — replaced by `InteractionWindowManager` dedup in `window.py` | 🟡 MEDIUM | ✅ FIXED — removed; window manager handles per-track highest-confidence selection |
 
 ### Architecture Rules (enforced)
 - Python is the **only** component touching OpenCV, InsightFace, or any CV/ML library
@@ -400,6 +411,7 @@ Remaining future items (not yet planned):
 | G93 | `nginx/nginx.conf` with SSE-safe config (`proxy_buffering off`, `proxy_read_timeout 3600s`), SSL termination, reverse proxy for .NET API, Python AI, and dashboard | ✅ ADDED v18 |
 | G94 | `gate_vision_ai/Dockerfile` (Python 3.11-slim); edge node templates in `docker-compose.yml` (`gate-a`, `gate-b`); nginx service | ✅ ADDED v18 |
 | G95 | Multi-origin CORS config — `Cors:AllowedOrigins` reads from `appsettings.json` instead of hardcoded `localhost:3000` | ✅ ADDED v18 |
+| G96 | Gates moved to DB — `gates` table (migration 015); `GateService` singleton with 60s cache; `AuthMiddleware` reads gate API keys from DB; admin CRUD via `/api/admin/gates`; dashboard Gates page adds create/edit/delete UI; `Gates` + `GateApiKeys` config sections removed | ✅ ADDED v19 |
 
 ---
 
@@ -421,6 +433,8 @@ Remaining future items (not yet planned):
   }
 }
 ```
+**Gates are now stored in the `gates` DB table** (migration `015_AddGatesTable.sql`). Seed data for `gate-a` and `gate-b` is inserted by the migration. Manage gates via `GET/POST/PATCH/DELETE /api/admin/gates` or from the dashboard Gates page. No `Gates` or `Auth:GateApiKeys` config sections required.
+
 Production: override via `appsettings.json` with empty strings + User Secrets or environment variables.
 
 ### .NET Environment Variable Overrides
@@ -481,17 +495,27 @@ docker network create devnet
 docker compose up -d
 ```
 
-### Setup GateVision AI (port 8000)
+### Setup GateVision AI (two sample edge nodes)
+The project includes two sample edge-node configurations. Install dependencies once, then run each gate in its own terminal:
+
 ```bash
+# One-time install
 cd gate_vision_ai
 pip install -e .
 # GPU not available? Replace onnxruntime-gpu with onnxruntime in pyproject.toml before installing
-
-cp .env.example .env
-# Edit .env → set GV_NET_API_KEY=dev-api-key-change-me
-
-python -m gate_vision_ai
 ```
+
+**Terminal 1 — Gate A (webcam index 1, port 8000):**
+```bash
+./run-gate-a.sh
+```
+
+**Terminal 2 — Gate B (sample1.mp4, port 8001):**
+```bash
+./run-gate-b.sh
+```
+
+Each script sets the required `GV_*` environment variables (gate ID, camera source, port, API key) and starts the service. Gate A captures from the first USB camera; Gate B replays the bundled `gate_vision_ai/sample1.mp4` video file. Alternative config files for reference at `gate_vision_ai/env/gate-a.env` and `gate_vision_ai/env/gate-b.env`.
 
 ### Setup .NET Backend (port 5000)
 ```bash
@@ -499,6 +523,7 @@ cd GateVision.Api
 dotnet restore
 dotnet run
 # appsettings.Development.json has working defaults for local dev — no secrets needed
+# Pre-configured gates: gate-a → http://localhost:8000, gate-b → http://localhost:8001
 ```
 
 For production:
@@ -515,4 +540,16 @@ npm install
 npm run dev
 # Navigate to http://localhost:3000/login
 # Login with: dev-api-key-change-me (from appsettings.Development.json)
+# Dashboard auto-discovers gates via GET /api/gates — gate selector in sidebar
 ```
+
+### Accessing the Gates
+
+| Page | URL | What to see |
+|------|-----|-------------|
+| Admin dashboard | `http://localhost:3000/dashboard` | Live SSE feed, gate selector in sidebar, face captures |
+| Gate status | `http://localhost:3000/gates` | Per-gate status cards with metrics, online/offline indicators |
+| Config | `http://localhost:3000/config` | Per-gate video source switcher, direction, training/log-unknown toggles |
+| Gate A kiosk | `http://localhost:3000/desk?gateId=gate-a` | Scoped SSE — only Gate A events |
+| Gate B kiosk | `http://localhost:3000/desk?gateId=gate-b` | Scoped SSE — only Gate B events |
+| All events | `http://localhost:3000/desk` | Aggregate SSE — events from all gates |

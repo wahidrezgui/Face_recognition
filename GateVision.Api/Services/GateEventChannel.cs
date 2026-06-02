@@ -9,7 +9,7 @@ public class GateChannelRegistry
     private readonly ConcurrentDictionary<string, Channel<GateEvent>> _channels = new();
     private readonly Channel<GateEvent> _all =
         Channel.CreateBounded<GateEvent>(new BoundedChannelOptions(500)
-            { FullMode = BoundedChannelFullMode.DropOldest });
+        { FullMode = BoundedChannelFullMode.DropOldest });
 
     public void Publish(string gateId, GateEvent evt)
     {
@@ -25,7 +25,10 @@ public class GateChannelRegistry
     public IEnumerable<string> ActiveGateIds => _channels.Keys;
 
     private Channel<GateEvent> GetOrCreate(string gateId) =>
-        _channels.GetOrAdd(gateId, _ => Channel.CreateBounded<GateEvent>(
+        _channels.GetOrAdd(NormalizeGateId(gateId), _ => Channel.CreateBounded<GateEvent>(
             new BoundedChannelOptions(200)
-                { FullMode = BoundedChannelFullMode.DropOldest }));
+            { FullMode = BoundedChannelFullMode.DropOldest }));
+
+    private static string NormalizeGateId(string gateId) =>
+        string.IsNullOrWhiteSpace(gateId) ? "default" : gateId.Trim().ToLowerInvariant();
 }

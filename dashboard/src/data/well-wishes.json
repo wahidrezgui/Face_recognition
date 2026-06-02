@@ -6,7 +6,6 @@
     "tone": "warm",
     "type": "general"
   },
-
   {
     "id": "ww-003",
     "text": "أنت قدوة حسنة للجميع استمر",
@@ -25,55 +24,6 @@
     "id": "ww-005",
     "text": "فخورين بإنجازك الرائع تستحق كل خير",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-006",
-    "text": "ربي يوفقك ويسعدك في حياتك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-007",
-    "text": "نتمنى لك يوماً مليئاً بالنجاحات",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-008",
-    "text": "بالتوفيق والنجاح في مسيرتك المهنية",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-009",
-    "text": "الله يسعدك ويحقق لك كل أحلامك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-010",
-    "text": "دائماً متميز وناجح في كل خطوة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-011",
-    "text": "عقبال القمة والنظرة للأعلى دائماً",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-012",
-    "text": "الله يكتب لك النجاح في كل عمل",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -148,37 +98,9 @@
     "type": "general"
   },
   {
-    "id": "ww-023",
-    "text": "بداية موفقة ونهاية سعيدة إن شاء الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-024",
     "text": "كل خطوة تخطيها ترفع راسنا",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-025",
-    "text": "موفق بإذن الله في كل مساعيك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-026",
-    "text": "الله يسهل دربك ويحقق مرادك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-027",
-    "text": "الله يفتح عليك أبواب الخير",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -200,13 +122,6 @@
     "id": "ww-030",
     "text": "فخورين بجهودك المميزة يا بطل",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-031",
-    "text": "الله يكتب لك التوفيق في كل مكان",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -305,41 +220,6 @@
     "id": "ww-050",
     "text": "أنت نجم ساطع في سماء الإبداع",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-051",
-    "text": "ربي يحقق لك كل أمانيك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-052",
-    "text": "بإذن الله لك مستقبل مشرق",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-053",
-    "text": "نتمنى لك التوفيق في كل خطوة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-054",
-    "text": "الله يكتب لك الخير في كل أمورك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-055",
-    "text": "مسيرة نجاحك ملهمة للجميع",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -445,69 +325,6 @@
     "id": "ww-078",
     "text": "أخلاقك العالية تسبق إنجازك",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-079",
-    "text": "الله يوفقك في مسيرتك المهنية",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-080",
-    "text": "بإذن الله تحقق كل أهدافك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-081",
-    "text": "النجاح حليفك بإذن الله دائماً",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-082",
-    "text": "مستقبل باهر ينتظرك إن شاء الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-083",
-    "text": "مبروك النجاح تستحق كل خير",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-084",
-    "text": "بإذن الله القمة القادمة لك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-085",
-    "text": "موفق في حياتك العلمية والعملية",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-086",
-    "text": "الله يبارك لك في علمك وعملك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-087",
-    "text": "نجاحك هو نجاح للجميع",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -634,118 +451,6 @@
     "id": "ww-105",
     "text": "دام إبداعك وتميزك يا مبدع",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-106",
-    "text": "تحقيق الأهداف يبدأ بالعزيمة يا صديقي",
-    "category": "success",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-107",
-    "text": "مستقبل مشرق ينتظرك يا بطل",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-108",
-    "text": "بالتوفيق في مسيرتك إن شاء الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-109",
-    "text": "لك مستقبل باهر إن شاء الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-110",
-    "text": "فخورين بنجاحك هذا",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-111",
-    "text": "توكل على الله وابدأ مشوار النجاح",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-112",
-    "text": "النجاح ينتظر من يسعى إليه",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-113",
-    "text": "بإذن الله تحصد ثمار تعبك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-122",
-    "text": "مزيداً من التقدم والازدهار",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-123",
-    "text": "دام نجاحك وتألقك يا متميز",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-124",
-    "text": "بإذن الله إلى القمة خطاك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-125",
-    "text": "كل النجاحات تبدأ بخطوة واثقة",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-126",
-    "text": "أنت أهل للنجاح والتألق",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-127",
-    "text": "دائماً في تقدم وازدهار",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-128",
-    "text": "النجاح عنوانك أينما ذهبت",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-129",
-    "text": "ألف مبروك النجاح والتفوق",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -890,48 +595,6 @@
     "type": "general"
   },
   {
-    "id": "ww-150",
-    "text": "ربنا يوفقك في كل خطوة تخطيها",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-151",
-    "text": "كل بداية لها نهاية جميلة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-152",
-    "text": "الناجحون لا يتوقفون عن المحاولة",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-153",
-    "text": "بإذن الله تحقق المستحيل",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-154",
-    "text": "السماء هي الحدود يا مبدع",
-    "category": "success",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
-    "id": "ww-155",
-    "text": "نجاح تلو النجاح بإذن الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-156",
     "text": "أنت تستحق كل هذا التميز",
     "category": "encouragement",
@@ -943,34 +606,6 @@
     "text": "دام عزك وتميزك يا غالي",
     "category": "encouragement",
     "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-165",
-    "text": "الله يزيدك من التوفيق والنجاح",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-166",
-    "text": "دروب الخير تنتظرك إن شاء الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-167",
-    "text": "بإذن الله تصل لأعلى المراتب",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-168",
-    "text": "عقبال مناصب أعلى وأكبر",
-    "category": "success",
-    "tone": "friendly",
     "type": "general"
   },
   {
@@ -1065,13 +700,6 @@
     "type": "general"
   },
   {
-    "id": "ww-183",
-    "text": "عسى الخير دربك يا رب",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-184",
     "text": "الله يوريك الخير أينما تكون",
     "category": "wellness",
@@ -1121,13 +749,6 @@
     "type": "general"
   },
   {
-    "id": "ww-194",
-    "text": "الله يكتب لك الخير والسعادة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-195",
     "text": "السعادة والرضا عنوان أيامك",
     "category": "wellness",
@@ -1145,20 +766,6 @@
     "id": "ww-197",
     "text": "أيامك كلها خير وبركة",
     "category": "wellness",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-198",
-    "text": "الله يوسع رزقك ويفتح لك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-199",
-    "text": "بإذن الله أيامك كلها نجاح",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -1240,45 +847,10 @@
     "type": "general"
   },
   {
-    "id": "ww-214",
-    "text": "المستقبل ينتظر إبداعك القادم",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
     "id": "ww-216",
     "text": "موهبتك الفريدة تأخذك للأفضل",
     "category": "encouragement",
     "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-217",
-    "text": "دائماً في تقدم وازدهار يا رب",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-218",
-    "text": "ربنا يتمم لك على خير",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-219",
-    "text": "المثابرة والإصرار سر نجاحك",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-220",
-    "text": "عقبال القمة القادمة يا مبدع",
-    "category": "success",
-    "tone": "friendly",
     "type": "general"
   },
   {
@@ -1299,20 +871,6 @@
     "id": "ww-227",
     "text": "حضورك الطيب يسعد الجميع",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-228",
-    "text": "الله يوفقك ويسدد خطاك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-229",
-    "text": "كل خير في طريقك إن شاء الله",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -1408,34 +966,6 @@
     "type": "general"
   },
   {
-    "id": "ww-250",
-    "text": "كل خطوة تخطوها نحو القمة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-251",
-    "text": "بإذن الله الوصول للقمة قريب",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-252",
-    "text": "النجاح ثقافتك والتميز عنوانك",
-    "category": "success",
-    "tone": "professional",
-    "type": "general"
-  },
-  {
-    "id": "ww-253",
-    "text": "عقبال القمم يا غالي",
-    "category": "success",
-    "tone": "friendly",
-    "type": "general"
-  },
-  {
     "id": "ww-254",
     "text": "أنت مبدع في كل ما تقدمه",
     "category": "encouragement",
@@ -1509,41 +1039,6 @@
     "id": "ww-264",
     "text": "أنت شخص استثنائي بكل المقاييس",
     "category": "encouragement",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-265",
-    "text": "الله يبارك لك في مسيرتك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-266",
-    "text": "دائماً نحو الأفضل بإذن الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-267",
-    "text": "بإذن الله القمة القادمة",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-268",
-    "text": "التميز والنجاح رفيق دربك",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-269",
-    "text": "عسى الخير والنجاح حليفك",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   },
@@ -1691,27 +1186,6 @@
     "id": "ww-296",
     "text": "ربنا يرضى عليك ويسعدك",
     "category": "wellness",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-297",
-    "text": "مستقبل مشرق بإذن الله",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-298",
-    "text": "بوركت خطواتك يا ناجح",
-    "category": "success",
-    "tone": "warm",
-    "type": "general"
-  },
-  {
-    "id": "ww-300",
-    "text": "الأفضل بإذن الله في انتظارك",
-    "category": "success",
     "tone": "warm",
     "type": "general"
   }

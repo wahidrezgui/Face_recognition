@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchEvents,
@@ -8,27 +8,84 @@ import {
   fetchPersonsCount,
   fetchEventStats,
   fetchGates,
-  setRoi,
+  gateStreamUrl,
   type GateEvent,
-  type Roi,
+  type GateStatus,
 } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
 import Link from "next/link";
 import { IconCamera, IconFace, IconTarget, IconChart, IconShield, IconUsers, IconDot } from "@/components/icons";
 import { PanelHeader, StatItem, CaptureThumb, EventCard } from "@/components/face-display";
-import { RoiEditor } from "@/components/RoiEditor";
 
-const ROI_STORAGE_KEY = "gv_roi";
+// ── Compact gate card shown in the "no gate selected" overview ──────────────
+function DashboardGateCard({ gate, onFocus }: { gate: GateStatus; onFocus: () => void }) {
+  const [streamErr, setStreamErr] = useState(false);
+  const isLive = gate.online && (gate.status?.camera_open ?? false);
+  return (
+    <div className="rounded border border-[#1a2640] bg-[#0d1a2f] p-3 flex flex-col gap-2">
+      <div className="flex items-center gap-2">
+        <IconDot online={isLive} />
+        <span className="text-xs font-medium text-gray-200 truncate">{gate.name}</span>
+        <span className={`ml-auto shrink-0 text-[10px] px-1.5 py-0.5 rounded border ${isLive ? "text-emerald-400 border-emerald-800 bg-emerald-950" : "text-red-400 border-red-900 bg-red-950"}`}>
+          {isLive ? "LIVE" : "OFF"}
+        </span>
+      </div>
+
+      {isLive && !streamErr && (
+        <div className="aspect-video overflow-hidden rounded bg-black">
+          <img
+            src={gateStreamUrl(gate.id)}
+            alt={gate.name}
+            className="w-full h-full object-contain"
+            onError={() => setStreamErr(true)}
+          />
+        </div>
+      )}
+
+      {gate.online && gate.status && (
+        <div className="grid grid-cols-2 gap-x-3 text-[10px]">
+          <span className="text-gray-600">Direction</span>
+          <span className="capitalize text-gray-400">{gate.status.direction}</span>
+          <span className="text-gray-600">FPS</span>
+          <span className="text-gray-400">{gate.status.processing_fps}</span>
+          {gate.status.stats && (
+            <>
+              <span className="text-gray-600">Faces today</span>
+              <span className="text-gray-400">{gate.status.stats.faces_detected.toLocaleString()}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {!gate.online && (
+        <p className="text-[10px] text-gray-600">Gate AI service unreachable</p>
+      )}
+
+      <div className="flex gap-2">
+        <button
+          onClick={onFocus}
+          disabled={!isLive}
+          className="flex-1 py-1 text-[10px] rounded border border-blue-600/30 text-blue-400 hover:bg-blue-950/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Focus Stream
+        </button>
+        <Link
+          href={`/config?gateId=${gate.id}`}
+          className="py-1 px-2 text-[10px] rounded border border-[#1a2640] text-gray-500 hover:text-gray-300 transition-colors"
+        >
+          Config
+        </Link>
+      </div>
+    </div>
+  );
+}
 
 // ── page ──────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [liveEvents, setLiveEvents] = useState<GateEvent[]>([]);
   const [streamError, setStreamError] = useState(false);
   const [now, setNow] = useState(new Date());
-  const [roiEditing, setRoiEditing] = useState(false);
-  const [roi, setRoiState] = useState<Roi | null>(null);
   const [selectedGate, setSelectedGate] = useState<string | undefined>(undefined);
-  const imageRef = useRef<HTMLImageElement | null>(null);
 
   const { data: initialData, refetch: refetchEvents } = useQuery({
     queryKey: ["events", 1],
@@ -46,6 +103,13 @@ export default function DashboardPage() {
     queryFn: fetchGates,
     refetchInterval: 15_000,
   });
+
+  const onlineGates = useMemo(() => gates.filter((g) => g.online && g.status?.camera_open), [gates]);
+
+  // Reset stream error whenever the selected gate changes
+  useEffect(() => {
+    setStreamError(false);
+  }, [selectedGate]);
 
   const { data: persons = [] } = useQuery({
     queryKey: ["persons"],
@@ -112,33 +176,6 @@ export default function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
-  const handleSaveRoi = useCallback(async () => {
-    if (!roi) return;
-    try {
-      localStorage.setItem(ROI_STORAGE_KEY, JSON.stringify(roi));
-      await setRoi(roi);
-    } catch { }
-  }, [roi]);
-
-  const handleResetRoi = useCallback(async () => {
-    localStorage.removeItem(ROI_STORAGE_KEY);
-    setRoiState(null);
-    try { await setRoi({ x: 0, y: 0, width: 0, height: 0 }); } catch { }
-  }, []);
-
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(ROI_STORAGE_KEY);
-      if (saved) {
-        const parsed: Roi = JSON.parse(saved);
-        if (parsed.width > 0) {
-          setRoiState(parsed);
-          setRoi(parsed);
-        }
-      }
-    } catch { }
-  }, []);
-
   const handleClearCaptures = useCallback(() => {
     setLiveEvents([]);
   }, []);
@@ -164,7 +201,7 @@ export default function DashboardPage() {
         </div>
 
         <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-4">
-          <span className="text-gray-600">Camera 01</span>
+          <span className="text-gray-600">{selectedGate ? gates.find(g => g.id === selectedGate)?.name ?? selectedGate : "All Gates"}</span>
           <IconDot online={!streamError} />
           <span>{streamError ? "Offline" : "Live"}</span>
         </div>
@@ -252,49 +289,38 @@ export default function DashboardPage() {
           {/* Live camera feed */}
           <div className="shrink-0 border-b border-gv-border">
             <PanelHeader icon={<IconCamera />} title="Live View" />
-            <button
-              onClick={() => {
-                if (!roiEditing && !roi && imageRef.current) {
-                  const nw = imageRef.current.naturalWidth;
-                  const nh = imageRef.current.naturalHeight;
-                  if (nw > 0 && nh > 0) {
-                    const margin = 0.2;
-                    setRoiState({ x: Math.round(nw * margin), y: Math.round(nh * margin), width: Math.round(nw * (1 - 2 * margin)), height: Math.round(nh * (1 - 2 * margin)) });
-                  }
-                }
-                setRoiEditing((v) => !v);
-              }}
-              className={`ml-auto text-[10px] px-2 py-0.5 rounded border transition-colors ${roiEditing ? "bg-green-700/40 text-green-300 border-green-600/40" : "bg-gray-700/30 text-gray-400 border-gray-600/30"} `}
-              style={{ marginTop: -24, marginRight: 8 }}
-            >
-              {roiEditing ? "ROI Active" : "ROI Off"}
-            </button>
           </div>
 
           <div className="relative flex-1 overflow-hidden bg-black">
-            {!streamError ? (
+            {!selectedGate ? (
+              /* ── No gate selected: overview cards ── */
+              <div className="h-full overflow-y-auto p-4" style={{ scrollbarWidth: "thin", scrollbarColor: "#1e2d4a transparent" }}>
+                <p className="mb-3 text-[10px] uppercase tracking-widest text-gray-600">
+                  {gates.length === 0 ? "No gates configured" : "Select a gate to focus its stream"}
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {gates.map((gate) => (
+                    <DashboardGateCard
+                      key={gate.id}
+                      gate={gate}
+                      onFocus={() => setSelectedGate(gate.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            ) : !streamError ? (
+              /* ── Gate selected: live stream ── */
               <>
                 <img
-                  ref={imageRef}
-                  src="/stream"
+                  src={gateStreamUrl(selectedGate)}
                   alt="Live camera feed"
                   className="w-full h-full object-contain"
                   onError={() => setStreamError(true)}
                 />
-                <RoiEditor
-                  roi={roi}
-                  onChange={setRoiState}
-                  onSave={handleSaveRoi}
-                  onReset={handleResetRoi}
-                  editing={roiEditing}
-                  imageRef={imageRef}
-                />
-                {/* Timestamp overlay */}
                 <div className="absolute top-3 left-3 font-mono text-xs text-white/70 bg-black/50 px-2 py-1 rounded" suppressHydrationWarning>
                   {now.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\//g, "-")}
                   &nbsp;{now.toLocaleTimeString("en-US", { hour12: false })}
                 </div>
-                {/* Corner brackets */}
                 {[
                   "top-2 left-2 border-t border-l",
                   "top-2 right-2 border-t border-r",
@@ -303,24 +329,38 @@ export default function DashboardPage() {
                 ].map((cls, i) => (
                   <div key={i} className={`absolute w-4 h-4 border-blue-400/60 ${cls}`} />
                 ))}
-                {/* Live badge */}
                 <div className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-black/60 rounded px-2 py-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
                   <span className="text-[10px] font-semibold text-white/80 tracking-wider">LIVE</span>
                 </div>
+                <button
+                  onClick={() => setSelectedGate(undefined)}
+                  className="absolute top-3 right-3 text-[10px] px-2 py-1 bg-black/60 hover:bg-black/80 rounded border border-white/10 text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  ← All Gates
+                </button>
               </>
             ) : (
+              /* ── Stream error ── */
               <div className="w-full h-full flex flex-col items-center justify-center gap-3">
                 <svg className="w-12 h-12 text-gray-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1} d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M12 18.75H4.5a2.25 2.25 0 01-2.25-2.25V9m12.841 9.091L16.5 19.5m-1.409-1.409c.407-.407.659-.97.659-1.591v-9a2.25 2.25 0 00-2.25-2.25h-9c-.621 0-1.184.252-1.591.659m12.182 12.182L2.909 5.909" />
                 </svg>
                 <p className="text-sm text-gray-600">Stream unavailable</p>
-                <button
-                  onClick={() => setStreamError(false)}
-                  className="text-xs px-3 py-1.5 bg-blue-700/30 hover:bg-blue-700/50 border border-blue-600/30 rounded transition-colors text-blue-300"
-                >
-                  Retry
-                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setStreamError(false)}
+                    className="text-xs px-3 py-1.5 bg-blue-700/30 hover:bg-blue-700/50 border border-blue-600/30 rounded transition-colors text-blue-300"
+                  >
+                    Retry
+                  </button>
+                  <button
+                    onClick={() => setSelectedGate(undefined)}
+                    className="text-xs px-3 py-1.5 bg-gray-700/30 hover:bg-gray-700/50 border border-gray-600/30 rounded transition-colors text-gray-400"
+                  >
+                    All Gates
+                  </button>
+                </div>
               </div>
             )}
           </div>

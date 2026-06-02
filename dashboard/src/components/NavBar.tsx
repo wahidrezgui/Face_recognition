@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ExternalLink } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
-import { fetchTrainingMode } from "@/lib/api";
+import { deskDisplayUrl, fetchTrainingMode, fetchGates } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -22,13 +22,8 @@ const NAV_ITEMS = [
   { href: "/events", label: "Events" },
   { href: "/training-events", label: "Training" },
   { href: "/gates", label: "Gates" },
-  { href: "/config", label: "Config" },
 ];
 
-const DISPLAY_LINKS = [
-  { href: "/kiosk", label: "Kiosk", desc: "Arabic gate display" },
-  { href: "/desk", label: "Desk", desc: "English welcome display" },
-];
 
 export default function NavBar() {
   const pathname = usePathname();
@@ -41,7 +36,15 @@ export default function NavBar() {
     enabled: authenticated,
   });
 
-  const hideNav = pathname === "/login" || pathname.startsWith("/kiosk");
+  const { data: gates = [] } = useQuery({
+    queryKey: ["gates"],
+    queryFn: fetchGates,
+    staleTime: 30_000,
+    retry: false,
+    enabled: authenticated,
+  });
+
+  const hideNav = pathname === "/login";
   if (hideNav) return null;
 
   return (
@@ -57,7 +60,7 @@ export default function NavBar() {
 
       {NAV_ITEMS.map(({ href, label }) => {
         const active = pathname.startsWith(href);
-        const showTrainingBadge = href === "/config" && training?.enabled;
+        const showTrainingBadge = href === "/gates" && training?.enabled;
         const showReviewBadge = href === "/training-events";
 
         return (
@@ -103,23 +106,37 @@ export default function NavBar() {
             <ChevronDown className="size-3 opacity-60" />
           </Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48">
-          {DISPLAY_LINKS.map(({ href, label, desc }) => (
-            <DropdownMenuItem key={href} asChild>
-              <a
-                href={href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex cursor-pointer items-center justify-between gap-2"
-              >
-                <span>
-                  <span className="block text-xs font-medium">{label}</span>
-                  <span className="block text-[10px] text-muted-foreground">{desc}</span>
-                </span>
-                <ExternalLink className="size-3 shrink-0 opacity-50" />
-              </a>
+        <DropdownMenuContent align="start" className="w-52">
+          {gates.length === 0 ? (
+            <DropdownMenuItem disabled className="flex items-center justify-between gap-2">
+              <span>
+                <span className="block text-xs font-medium">Desk</span>
+                <span className="block text-[10px] text-muted-foreground">Gate ID required</span>
+              </span>
+              <ExternalLink className="size-3 shrink-0 opacity-30" />
             </DropdownMenuItem>
-          ))}
+          ) : (
+            gates.map((gate) => (
+              <DropdownMenuItem key={gate.id} asChild>
+                <a
+                  href={deskDisplayUrl(gate.id)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex cursor-pointer items-center justify-between gap-2"
+                >
+                  <span>
+                    <span className="block text-xs font-medium">Desk — {gate.name}</span>
+                    <span className="block text-[10px] text-muted-foreground capitalize">
+                      {gate.online && gate.status?.camera_open
+                        ? `${gate.status.direction} · live`
+                        : "offline"}
+                    </span>
+                  </span>
+                  <ExternalLink className="size-3 shrink-0 opacity-50" />
+                </a>
+              </DropdownMenuItem>
+            ))
+          )}
         </DropdownMenuContent>
       </DropdownMenu>
 

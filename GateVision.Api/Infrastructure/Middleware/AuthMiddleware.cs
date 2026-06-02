@@ -1,6 +1,7 @@
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
+using GateVision.Api.Services;
 using Microsoft.IdentityModel.Tokens;
 
 namespace GateVision.Api.Infrastructure.Middleware;
@@ -9,7 +10,7 @@ public class AuthMiddleware
 {
     private readonly RequestDelegate _next;
     private readonly string _apiKey;
-    private readonly Dictionary<string, string> _gateApiKeys;
+    private readonly GateService _gateService;
     private readonly TokenValidationParameters _jwtValidationParams;
     private static readonly JwtSecurityTokenHandler JwtHandler = new();
 
@@ -21,14 +22,13 @@ public class AuthMiddleware
 
     private readonly ILogger<AuthMiddleware> _logger;
 
-    public AuthMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<AuthMiddleware> logger)
+    public AuthMiddleware(RequestDelegate next, IConfiguration configuration, ILogger<AuthMiddleware> logger, GateService gateService)
     {
         _next = next;
         _logger = logger;
+        _gateService = gateService;
         _apiKey = configuration["Auth:ApiKey"]
             ?? throw new InvalidOperationException("Auth:ApiKey not configured. Set via User Secrets, appsettings, or environment variable.");
-        _gateApiKeys = configuration.GetSection("Auth:GateApiKeys")
-            .Get<Dictionary<string, string>>() ?? new Dictionary<string, string>();
         var jwtSecret = configuration["Auth:JwtSecret"]
             ?? throw new InvalidOperationException("Auth:JwtSecret not configured. Set via User Secrets, appsettings, or environment variable.");
         _jwtValidationParams = new TokenValidationParameters
@@ -80,14 +80,15 @@ public class AuthMiddleware
                 return;
             }
 
-            // Check per-gate API keys
-            foreach (var (gateId, gateKey) in _gateApiKeys)
+            // Check per-gate API keys from database
+            var gates = await _gateService.GetAllAsync(ctx.RequestAborted);
+            foreach (var gate in gates)
             {
-                if (providedKey == gateKey)
+                if (!string.IsNullOrEmpty(gate.ApiKey) && providedKey == gate.ApiKey)
                 {
                     ctx.User = new ClaimsPrincipal(new ClaimsIdentity(
-                        [new Claim(ClaimTypes.Role, "api"), new Claim("GateId", gateId)], "GateApiKey"));
-                    _logger.LogDebug("Authenticated via gate API key for {GateId} on {Path}", gateId, path);
+                        [new Claim(ClaimTypes.Role, "api"), new Claim("GateId", gate.Id.ToString())], "GateApiKey"));
+                    _logger.LogDebug("Authenticated via gate API key for {GateId} on {Path}", gate.Id, path);
                     await _next(ctx);
                     return;
                 }

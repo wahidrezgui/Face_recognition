@@ -30,14 +30,7 @@ public class EnrollmentService
 
     public async Task<Person> CreatePerson(string fullName, string department, string? welcomeMessage = null, CancellationToken ct = default)
     {
-        var person = new Person
-        {
-            Id = Guid.NewGuid(),
-            FullName = fullName,
-            Department = department,
-            EnrollmentStatus = EnrollmentStatus.Pending,
-            WelcomeMessage = string.IsNullOrWhiteSpace(welcomeMessage) ? null : welcomeMessage.Trim(),
-        };
+        var person = Person.Create(fullName, department, welcomeMessage);
         _db.Persons.Add(person);
         await _db.SaveChangesAsync(ct);
         await _cache.SetPersonAsync(person.Id, person.FullName, person.Department, person.WelcomeMessage);
@@ -105,7 +98,7 @@ public class EnrollmentService
                 catch (Exception ex) { _logger.LogWarning(ex, "Qdrant write failed for averaged embedding {Eid}", eid); }
             }
 
-            person.EnrollmentStatus = EnrollmentStatus.Active;
+            person.Activate();
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
         });

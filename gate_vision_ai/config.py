@@ -6,6 +6,7 @@ _PROJECT_ROOT = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__
 
 
 class Settings(BaseSettings):
+    port: int = 8000
     camera_source: str = "0"
     processing_fps: int = 3
 
@@ -17,7 +18,7 @@ class Settings(BaseSettings):
 
     detector_confidence: float = 0.5
     detector_nms: float = 0.4
-    detector_input_size: tuple = (640, 640)
+    detector_input_size: tuple | None = None  # None = use profile default; set to override e.g. (480, 480)
 
     min_face_confidence: float = 0.5
     min_face_size: int = 40
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
 
     model_package: str = "buffalo_l"
+    model_profile: str = "auto"  # "auto" | "performance" | "lite"
+
+    motion_threshold: float = 0.02    # min fraction of pixels changed to count as motion; 0 = disabled
+    motion_pixel_threshold: int = 25  # per-pixel change magnitude (0–255) to count as "changed"
+
+    detect_max_width: int = 0  # downscale frame to this width before detection; 0 = disabled (use full res)
 
     class Config:
         env_prefix = "GV_"

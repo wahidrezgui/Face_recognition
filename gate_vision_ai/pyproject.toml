@@ -1,17 +1,30 @@
 [project]
 name = "gate_vision_ai"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<4"
 dependencies = [
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
     "opencv-python>=4.9.0",
     "insightface>=0.7.3",
-    "onnxruntime-gpu>=1.18.0",
     "httpx>=0.27.0",
     "pydantic-settings>=2.3.0",
     "numpy>=1.26.0",
 ]
+
+# Install exactly ONE extra matching your hardware — these packages are mutually exclusive:
+#
+#   pip install -e .[cuda]      NVIDIA GPU with CUDA toolkit
+#   pip install -e .[directml]  Any Windows DirectX 12 GPU (Intel/AMD iGPU, no CUDA required)
+#   pip install -e .[openvino]  Intel CPU / iGPU via OpenVINO EP (5-15x faster than plain CPU)
+#   pip install -e .[cpu]       CPU-only fallback (default for Docker / unknown hardware)
+#
+# Switching backends: pip uninstall onnxruntime-gpu (or -directml / -openvino), then install the new one.
+[project.optional-dependencies]
+cuda     = ["onnxruntime-gpu>=1.18.0"]
+directml = ["onnxruntime-directml>=1.18.0"]
+openvino = ["onnxruntime-openvino>=1.18.0"]
+cpu      = ["onnxruntime>=1.18.0"]
 
 [tool.setuptools.packages.find]
 include = ["gate_vision_ai*"]

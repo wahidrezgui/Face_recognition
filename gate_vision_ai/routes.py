@@ -62,10 +62,50 @@ class RoiRequest(BaseModel):
 class RestartRequest(BaseModel):
     source: str
     direction: str = "entry"
+    gate_id: str | None = None
 
 
 class ProcessingFpsRequest(BaseModel):
     fps: int
+
+
+class ModelProfileRequest(BaseModel):
+    profile: str  # "auto" | "performance" | "lite"
+
+
+class DetSizeRequest(BaseModel):
+    width: int
+    height: int
+
+
+class MotionConfigRequest(BaseModel):
+    threshold: float       # fraction of pixels that must change; 0 = disabled
+    pixel_threshold: int   # per-pixel magnitude (0–255) to count as changed
+
+
+class DetectScaleRequest(BaseModel):
+    max_width: int  # target detection width; 0 = disabled (use full resolution)
+
+
+def _save_python_setting(key: str, value) -> None:
+    """Atomic read-merge-write so individual key saves don't clobber each other."""
+    config_path = settings.python_settings_config_path
+    tmp_path = config_path + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        existing: dict = {}
+        if os.path.isfile(config_path):
+            try:
+                with open(config_path) as f:
+                    existing = json.load(f)
+            except (json.JSONDecodeError, OSError):
+                pass
+        existing[key] = value
+        with open(tmp_path, "w") as f:
+            json.dump(existing, f)
+        os.replace(tmp_path, config_path)
+    except OSError as e:
+        logger.warning("Failed to persist %s: %s", key, e)
 
 
 def register_routes(app, state: dict):
@@ -281,10 +321,23 @@ def register_routes(app, state: dict):
     @app.get("/stream/status")
     def stream_status():
         cap = s["capture"]
+        det = s.get("detector")
         roi = s.get("roi", {})
         return {
             "camera_open": cap is not None and cap.cap.isOpened() if cap else False,
-            "detector_loaded": s["detector"] is not None,
+            "detector_loaded": det is not None,
+            "model_profile": settings.model_profile,
+            "active_model": det.model_package if det else None,
+            "active_det_size": list(det.det_size) if det else None,
+            "active_provider": det.active_provider if det else None,
+            "provider_chain": det.provider_chain if det else None,
+            "motion_gate": {
+                "enabled": settings.motion_threshold > 0,
+                "threshold": settings.motion_threshold,
+                "pixel_threshold": settings.motion_pixel_threshold,
+                "skipped_total": s["stats"].get("motion_skipped", 0),
+            },
+            "detect_max_width": settings.detect_max_width,
             "window_duration_ms": settings.window_duration_ms,
             "max_identity_requests_per_window": settings.max_identity_requests_per_window,
             "greeting_delay_ms": settings.greeting_delay_ms,
@@ -314,27 +367,159 @@ def register_routes(app, state: dict):
             raise HTTPException(400, "fps must be between 1 and 30")
         s["processing_fps"] = req.fps
         settings.processing_fps = req.fps
-        config_path = settings.python_settings_config_path
-        tmp_path = config_path + ".tmp"
-        try:
-            os.makedirs(os.path.dirname(config_path), exist_ok=True)
-            with open(tmp_path, "w") as f:
-                json.dump({"processing_fps": req.fps}, f)
-            os.replace(tmp_path, config_path)
-        except OSError as e:
-            logger.warning("Failed to persist processing_fps: %s", e)
+        _save_python_setting("processing_fps", req.fps)
         logger.info("Processing FPS set to %d", req.fps)
         return {"fps": req.fps}
+
+    @app.get("/config/model-profile")
+    def get_model_profile():
+        det = s.get("detector")
+        return {
+            "configured_profile": settings.model_profile,
+            "active_profile": det.resolved_profile if det else None,
+            "active_model": det.model_package if det else None,
+            "active_det_size": list(det.det_size) if det else None,
+            "active_provider": det.active_provider if det else None,
+            "provider_chain": det.provider_chain if det else None,
+            "note": "Changes to profile take effect after restart.",
+        }
+
+    @app.post("/config/model-profile")
+    def set_model_profile(req: ModelProfileRequest):
+        valid = {"auto", "performance", "lite"}
+        if req.profile not in valid:
+            raise HTTPException(400, f"profile must be one of: {', '.join(sorted(valid))}")
+        settings.model_profile = req.profile
+        _save_python_setting("model_profile", req.profile)
+        logger.info("Model profile set to '%s' (takes effect on next restart)", req.profile)
+        det = s.get("detector")
+        return {
+            "configured_profile": req.profile,
+            "active_profile": det.resolved_profile if det else None,
+            "active_model": det.model_package if det else None,
+            "note": "Restart the service to load the new model.",
+        }
+
+    _DET_SIZE_PRESETS = [
+        {"size": [160, 160], "label": "ultra-lite", "note": "Fastest; reduced accuracy at distance or for small faces"},
+        {"size": [320, 320], "label": "lite",        "note": "Default for CPU — good balance of speed and accuracy"},
+        {"size": [480, 480], "label": "balanced",    "note": "~2.25× cost vs 320; better for distant or angled faces"},
+        {"size": [640, 640], "label": "full",        "note": "Max accuracy; default for GPU"},
+    ]
+
+    @app.get("/config/det-size")
+    def get_det_size():
+        det = s.get("detector")
+        override = settings.detector_input_size
+        return {
+            "active_det_size": list(det.det_size) if det else None,
+            "configured_override": list(override) if override is not None else None,
+            "note": "Set an override to decouple det_size from the model profile. Takes effect after restart.",
+            "presets": _DET_SIZE_PRESETS,
+        }
+
+    @app.post("/config/det-size")
+    def set_det_size(req: DetSizeRequest):
+        valid_sizes = {s_["size"][0] for s_ in _DET_SIZE_PRESETS}
+        if req.width not in valid_sizes or req.height not in valid_sizes:
+            raise HTTPException(
+                400,
+                f"width and height must each be one of: {sorted(valid_sizes)}. Use DELETE /config/det-size to clear the override.",
+            )
+        settings.detector_input_size = (req.width, req.height)
+        _save_python_setting("detector_input_size", [req.width, req.height])
+        logger.info("det_size override set to (%d, %d) — takes effect after restart", req.width, req.height)
+        det = s.get("detector")
+        return {
+            "configured_override": [req.width, req.height],
+            "active_det_size": list(det.det_size) if det else None,
+            "note": "Restart the service to apply the new detection size.",
+        }
+
+    @app.delete("/config/det-size")
+    def clear_det_size():
+        settings.detector_input_size = None
+        _save_python_setting("detector_input_size", None)
+        logger.info("det_size override cleared — profile default will be used after restart")
+        det = s.get("detector")
+        return {
+            "configured_override": None,
+            "active_det_size": list(det.det_size) if det else None,
+            "note": "Restart to revert to the profile's default det_size.",
+        }
+
+    @app.get("/config/motion")
+    def get_motion_config():
+        return {
+            "enabled": settings.motion_threshold > 0,
+            "threshold": settings.motion_threshold,
+            "pixel_threshold": settings.motion_pixel_threshold,
+            "motion_skipped_total": s["stats"].get("motion_skipped", 0),
+            "note": "threshold=0 disables the gate entirely.",
+        }
+
+    @app.post("/config/motion")
+    def set_motion_config(req: MotionConfigRequest):
+        if req.threshold < 0 or req.threshold > 1:
+            raise HTTPException(400, "threshold must be between 0 and 1")
+        if req.pixel_threshold < 1 or req.pixel_threshold > 255:
+            raise HTTPException(400, "pixel_threshold must be between 1 and 255")
+        settings.motion_threshold = req.threshold
+        settings.motion_pixel_threshold = req.pixel_threshold
+        _save_python_setting("motion_threshold", req.threshold)
+        _save_python_setting("motion_pixel_threshold", req.pixel_threshold)
+        logger.info(
+            "Motion gate updated — threshold=%.4f pixel_threshold=%d",
+            req.threshold, req.pixel_threshold,
+        )
+        return {
+            "enabled": req.threshold > 0,
+            "threshold": req.threshold,
+            "pixel_threshold": req.pixel_threshold,
+        }
+
+    _DETECT_SCALE_PRESETS = [
+        {"max_width": 0,    "label": "disabled", "note": "Full camera resolution (default)"},
+        {"max_width": 960,  "label": "960p",     "note": "Half of 1920 — 4× less data than 1080p, imperceptible quality loss"},
+        {"max_width": 640,  "label": "640p",     "note": "~9× less data than 1080p — good for CPU-only 720p+ cameras"},
+        {"max_width": 480,  "label": "480p",     "note": "~16× less data — pairs well with the lite model profile"},
+    ]
+
+    @app.get("/config/detect-scale")
+    def get_detect_scale():
+        det = s.get("detector")
+        return {
+            "detect_max_width": settings.detect_max_width,
+            "enabled": settings.detect_max_width > 0,
+            "camera_width": s.get("frame_size", {}).get("width"),
+            "effective_det_size": list(det.det_size) if det else None,
+            "note": "Frames are downscaled to detect_max_width before detection; streaming stays at full resolution.",
+            "presets": _DETECT_SCALE_PRESETS,
+        }
+
+    @app.post("/config/detect-scale")
+    def set_detect_scale(req: DetectScaleRequest):
+        if req.max_width < 0:
+            raise HTTPException(400, "max_width must be >= 0 (0 = disabled)")
+        if req.max_width != 0 and req.max_width < 160:
+            raise HTTPException(400, "max_width must be 0 (disabled) or >= 160")
+        settings.detect_max_width = req.max_width
+        _save_python_setting("detect_max_width", req.max_width)
+        logger.info("detect_max_width set to %d", req.max_width)
+        return {
+            "detect_max_width": req.max_width,
+            "enabled": req.max_width > 0,
+        }
 
     @app.get("/metrics")
     def metrics():
         stats = s["stats"]
         gate_id = settings.gate_id
         cb_state = 1 if stats.get("circuit_open") else 0
+        backend_client = s.get("backend")
         buffer_pending = 0
-        backend = s.get("backend")
-        if backend and hasattr(backend, '_local_buffer'):
-            buffer_pending = backend._local_buffer.pending_count()
+        if backend_client and hasattr(backend_client, "_local_buffer"):
+            buffer_pending = backend_client._local_buffer.pending_count()
         lines = [
             "# HELP gatevision_frames_captured_total Total frames captured",
             f"# TYPE gatevision_frames_captured_total counter",
@@ -351,12 +536,12 @@ def register_routes(app, state: dict):
             "# HELP gatevision_circuit_breaker_state 1=OPEN 0=CLOSED",
             f"# TYPE gatevision_circuit_breaker_state gauge",
             f'gatevision_circuit_breaker_state{{gate_id="{gate_id}"}} {cb_state}',
-            "# HELP gatevision_local_buffer_pending Events buffered awaiting replay",
-            f"# TYPE gatevision_local_buffer_pending gauge",
-            f'gatevision_local_buffer_pending{{gate_id="{gate_id}"}} {buffer_pending}',
             "# HELP gatevision_windows_processed Total interaction windows processed",
             f"# TYPE gatevision_windows_processed counter",
             f'gatevision_windows_processed{{gate_id="{gate_id}"}} {stats.get("windows_processed", 0)}',
+            "# HELP gatevision_local_buffer_pending Events buffered awaiting replay",
+            f"# TYPE gatevision_local_buffer_pending gauge",
+            f'gatevision_local_buffer_pending{{gate_id="{gate_id}"}} {buffer_pending}',
         ]
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse("\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
@@ -417,6 +602,15 @@ def register_routes(app, state: dict):
             for idx in available
         ]
 
+    @app.post("/stop")
+    async def stop():
+        """Gracefully shut down the AI service."""
+        import signal
+        logger.info("Shutdown requested via /stop endpoint")
+        loop = asyncio.get_event_loop()
+        loop.call_later(0.5, lambda: os.kill(os.getpid(), signal.SIGINT))
+        return {"status": "stopping"}
+
     @app.post("/restart")
     async def restart(req: RestartRequest):
         source = req.source
@@ -425,7 +619,8 @@ def register_routes(app, state: dict):
         direction = req.direction
         if direction not in ("entry", "exit"):
             raise HTTPException(400, "direction must be 'entry' or 'exit'")
-        logger.info("Restarting capture with source=%s direction=%s", source, direction)
+        gate_id = (req.gate_id or "").strip() or settings.gate_id
+        logger.info("Restarting capture with source=%s direction=%s gate_id=%s", source, direction, gate_id)
 
         # Open and warm-up new capture before touching old one
         new_cap = await asyncio.to_thread(CameraCapture, source)
@@ -450,10 +645,14 @@ def register_routes(app, state: dict):
         s["capture"] = new_cap
         settings.camera_source = source
         settings.direction = direction
+        settings.gate_id = gate_id
         if old:
             await asyncio.to_thread(old.release)
 
-        return {"status": "ok", "camera_source": source, "direction": direction}
+        # Persist gate_id so identify payloads stay aligned with configured Gate UUID.
+        _save_python_setting("gate_id", gate_id)
+
+        return {"status": "ok", "camera_source": source, "direction": direction, "gate_id": gate_id}
 
 
 async def _run_enrollment_from_camera(person_id: str, capture, detector, backend):

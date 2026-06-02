@@ -2,15 +2,15 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
 using System.Threading.RateLimiting;
-using Microsoft.AspNetCore.RateLimiting;
 using DbUp;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
 using GateVision.Api.Endpoints;
 using GateVision.Api.Infrastructure.Db;
-using GateVision.Api.Infrastructure.Redis;
 using GateVision.Api.Infrastructure.Middleware;
+using GateVision.Api.Infrastructure.Redis;
 using GateVision.Api.Services;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
 var builder = WebApplication.CreateBuilder(args);
 
@@ -46,6 +46,7 @@ builder.Services.AddSingleton<TrainingModeService>();
 builder.Services.AddSingleton<LogUnknownService>();
 builder.Services.AddSingleton<EventBufferService>();
 builder.Services.AddSingleton<GateChannelRegistry>();
+builder.Services.AddSingleton<GateService>();
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 builder.Services.AddScoped<IdentificationService>();
@@ -91,10 +92,10 @@ builder.Services.AddRateLimiter(options =>
 {
     options.AddFixedWindowLimiter("IdentifyPolicy", cfg =>
     {
-        cfg.PermitLimit = 10;
+        cfg.PermitLimit = 30;
         cfg.Window = TimeSpan.FromSeconds(1);
         cfg.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        cfg.QueueLimit = 0;
+        cfg.QueueLimit = 200;
     });
     options.AddFixedWindowLimiter("EnrollPolicy", cfg =>
     {
@@ -110,9 +111,11 @@ builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.WithOrigins(allowedOrigins)
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (builder.Environment.IsDevelopment())
+            // Allow any origin in dev so network-IP access (phones, other machines) works
+            policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
+        else
+            policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
     });
 });
 

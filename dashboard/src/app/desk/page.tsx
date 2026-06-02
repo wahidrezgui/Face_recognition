@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
 import { type GateEvent } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
@@ -62,7 +62,7 @@ const THEMES = {
 
 // FacePhoto and IdleScreen are imported from @/components/kiosk/
 
-export default function DeskPage() {
+function DeskPageInner() {
   const searchParams = useSearchParams();
   const gateId = searchParams.get("gateId") ?? undefined;
   const [event, setEvent] = useState<GateEvent | null>(null);
@@ -147,10 +147,31 @@ export default function DeskPage() {
 
   const greeting =
     mode === "identified"
-      ? (event?.welcomeMessage ?? "أهلاً بك!")
+      ? (event?.welcomeMessage?.trim()
+        || (event?.personName && event.personName !== "UNKNOWN" ? `أهلاً ${event.personName}` : "أهلاً بك!"))
       : mode === "review"
-        ? (event?.welcomeMessage ?? "    ")
+        ? (event?.welcomeMessage?.trim() || "أهلاً وسهلاً")
         : "أهلاً وسهلاً";
+
+  if (!gateId) {
+    return (
+      <div
+        className="fixed inset-0 z-[9999] grid place-items-center bg-[#020617] px-6 text-center"
+        style={{ fontFamily: "'Cairo', system-ui, sans-serif" }}
+        dir="rtl"
+      >
+        <div className="max-w-xl rounded border border-[#1a2640] bg-[#0d1a2f] p-6">
+          <h1 className="mb-2 text-xl font-bold text-white">Gate ID مطلوب</h1>
+          <p className="text-sm text-gray-300">
+            استخدم رابط العرض الخاص بالبوابة فقط:
+          </p>
+          <p className="mt-2 break-all text-xs text-cyan-300">
+            /desk?gateId=&lt;gate-id&gt;
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <>
@@ -273,5 +294,13 @@ export default function DeskPage() {
         </div>
       </div>
     </>
+  );
+}
+
+export default function DeskPage() {
+  return (
+    <Suspense>
+      <DeskPageInner />
+    </Suspense>
   );
 }

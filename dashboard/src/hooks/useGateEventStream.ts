@@ -18,12 +18,13 @@ export function resolveStreamToken(): string | null {
 }
 
 export function buildEventStreamUrl(token: string | null, gateId?: string): string {
-  const base = gateId
-    ? `${API_BASE}/api/events/stream/${encodeURIComponent(gateId)}`
+  const params = new URLSearchParams();
+  if (gateId) params.set("gateId", gateId);
+  if (token) params.set("token", token);
+  const qs = params.toString();
+  return qs
+    ? `${API_BASE}/api/events/stream?${qs}`
     : `${API_BASE}/api/events/stream`;
-  return token
-    ? `${base}?token=${encodeURIComponent(token)}`
-    : base;
 }
 
 export type GateEventStreamOptions = {

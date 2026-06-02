@@ -208,14 +208,12 @@ public static class EventEndpoints
             Guid eventId;
             if (gateEvt is not null)
             {
-                gateEvt.Status = EventStatus.Identified;
-                gateEvt.PersonId = dto.PersonId;
+                gateEvt.AssignPerson(dto.PersonId);
                 eventId = gateEvt.Id;
             }
             else
             {
-                trainingEvt!.Status = EventStatus.Identified;
-                trainingEvt.PersonId = dto.PersonId;
+                trainingEvt!.AssignPerson(dto.PersonId);
                 eventId = trainingEvt.Id;
             }
 
@@ -325,23 +323,29 @@ public static class EventEndpoints
             return Results.Ok(new { items = events, total, page, limit });
         });
 
-        app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, GateChannelRegistry registry, CancellationToken ct) =>
+        app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, string? gateId, CancellationToken ct) =>
         {
-            await StreamEvents(ctx, db, registry.GetAllReader(), ct);
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = normalizedGateId is null || includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId);
+            await StreamEvents(ctx, db, reader, ct, normalizedGateId, includeLegacyDefault);
         });
 
-        app.MapGet("/api/events/stream/{gateId}", async (string gateId, HttpContext ctx, AppDbContext db, GateChannelRegistry registry, CancellationToken ct) =>
+        app.MapGet("/api/events/stream/{gateId}", async (string gateId, HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, CancellationToken ct) =>
         {
-            await StreamEvents(ctx, db, registry.GetReader(gateId), ct);
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId!);
+            await StreamEvents(ctx, db, reader, ct, normalizedGateId, includeLegacyDefault);
         });
 
-        app.MapGet("/api/gates", (GateChannelRegistry registry) =>
-        {
-            return Results.Ok(new { gates = registry.ActiveGateIds });
-        });
     }
 
-    static async Task StreamEvents(HttpContext ctx, AppDbContext db, ChannelReader<GateEvent> channel, CancellationToken ct)
+    static async Task StreamEvents(HttpContext ctx, AppDbContext db, ChannelReader<GateEvent> channel, CancellationToken ct, string? gateId, bool includeLegacyDefault)
     {
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers.CacheControl = "no-cache";
@@ -354,22 +358,49 @@ public static class EventEndpoints
             lastTimestamp = parsed.Kind == DateTimeKind.Local ? parsed.ToUniversalTime() : parsed;
         }
 
+        var normalizedGateId = NormalizeGateId(gateId);
         var todayStart = DateTime.UtcNow.Date;
         List<GateEvent> initialEvents;
         if (lastTimestamp == DateTime.MinValue)
         {
-            initialEvents = await db.GateEvents
-                .Where(e => e.CapturedAt >= todayStart && e.CapturedAt < todayStart.AddDays(1))
+            IQueryable<GateEvent> baseQuery = db.GateEvents
+                .Where(e => e.CapturedAt >= todayStart && e.CapturedAt < todayStart.AddDays(1));
+            if (normalizedGateId is not null)
+            {
+                if (includeLegacyDefault)
+                {
+                    baseQuery = baseQuery.Where(e =>
+                        e.GateId.ToLower() == normalizedGateId || e.GateId.ToLower() == "default");
+                }
+                else
+                {
+                    baseQuery = baseQuery.Where(e => e.GateId.ToLower() == normalizedGateId);
+                }
+            }
+            initialEvents = await baseQuery
                 .OrderByDescending(e => e.CapturedAt)
                 .Take(10)
                 .ToListAsync(ct);
         }
         else
         {
-            initialEvents = await db.GateEvents
+            IQueryable<GateEvent> baseQuery = db.GateEvents
                 .Where(e => e.CapturedAt > lastTimestamp
                          && e.CapturedAt >= todayStart
-                         && e.CapturedAt < todayStart.AddDays(1))
+                         && e.CapturedAt < todayStart.AddDays(1));
+            if (normalizedGateId is not null)
+            {
+                if (includeLegacyDefault)
+                {
+                    baseQuery = baseQuery.Where(e =>
+                        e.GateId.ToLower() == normalizedGateId || e.GateId.ToLower() == "default");
+                }
+                else
+                {
+                    baseQuery = baseQuery.Where(e => e.GateId.ToLower() == normalizedGateId);
+                }
+            }
+            initialEvents = await baseQuery
                 .OrderBy(e => e.CapturedAt)
                 .Take(100)
                 .ToListAsync(ct);
@@ -414,6 +445,8 @@ public static class EventEndpoints
                     heartbeatInterval = 5000;
                     while (channel.TryRead(out var evt))
                     {
+                        if (!MatchesGateFilter(evt.GateId, normalizedGateId, includeLegacyDefault))
+                            continue;
                         if (evt.CapturedAt > lastTimestamp)
                         {
                             lastTimestamp = evt.CapturedAt;
@@ -430,6 +463,28 @@ public static class EventEndpoints
 
             await ctx.Response.Body.FlushAsync(ct);
         }
+    }
+
+    static string? NormalizeGateId(string? gateId)
+    {
+        if (string.IsNullOrWhiteSpace(gateId)) return null;
+        return gateId.Trim().ToLowerInvariant();
+    }
+
+    static bool MatchesGateFilter(string eventGateId, string? requestedGateId, bool includeLegacyDefault)
+    {
+        if (requestedGateId is null) return true;
+        var normalizedEventGateId = NormalizeGateId(eventGateId);
+        if (normalizedEventGateId == requestedGateId) return true;
+        return includeLegacyDefault && normalizedEventGateId == "default";
+    }
+
+    static async Task<bool> ShouldIncludeLegacyDefaultAsync(string? requestedGateId, GateService gateService, CancellationToken ct)
+    {
+        if (requestedGateId is null || requestedGateId == "default")
+            return false;
+        var gates = await gateService.GetAllAsync(ct);
+        return gates.Count == 1;
     }
 
     static (DateTime from, DateTime to, string range) ResolveActivityRange(string range)

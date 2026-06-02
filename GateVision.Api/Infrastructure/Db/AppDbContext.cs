@@ -10,6 +10,7 @@ public class AppDbContext : DbContext
     public DbSet<Person> Persons => Set<Person>();
     public DbSet<GateEvent> GateEvents => Set<GateEvent>();
     public DbSet<TrainingEvent> TrainingEvents => Set<TrainingEvent>();
+    public DbSet<Gate> Gates => Set<Gate>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -51,6 +52,17 @@ public class AppDbContext : DbContext
                 .HasConversion<string>()
                 .HasMaxLength(10);
             e.HasIndex(t => t.GateId);
+        });
+
+        modelBuilder.Entity<Gate>(e =>
+        {
+            e.ToTable("gates");
+            e.HasKey(g => g.Id);
+            e.Property(g => g.Id).ValueGeneratedNever();
+            e.Property(g => g.Name).HasMaxLength(200);
+            e.Property(g => g.PythonUrl).HasMaxLength(500);
+            e.Property(g => g.ApiKey).HasMaxLength(200);
+            e.Property(g => g.StartCommand).HasMaxLength(500);
         });
     }
 }

@@ -8,13 +8,14 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import cv2
+import numpy as np
 from fastapi import FastAPI
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .capture import CameraCapture
-from .detector import FaceDetector
+from .detector import DetectorPool
 from .client import NetBackendClient
 from .window import InteractionWindowManager, IdentityScheduler
 from .routes import register_routes
@@ -50,17 +51,34 @@ if os.path.isfile(_python_settings_path):
         if "processing_fps" in _ps:
             settings.processing_fps = int(_ps["processing_fps"])
             logger.info("Loaded processing_fps from config: %d", settings.processing_fps)
+        if "model_profile" in _ps:
+            settings.model_profile = str(_ps["model_profile"])
+            logger.info("Loaded model_profile from config: %s", settings.model_profile)
+        if "detector_input_size" in _ps:
+            val = _ps["detector_input_size"]
+            settings.detector_input_size = tuple(val) if val is not None else None
+            logger.info("Loaded detector_input_size from config: %s", settings.detector_input_size)
+        if "motion_threshold" in _ps:
+            settings.motion_threshold = float(_ps["motion_threshold"])
+            logger.info("Loaded motion_threshold from config: %.4f", settings.motion_threshold)
+        if "motion_pixel_threshold" in _ps:
+            settings.motion_pixel_threshold = int(_ps["motion_pixel_threshold"])
+            logger.info("Loaded motion_pixel_threshold from config: %d", settings.motion_pixel_threshold)
+        if "detect_max_width" in _ps:
+            settings.detect_max_width = int(_ps["detect_max_width"])
+            logger.info("Loaded detect_max_width from config: %d", settings.detect_max_width)
     except (json.JSONDecodeError, OSError, ValueError) as e:
         logger.warning("Failed to read python settings %s: %s", _python_settings_path, e)
 
 capture: CameraCapture | None = None
-detector: FaceDetector | None = None
+detector: DetectorPool | None = None
 backend: NetBackendClient | None = None
 
 _last_process_time: float = 0
 _events_log: deque = deque(maxlen=100)
-_stats = {"frames_captured": 0, "faces_detected": 0, "events_sent": 0, "rejected": 0, "backend_errors": 0, "circuit_open": False, "windows_processed": 0}
+_stats = {"frames_captured": 0, "faces_detected": 0, "events_sent": 0, "rejected": 0, "backend_errors": 0, "circuit_open": False, "windows_processed": 0, "motion_skipped": 0}
 _latest_frame_jpg: bytes | None = None
+_motion_prev_gray: np.ndarray | None = None  # previous downscaled gray frame for motion gate
 
 _roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_width, "height": settings.roi_height}
 
@@ -153,8 +171,24 @@ async def _process_snapshot(snapshot, backend) -> None:
     )
 
 
+async def _drain_loop():
+    """Background task that replays buffered events every 10s when circuit is CLOSED."""
+    logger.info("Drain loop started (interval=10s)")
+    while True:
+        try:
+            await asyncio.sleep(10)
+            if backend and backend.circuit_breaker.state == "CLOSED":
+                drained = await backend.drain_local_buffer()
+                if drained > 0:
+                    logger.info("Drain loop: replayed %d buffered events", drained)
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Drain loop error: %s", e, exc_info=True)
+
+
 async def _capture_loop():
-    global _last_process_time, _stats, _latest_frame_jpg
+    global _last_process_time, _stats, _latest_frame_jpg, _motion_prev_gray
     logger.info("Background capture loop started (processing_fps=%d)", settings.processing_fps)
     last_detect_time = 0.0
     _frame_count = 0
@@ -209,20 +243,60 @@ async def _capture_loop():
                 continue
             last_detect_time = now
 
-            detect_frame = frame[ry:ry+rh, rx:rx+rw] if roi_active else frame
-            faces = detector.detect(detect_frame)
+            # Downscale for detection while keeping full-res frame for streaming.
+            # det_scale < 1.0 when active; inv_scale maps results back to full-frame space.
+            # rx/ry are 0 when no ROI — the unified coord formula below handles all cases.
+            max_w = settings.detect_max_width
+            if max_w > 0 and frame.shape[1] > max_w:
+                det_scale = max_w / frame.shape[1]
+                det_h = int(frame.shape[0] * det_scale)
+                detect_source = cv2.resize(frame, (max_w, det_h), interpolation=cv2.INTER_LINEAR)
+            else:
+                det_scale = 1.0
+                detect_source = frame
+            inv_scale = 1.0 / det_scale
+
+            if roi_active:
+                srx = int(rx * det_scale); sry = int(ry * det_scale)
+                srw = max(1, int(rw * det_scale)); srh = max(1, int(rh * det_scale))
+                detect_frame = detect_source[sry:sry+srh, srx:srx+srw]
+            else:
+                detect_frame = detect_source
+
+            # Motion gate: skip expensive inference when the scene is static.
+            # Operates on a 160×120 downscale so the diff costs ~0.5ms on CPU.
+            # Bypassed while active face tracks exist (person is mid-interaction).
+            if settings.motion_threshold > 0 and not _active_tracks:
+                _gray = cv2.cvtColor(
+                    cv2.resize(detect_frame, (160, 120), interpolation=cv2.INTER_NEAREST),
+                    cv2.COLOR_BGR2GRAY,
+                )
+                if _motion_prev_gray is not None:
+                    _diff = cv2.absdiff(_gray, _motion_prev_gray)
+                    _ratio = float(np.count_nonzero(_diff > settings.motion_pixel_threshold)) / _diff.size
+                    _motion_prev_gray = _gray
+                    if _ratio < settings.motion_threshold:
+                        _stats["motion_skipped"] += 1
+                        continue
+                else:
+                    _motion_prev_gray = _gray
+
+            faces = await asyncio.to_thread(detector.detect, detect_frame)
             if not faces:
                 continue
-            if roi_active:
-                for face in faces:
-                    face["bbox"][0] += rx
-                    face["bbox"][1] += ry
-                    face["bbox"][2] += rx
-                    face["bbox"][3] += ry
-                    if face.get("landmarks"):
-                        for lm in face["landmarks"]:
-                            lm[0] += rx
-                            lm[1] += ry
+
+            # Map detection coordinates back to full-frame space.
+            # Applies inv_scale (undo downscale) and rx/ry offset (undo ROI crop) in one pass.
+            for face in faces:
+                b = face["bbox"]
+                b[0] = b[0] * inv_scale + rx
+                b[1] = b[1] * inv_scale + ry
+                b[2] = b[2] * inv_scale + rx
+                b[3] = b[3] * inv_scale + ry
+                if face.get("landmarks"):
+                    for lm in face["landmarks"]:
+                        lm[0] = lm[0] * inv_scale + rx
+                        lm[1] = lm[1] * inv_scale + ry
 
             _stats["faces_detected"] += len(faces)
             now_iso = datetime.now(timezone.utc).isoformat()
@@ -241,23 +315,6 @@ async def _capture_loop():
             continue
 
 
-async def _drain_loop():
-    """Every 10s, drain buffered events to the central server when circuit is CLOSED."""
-    while True:
-        await asyncio.sleep(10)
-        backend = _state.get("backend")
-        if backend is None:
-            continue
-        if backend.circuit_breaker.state != "CLOSED":
-            continue
-        try:
-            drained = await backend.drain_local_buffer()
-            if drained > 0:
-                _stats["events_sent"] += drained
-        except Exception as e:
-            logger.error("Drain loop error: %s", e)
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global capture, detector, backend
@@ -268,28 +325,34 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Camera not available: %s", e)
     try:
-        detector = FaceDetector()
+        # DetectorPool.__init__ spawns a subprocess and loads InsightFace (~5–10s).
+        # Running it in a thread keeps the event loop responsive during startup.
+        detector = await asyncio.to_thread(DetectorPool)
         _state["detector"] = detector
         logger.info("Detector initialized")
     except Exception as e:
         logger.warning("Detector not available: %s", e)
     backend = NetBackendClient()
     _state["backend"] = backend
-    logger.info("Backend client initialized")
+    key_hint = (settings.net_api_key[:6] + "...") if len(settings.net_api_key) > 6 else "(empty)"
+    logger.info("Backend client initialized → %s  gate=%s  api_key=%s",
+                settings.net_backend_url, settings.gate_id, key_hint)
 
-    task = asyncio.create_task(_capture_loop())
+    capture_task = asyncio.create_task(_capture_loop())
     drain_task = asyncio.create_task(_drain_loop())
     yield
-    task.cancel()
+    capture_task.cancel()
     drain_task.cancel()
     try:
-        await task
+        await capture_task
     except asyncio.CancelledError:
         pass
     try:
         await drain_task
     except asyncio.CancelledError:
         pass
+    if detector:
+        detector.shutdown()
     cap = _state.get("capture")
     if cap:
         cap.release()

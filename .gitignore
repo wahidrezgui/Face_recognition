@@ -30,6 +30,9 @@ Thumbs.db
 # Face image uploads
 GateVision.Api/FaceImages/
 
+# Runtime-generated gate config files (written by API on video-source apply)
+GateVision.Api/config/
+
 # Binary / media
 *.mp4
 *.avi
@@ -39,3 +42,8 @@ GateVision.Api/FaceImages/
 # Logs
 logs/
 *.log
+
+# Runtime data files (created by LocalEventBuffer)
+*.db
+*.sqlite
+*.sqlite3

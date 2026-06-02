@@ -201,7 +201,12 @@ public static class PersonEndpoints
             if (!Enum.TryParse<EnrollmentStatus>(dto.Status, true, out var status))
                 return Results.BadRequest("Invalid status");
 
-            person.EnrollmentStatus = status;
+            switch (status)
+            {
+                case EnrollmentStatus.Active:    person.Activate();        break;
+                case EnrollmentStatus.Suspended: person.Suspend();         break;
+                case EnrollmentStatus.Pending:   person.ResetToPending();  break;
+            }
             await db.SaveChangesAsync(ct);
             return Results.Ok(new
             {
@@ -245,11 +250,7 @@ public static class PersonEndpoints
             var person = await db.Persons.FindAsync([id], ct);
             if (person is null) return Results.NotFound();
 
-            if (!string.IsNullOrWhiteSpace(dto.FullName))
-                person.FullName = dto.FullName.Trim();
-            if (dto.Department is not null)
-                person.Department = dto.Department.Trim();
-
+            person.UpdateProfile(dto.FullName, dto.Department);
             await db.SaveChangesAsync(ct);
             await cache.RemovePersonAsync(id);
 
@@ -268,7 +269,7 @@ public static class PersonEndpoints
             var person = await db.Persons.FindAsync([id], ct);
             if (person is null) return Results.NotFound();
 
-            person.WelcomeMessage = string.IsNullOrWhiteSpace(dto.WelcomeMessage) ? null : dto.WelcomeMessage.Trim();
+            person.UpdateWelcomeMessage(dto.WelcomeMessage);
             await db.SaveChangesAsync(ct);
             await cache.RemovePersonAsync(id);
             if (person.WelcomeMessage is not null)

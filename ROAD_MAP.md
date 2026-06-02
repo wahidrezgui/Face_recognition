@@ -227,7 +227,7 @@ The `/stream/status` route already returns `_stats` — no endpoint change neede
 | 3 | `IdentityScheduler` | `window.py` | ✅ DONE |
 | 4 | Rewire `_capture_loop()` | `main.py` | ✅ DONE |
 | 5 | Interaction metrics | `main.py`, `routes.py` | ✅ DONE |
-| 6 | Update PROJECT_MAP.md | `PROJECT_MAP.md` | ⬜ PENDING |
+| 6 | Update PROJECT_MAP.md | `PROJECT_MAP.md` | ✅ DONE |
 
 ---
 ---
@@ -364,10 +364,10 @@ Admin dash    →  GET /api/events/stream           (all gates, "_all" aggregate
 
 | ID | Task | Status |
 |----|------|--------|
-| G80 | Add `gate_id` to Python config + outbound identify payload | ⬜ PENDING |
-| G81 | Add `GateId` to `IdentifyRequestDto` in .NET | ⬜ PENDING |
-| G82 | DB migration 013 + domain model `GateId` property | ⬜ PENDING |
-| G83 | Refactor `EventBufferService` to composite `TrackKey` | ⬜ PENDING |
+| G80 | Add `gate_id` to Python config + outbound identify payload | ✅ VERIFIED |
+| G81 | Add `GateId` to `IdentifyRequestDto` in .NET | ✅ VERIFIED |
+| G82 | DB migration 013 + domain model `GateId` property | ✅ VERIFIED |
+| G83 | Refactor `EventBufferService` to composite `TrackKey` | ✅ VERIFIED |
 
 ### Verifiable Goal
 
@@ -452,11 +452,11 @@ if (authenticatedGateId != null && authenticatedGateId != dto.GateId)
 
 | ID | Task | Status |
 |----|------|--------|
-| G84 | Implement `GateChannelRegistry` + wire into Program.cs | ⬜ PENDING |
-| G85 | Add `GET /api/events/stream/{gateId}` + `GET /api/gates` endpoints | ⬜ PENDING |
-| G86 | Update `/desk` and `/kiosk` pages for gate-scoped SSE | ⬜ PENDING |
-| G87 | Per-gate API keys in `AuthMiddleware` + enforce in identify handler | ⬜ PENDING |
-| G88 | Multi-gate gate selector in admin dashboard | ⬜ PENDING |
+| G84 | Implement `GateChannelRegistry` + wire into Program.cs | ✅ VERIFIED |
+| G85 | Add `GET /api/events/stream/{gateId}` + `GET /api/gates` endpoints | ✅ VERIFIED |
+| G86 | Update `/desk` and `/kiosk` pages for gate-scoped SSE | ✅ VERIFIED |
+| G87 | Per-gate API keys in `AuthMiddleware` + enforce in identify handler | ✅ VERIFIED |
+| G88 | Multi-gate gate selector in admin dashboard | ✅ VERIFIED |
 
 ### Verifiable Goal
 
@@ -551,9 +551,9 @@ gatevision_local_buffer_pending{gate_id="gate-a"} 0
 
 | ID | Task | Status |
 |----|------|--------|
-| G89 | Implement `LocalEventBuffer` (SQLite) + wire into `client.py` | ⬜ PENDING |
-| G90 | Add `_drain_loop()` in `main.py` + `replayed` flag in .NET | ⬜ PENDING |
-| G91 | Add `GET /metrics` Prometheus endpoint to `routes.py` | ⬜ PENDING |
+| G89 | Implement `LocalEventBuffer` (SQLite) + wire into `client.py` | ✅ VERIFIED |
+| G90 | Add `_drain_loop()` in `main.py` + `replayed` flag in .NET | ✅ VERIFIED |
+| G91 | Add `GET /metrics` Prometheus endpoint to `routes.py` | ✅ VERIFIED |
 
 ### Verifiable Goal
 
@@ -618,9 +618,9 @@ gate-a:
 
 | ID | Task | Status |
 |----|------|--------|
-| G92 | Write `nginx/nginx.conf` with SSE-safe config + SSL | ⬜ PENDING |
-| G93 | Write `gate_vision_ai/Dockerfile` + edge service templates in `docker-compose.yml` | ⬜ PENDING |
-| G94 | Update CORS in `Program.cs` + `appsettings.json` for multi-origin | ⬜ PENDING |
+| G92 | Write `nginx/nginx.conf` with SSE-safe config + SSL | ✅ VERIFIED |
+| G93 | Write `gate_vision_ai/Dockerfile` + edge service templates in `docker-compose.yml` | ✅ VERIFIED |
+| G94 | Update CORS in `Program.cs` + `appsettings.json` for multi-origin | ✅ VERIFIED |
 
 ### Verifiable Goal
 
@@ -679,21 +679,21 @@ curl -k -N -H "X-API-Key: ..." https://gatevision.local/api/events/stream/gate-a
 ## Part II — Full Execution Order
 
 | # | Phase | Milestone | Files | Status |
-|---|-------|-----------|-------|--------|
-| 1 | Phase 1 — GateId Foundation | G80: Python `gate_id` config + payload | `config.py`, `client.py` | ⬜ PENDING |
-| 2 | Phase 1 | G81: .NET `IdentifyRequestDto.GateId` | `IdentifyEndpoints.cs` | ⬜ PENDING |
-| 3 | Phase 1 | G82: DB migration 013 + domain model | `013_AddGateId.sql`, `GateEvent.cs`, `TrainingEvent.cs`, `AppDbContext.cs` | ⬜ PENDING |
-| 4 | Phase 1 | G83: Composite `TrackKey` in `EventBufferService` | `EventBufferService.cs` | ⬜ PENDING |
-| 5 | Phase 2 — SSE + Kiosk | G84: `GateChannelRegistry` + DI wiring | `GateEventChannel.cs`, `Program.cs` | ⬜ PENDING |
-| 6 | Phase 2 | G85: Gate-scoped SSE endpoints + `GET /api/gates` | `EventEndpoints.cs` | ⬜ PENDING |
-| 7 | Phase 2 | G86: Gate-scoped kiosk display | `desk/page.tsx`, `kiosk/page.tsx`, `useGateEventStream.ts` | ⬜ PENDING |
-| 8 | Phase 2 | G87: Per-gate API keys + enforce in identify | `appsettings.json`, `AuthMiddleware.cs`, `IdentifyEndpoints.cs` | ⬜ PENDING |
-| 9 | Phase 2 | G88: Multi-gate gate selector in dashboard | `dashboard/page.tsx` | ⬜ PENDING |
-| 10 | Phase 3 — Resilience | G89: `LocalEventBuffer` + wire into `client.py` | `local_buffer.py`, `client.py`, `config.py` | ⬜ PENDING |
-| 11 | Phase 3 | G90: `_drain_loop()` + `replayed` flag in .NET | `main.py`, `IdentifyEndpoints.cs` | ⬜ PENDING |
-| 12 | Phase 3 | G91: `GET /metrics` Prometheus endpoint | `routes.py` | ⬜ PENDING |
-| 13 | Phase 4 — Infrastructure | G92: `nginx/nginx.conf` with SSE-safe config | `nginx/nginx.conf` | ⬜ PENDING |
-| 14 | Phase 4 | G93: `Dockerfile` + edge compose templates | `gate_vision_ai/Dockerfile`, `docker-compose.yml` | ⬜ PENDING |
-| 15 | Phase 4 | G94: Multi-origin CORS config | `Program.cs`, `appsettings.json` | ⬜ PENDING |
+|----|-------|-----------|-------|--------|
+| 1 | Phase 1 — GateId Foundation | G80: Python `gate_id` config + payload | `config.py`, `client.py` | ✅ VERIFIED |
+| 2 | Phase 1 | G81: .NET `IdentifyRequestDto.GateId` | `IdentifyEndpoints.cs` | ✅ VERIFIED |
+| 3 | Phase 1 | G82: DB migration 013 + domain model | `013_AddGateId.sql`, `GateEvent.cs`, `TrainingEvent.cs`, `AppDbContext.cs` | ✅ VERIFIED |
+| 4 | Phase 1 | G83: Composite `TrackKey` in `EventBufferService` | `EventBufferService.cs` | ✅ VERIFIED |
+| 5 | Phase 2 — SSE + Kiosk | G84: `GateChannelRegistry` + DI wiring | `GateEventChannel.cs`, `Program.cs` | ✅ VERIFIED |
+| 6 | Phase 2 | G85: Gate-scoped SSE endpoints + `GET /api/gates` | `EventEndpoints.cs` | ✅ VERIFIED |
+| 7 | Phase 2 | G86: Gate-scoped kiosk display | `desk/page.tsx`, `kiosk/page.tsx`, `useGateEventStream.ts` | ✅ VERIFIED |
+| 8 | Phase 2 | G87: Per-gate API keys + enforce in identify | `appsettings.json`, `AuthMiddleware.cs`, `IdentifyEndpoints.cs` | ✅ VERIFIED |
+| 9 | Phase 2 | G88: Multi-gate gate selector in dashboard | `dashboard/page.tsx` | ✅ VERIFIED |
+| 10 | Phase 3 — Resilience | G89: `LocalEventBuffer` + wire into `client.py` | `local_buffer.py`, `client.py`, `config.py` | ✅ VERIFIED |
+| 11 | Phase 3 | G90: `_drain_loop()` + `replayed` flag in .NET | `main.py`, `IdentifyEndpoints.cs` | ✅ VERIFIED |
+| 12 | Phase 3 | G91: `GET /metrics` Prometheus endpoint | `routes.py` | ✅ VERIFIED |
+| 13 | Phase 4 — Infrastructure | G92: `nginx/nginx.conf` with SSE-safe config | `nginx/nginx.conf` | ✅ VERIFIED |
+| 14 | Phase 4 | G93: `Dockerfile` + edge compose templates | `gate_vision_ai/Dockerfile`, `docker-compose.yml` | ✅ VERIFIED |
+| 15 | Phase 4 | G94: Multi-origin CORS config | `Program.cs`, `appsettings.json` | ✅ VERIFIED |
 
-Confirm each phase before beginning it. Phases 1 and 2 are prerequisites for Phase 3; Phase 4 is infrastructure-only and can begin in parallel with Phase 3.
+All four phases (G80–G94) are now **✅ VERIFIED** in the codebase. No pending items remain for Part II.

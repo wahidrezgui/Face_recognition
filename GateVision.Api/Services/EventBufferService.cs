@@ -84,43 +84,23 @@ public class EventBufferService
 
         if (match.IsTrainingEvent)
         {
-            var trainingEvt = new TrainingEvent
-            {
-                Id = match.Id,
-                GateId = match.GateId,
-                PersonId = match.PersonId,
-                Confidence = match.Confidence,
-                Status = match.Status,
-                Direction = match.Direction,
-                CapturedAt = match.CapturedAt,
-                FaceImageBase64 = match.FaceImageBase64,
-                Emotion = match.Emotion,
-                Age = match.Age,
-                Gender = match.Gender,
-            };
+            var trainingEvt = TrainingEvent.Reconstitute(
+                match.Id, match.GateId, match.PersonId, match.Confidence,
+                match.Status, match.Direction, match.CapturedAt,
+                match.FaceImageBase64, match.Emotion, match.Age, match.Gender);
             db.TrainingEvents.Add(trainingEvt);
             await db.SaveChangesAsync();
             return new FlushResult(null, trainingEvt);
         }
         else
         {
-            var gateEvent = new GateEvent
-            {
-                Id = match.Id,
-                GateId = match.GateId,
-                PersonId = match.PersonId,
-                PersonName = match.PersonName,
-                Confidence = match.Confidence,
-                Status = match.Status,
-                Direction = match.Direction,
-                CapturedAt = match.CapturedAt,
-                FaceImageBase64 = match.FaceImageBase64,
-                WelcomeMessage = match.WelcomeMessage,
-                Department = match.Department,
-                Emotion = match.Emotion,
-                Age = match.Age,
-                Gender = match.Gender,
-            };
+            var gateEvent = GateEvent.Reconstitute(
+                match.Id, match.GateId, match.PersonId, match.Confidence,
+                match.Status, match.Direction, match.CapturedAt,
+                match.FaceImageBase64, match.Emotion, match.Age, match.Gender);
+            gateEvent.PersonName = match.PersonName;
+            gateEvent.WelcomeMessage = match.WelcomeMessage;
+            gateEvent.Department = match.Department;
             db.GateEvents.Add(gateEvent);
             await db.SaveChangesAsync();
             return new FlushResult(gateEvent, null);
@@ -141,40 +121,21 @@ public class EventBufferService
 
             if (track.IsTrainingEvent)
             {
-                db.TrainingEvents.Add(new TrainingEvent
-                {
-                    Id = track.Id,
-                    GateId = track.GateId,
-                    PersonId = track.PersonId,
-                    Confidence = track.Confidence,
-                    Status = track.Status,
-                    Direction = track.Direction,
-                    CapturedAt = track.CapturedAt,
-                    FaceImageBase64 = track.FaceImageBase64,
-                    Emotion = track.Emotion,
-                    Age = track.Age,
-                    Gender = track.Gender,
-                });
+                db.TrainingEvents.Add(TrainingEvent.Reconstitute(
+                    track.Id, track.GateId, track.PersonId, track.Confidence,
+                    track.Status, track.Direction, track.CapturedAt,
+                    track.FaceImageBase64, track.Emotion, track.Age, track.Gender));
             }
             else
             {
-                db.GateEvents.Add(new GateEvent
-                {
-                    Id = track.Id,
-                    GateId = track.GateId,
-                    PersonId = track.PersonId,
-                    PersonName = track.PersonName,
-                    Confidence = track.Confidence,
-                    Status = track.Status,
-                    Direction = track.Direction,
-                    CapturedAt = track.CapturedAt,
-                    FaceImageBase64 = track.FaceImageBase64,
-                    WelcomeMessage = track.WelcomeMessage,
-                    Department = track.Department,
-                    Emotion = track.Emotion,
-                    Age = track.Age,
-                    Gender = track.Gender,
-                });
+                var gateEvent = GateEvent.Reconstitute(
+                    track.Id, track.GateId, track.PersonId, track.Confidence,
+                    track.Status, track.Direction, track.CapturedAt,
+                    track.FaceImageBase64, track.Emotion, track.Age, track.Gender);
+                gateEvent.PersonName = track.PersonName;
+                gateEvent.WelcomeMessage = track.WelcomeMessage;
+                gateEvent.Department = track.Department;
+                db.GateEvents.Add(gateEvent);
             }
             persisted++;
         }

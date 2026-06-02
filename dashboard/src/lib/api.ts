@@ -1,4 +1,4 @@
-import { authHeaders, clearToken } from "./auth";
+import { authHeaders, clearToken, getToken } from "./auth";
 
 let _redirectingToLogin = false;
 
@@ -523,6 +523,7 @@ export interface GateStreamStatus {
 export interface GateStatus {
   id: string;
   name: string;
+  pythonUrl: string | null;
   online: boolean;
   status: GateStreamStatus | null;
 }
@@ -530,6 +531,54 @@ export interface GateStatus {
 export async function fetchGates(): Promise<GateStatus[]> {
   const res = await apiFetch(`${API_BASE}/api/gates`, { headers: authHeaders() });
   if (!res.ok) return [];
+  return res.json();
+}
+
+/** Build gate-scoped desk URL and carry auth token for display tabs/devices. */
+export function deskDisplayUrl(gateId: string): string {
+  const token = getToken();
+  const params = new URLSearchParams();
+  params.set("gateId", gateId);
+  if (token) params.set("token", token);
+  const qs = params.toString();
+  return `/desk?${qs}`;
+}
+
+/** Resolve the best stream URL for a gate — uses the backend proxy.
+ *  Appends the JWT as ?token= so the auth middleware can authenticate <img> requests. */
+export function gateStreamUrl(gateId: string): string {
+  const token = getToken();
+  const qs = token ? `?token=${encodeURIComponent(token)}` : "";
+  return `${API_BASE}/api/gates/${gateId}/stream${qs}`;
+}
+
+export async function fetchGateCameras(gateId: string): Promise<{ index: number; name: string }[]> {
+  try {
+    const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/cameras`, { headers: authHeaders() });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchGateProcessingFps(gateId: string): Promise<{ fps: number }> {
+  try {
+    const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/processing-fps`, { headers: authHeaders() });
+    if (!res.ok) return { fps: 3 };
+    return res.json();
+  } catch {
+    return { fps: 3 };
+  }
+}
+
+export async function setGateProcessingFps(gateId: string, fps: number): Promise<{ fps: number }> {
+  const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/processing-fps`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({ fps }),
+  });
+  if (!res.ok) throw new Error("Failed to set processing FPS");
   return res.json();
 }
 
@@ -541,6 +590,91 @@ export async function fetchGateStatus(gateId: string): Promise<GateStreamStatus 
   } catch {
     return null;
   }
+}
+
+export interface AdminGate {
+  id: string;
+  name: string;
+  pythonUrl: string;
+  apiKey: string | null;
+  startCommand: string | null;
+  createdAt: string;
+}
+
+export async function fetchAdminGates(): Promise<AdminGate[]> {
+  const res = await apiFetch(`${API_BASE}/api/admin/gates`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch gates");
+  return res.json();
+}
+
+export async function createGate(data: {
+  name: string;
+  pythonUrl: string;
+  apiKey?: string;
+  startCommand?: string;
+}): Promise<AdminGate> {
+  const res = await apiFetch(`${API_BASE}/api/admin/gates`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    let detail = "Failed to create gate";
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function updateGate(
+  id: string,
+  data: { name?: string; pythonUrl?: string; apiKey?: string | null; startCommand?: string | null }
+): Promise<AdminGate> {
+  const res = await apiFetch(`${API_BASE}/api/admin/gates/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    let detail = "Failed to update gate";
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function deleteGate(id: string): Promise<void> {
+  const res = await apiFetch(`${API_BASE}/api/admin/gates/${id}`, {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error("Failed to delete gate");
+}
+
+export async function stopGate(gateId: string): Promise<{ status: string }> {
+  const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/stop`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    let detail = "Failed to stop gate";
+    try { const b = await res.json(); if (b?.error || b?.detail) detail = b.error || b.detail; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
+export async function startGate(gateId: string): Promise<{ status: string; message?: string }> {
+  const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/start`, {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    let detail = "Failed to start gate";
+    try { const b = await res.json(); if (b?.error || b?.detail) detail = b.error || b.detail; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
 }
 
 export async function setGateVideoSource(
