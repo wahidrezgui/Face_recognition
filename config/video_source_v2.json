@@ -1,0 +1,4 @@
+{
+  "camera_source": "rtsp://localhost:8554/sample",
+  "direction": "entry"
+}

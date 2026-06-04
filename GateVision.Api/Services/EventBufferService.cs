@@ -55,7 +55,9 @@ public class EventBufferService
             {
                 // Preserve the original ID so the SSE event ID never changes for this track.
                 track.Id = existing.Id;
-                if (track.Confidence > existing.Confidence)
+                var statusUpgraded = track.Status == EventStatus.Identified &&
+                    existing.Status != EventStatus.Identified;
+                if (track.Confidence > existing.Confidence || statusUpgraded)
                 {
                     isNewBest = true;
                     existing.PersonId = track.PersonId;

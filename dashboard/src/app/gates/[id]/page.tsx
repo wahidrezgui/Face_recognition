@@ -17,12 +17,10 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 
-type SourceType = "webcam" | "video" | "rtsp";
+type SourceType = "webcam" | "rtsp";
 
 function inferSourceType(source: string): SourceType {
   if (source.startsWith("rtsp://") || source.startsWith("rtmp://")) return "rtsp";
-  if (source.startsWith("http://") || source.startsWith("https://")) return "video";
-  if (source.endsWith(".mp4") || source.endsWith(".avi") || source.endsWith(".mov") || source.includes("/") || source.includes("\\")) return "video";
   return "webcam";
 }
 
@@ -55,7 +53,6 @@ export default function GateDetailPage() {
   const [selectedCam, setSelectedCam] = useState("0");
   const [customIndex, setCustomIndex] = useState("");
   const [useCustom, setUseCustom] = useState(false);
-  const [videoPath, setVideoPath] = useState("sample.mp4");
   const [rtspUrl, setRtspUrl] = useState("");
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [configSaving, setConfigSaving] = useState(false);
@@ -104,7 +101,6 @@ export default function GateDetailPage() {
           const kind = inferSourceType(src);
           setSourceType(kind);
           if (kind === "webcam") { setSelectedCam(src); setUseCustom(false); }
-          else if (kind === "video") setVideoPath(src);
           else setRtspUrl(src);
         }
         if (status.direction === "exit" || status.direction === "entry") setDirection(status.direction);
@@ -143,7 +139,6 @@ export default function GateDetailPage() {
   function getCameraSource(): string {
     switch (sourceType) {
       case "webcam": return useCustom ? customIndex : selectedCam;
-      case "video": return videoPath;
       case "rtsp": return rtspUrl;
     }
   }
@@ -380,10 +375,9 @@ export default function GateDetailPage() {
             {/* Source type */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-400">Source Type</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 {([
                   { value: "webcam" as SourceType, label: "Webcam", desc: "Local camera device" },
-                  { value: "video" as SourceType, label: "Video File", desc: "Sample or recorded video" },
                   { value: "rtsp" as SourceType, label: "RTSP Stream", desc: "IP camera / network stream" },
                 ] as const).map((opt) => (
                   <button
@@ -443,20 +437,6 @@ export default function GateDetailPage() {
                     />
                   </>
                 )}
-              </div>
-            )}
-
-            {sourceType === "video" && (
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-400">Video File Path</label>
-                <input
-                  type="text"
-                  value={videoPath}
-                  onChange={(e) => setVideoPath(e.target.value)}
-                  placeholder="sample.mp4"
-                  className={inputCls}
-                />
-                <p className="text-[10px] text-gray-600">Relative to the AI service directory, or an absolute path.</p>
               </div>
             )}
 

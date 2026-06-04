@@ -47,6 +47,7 @@ builder.Services.AddSingleton<LogUnknownService>();
 builder.Services.AddSingleton<EventBufferService>();
 builder.Services.AddSingleton<GateChannelRegistry>();
 builder.Services.AddSingleton<GateService>();
+builder.Services.AddSingleton<WelcomeDedupService>();
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
 builder.Services.AddScoped<IdentificationService>();

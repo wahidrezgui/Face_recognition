@@ -17,9 +17,15 @@ export function resolveStreamToken(): string | null {
   return getToken();
 }
 
+function normalizeGateId(gateId?: string): string | undefined {
+  const trimmed = gateId?.trim();
+  return trimmed ? trimmed.toLowerCase() : undefined;
+}
+
 export function buildEventStreamUrl(token: string | null, gateId?: string): string {
   const params = new URLSearchParams();
-  if (gateId) params.set("gateId", gateId);
+  const normalized = normalizeGateId(gateId);
+  if (normalized) params.set("gateId", normalized);
   if (token) params.set("token", token);
   const qs = params.toString();
   return qs

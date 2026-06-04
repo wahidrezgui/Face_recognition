@@ -64,7 +64,7 @@ const THEMES = {
 
 function DeskPageInner() {
   const searchParams = useSearchParams();
-  const gateId = searchParams.get("gateId") ?? undefined;
+  const gateId = searchParams.get("gateId")?.trim().toLowerCase() ?? undefined;
   const [event, setEvent] = useState<GateEvent | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [connected, setConnected] = useState(false);

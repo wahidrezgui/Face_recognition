@@ -484,7 +484,10 @@ public static class EventEndpoints
         if (requestedGateId is null || requestedGateId == "default")
             return false;
         var gates = await gateService.GetAllAsync(ct);
-        return gates.Count == 1;
+        if (gates.Count == 1)
+            return true;
+        // AI may still tag events as "default" while desk uses a concrete gate UUID.
+        return gates.Any(g => string.Equals(g.Id.ToString(), requestedGateId, StringComparison.OrdinalIgnoreCase));
     }
 
     static (DateTime from, DateTime to, string range) ResolveActivityRange(string range)

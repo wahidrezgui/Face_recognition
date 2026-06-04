@@ -251,6 +251,7 @@ Two sample edge-node configurations are provided at `run-gate-a.sh` and `run-gat
 | `Endpoints/ConfigEndpoints.cs` | Training mode toggle. Unknown logging toggle. Video source redirect to Python. |
 | `Services/IdentificationService.cs` | Qdrant ANN search (cosine, min score 0.35). Redis person cache. Threshold: ≥ 0.80 → Identified, else → NeedsReview. |
 | `Services/EventBufferService.cs` | `ConcurrentDictionary<int, BufferedTrack>` keyed by `track_id`. `BufferOrUpdate()` keeps highest-confidence detection per track. Background `FlushExpiredAsync()` (1s interval, 3s expiry): Identified → `gate_events`; NeedsReview/Unrecognized → `training_events` (training mode ON only). |
+| `Services/WelcomeDedupService.cs` | In-memory gate/person/direction cooldown guard (12s default) to suppress duplicate welcome SSE publishes when `track_id` churns for the same passer. |
 | `Services/GateEventChannel.cs` | `GateChannelRegistry` — `ConcurrentDictionary<string, Channel<GateEvent>>` with `"_all"` aggregate channel. Singleton, replaces static singleton. `Publish(gateId, evt)` writes to per-gate + `"_all"` channels. |
 | `Services/CacheService.cs` | Redis key `person:{id}` → `(Name, Department, WelcomeMessage)`. Gracefully degrades if Redis unavailable. |
 | `Services/EnrollmentService.cs` | Stores embeddings in Qdrant with per-pose tags. Face crops saved to `FaceImages/{personId}/{embeddingId}.jpg`. |
@@ -412,6 +413,7 @@ Remaining future items (not yet planned):
 | G94 | `gate_vision_ai/Dockerfile` (Python 3.11-slim); edge node templates in `docker-compose.yml` (`gate-a`, `gate-b`); nginx service | ✅ ADDED v18 |
 | G95 | Multi-origin CORS config — `Cors:AllowedOrigins` reads from `appsettings.json` instead of hardcoded `localhost:3000` | ✅ ADDED v18 |
 | G96 | Gates moved to DB — `gates` table (migration 015); `GateService` singleton with 60s cache; `AuthMiddleware` reads gate API keys from DB; admin CRUD via `/api/admin/gates`; dashboard Gates page adds create/edit/delete UI; `Gates` + `GateApiKeys` config sections removed | ✅ ADDED v19 |
+| G97 | Welcome dedup guard — suppress repeated identified welcomes per `(gateId, personId, direction)` for 12s in `IdentifyEndpoints` using `WelcomeDedupService`; added unit tests in `GateVision.Api.Tests` | ✅ ADDED v20 |
 
 ---
 

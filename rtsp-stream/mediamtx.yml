@@ -1,0 +1,30 @@
+logLevel: info
+logDestinations: [stdout]
+
+# RTSP server settings
+rtspAddress: :8554
+protocols: [tcp]
+
+# HLS for browser preview
+hls: yes
+hlsAddress: :8888
+hlsAlwaysRemux: yes
+
+paths:
+  sample:
+    # ffmpeg loops sample1.mp4 and publishes it to this path on startup
+    runOnInit: >
+      ffmpeg
+      -re
+      -stream_loop -1
+      -i /videos/sample1.mp4
+      -c:v libx264
+      -preset medium
+      -b:v 3000k
+      -maxrate 3000k
+      -bufsize 6000k
+      -pix_fmt yuv420p
+      -g 30
+      -f rtsp
+      rtsp://localhost:8554/sample
+    runOnInitRestart: yes

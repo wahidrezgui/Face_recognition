@@ -10,7 +10,7 @@ public static class IdentifyEndpoints
 {
     public static void MapIdentifyEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/identify", async (HttpContext ctx, IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, TrainingModeService trainingMode, LogUnknownService logUnknown, GateChannelRegistry channelRegistry, GateService gateService, ILogger<Program> logger, CancellationToken ct) =>
+        app.MapPost("/api/identify", async (HttpContext ctx, IdentifyRequestDto dto, IdentificationService svc, EventBufferService buffer, TrainingModeService trainingMode, LogUnknownService logUnknown, GateChannelRegistry channelRegistry, GateService gateService, WelcomeDedupService welcomeDedup, ILogger<Program> logger, CancellationToken ct) =>
         {
             if (dto.Embedding.Length != 512)
                 return Results.BadRequest($"Embedding must have exactly 512 dimensions, got {dto.Embedding.Length}");
@@ -73,9 +73,21 @@ public static class IdentifyEndpoints
                 logger.LogDebug("Track {TrackId} skipped (NeedsReview + training mode off)", dto.TrackId);
             }
 
+            // Only touch welcome dedup when we would actually publish — otherwise replay / non-best
+            // frames consume the cooldown and the desk never gets a live welcome card.
+            var suppressWelcome = false;
+            if (publishToSse && !dto.Replayed && isIdentified &&
+                !welcomeDedup.ShouldPublish(effectiveGateId, result.PersonId, direction, capturedAt))
+            {
+                suppressWelcome = true;
+                logger.LogDebug(
+                    "Suppressed duplicate welcome for {PersonId} on gate {GateId} ({Direction})",
+                    result.PersonId, effectiveGateId, direction);
+            }
+
             // Publish to gate display only when this frame is the confidence best for its track.
             // Skip SSE publish for replayed events (already processed, no stale kiosk cards).
-            if (publishToSse && !dto.Replayed)
+            if (publishToSse && !dto.Replayed && !suppressWelcome)
             {
                 var sseGateId = effectiveGateId;
                 var sseEvt = GateEvent.Reconstitute(
