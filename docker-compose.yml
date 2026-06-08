@@ -50,19 +50,19 @@ services:
   # Loops sample1.mp4 as an RTSP stream for local testing.
   # Stream URL (inside devnet): rtsp://rtsp-stream:8554/sample
   # HLS preview (host browser): http://localhost:8888/sample
-  rtsp-stream:
-    build:
-      context: ./rtsp-stream
-      dockerfile: Dockerfile
-    container_name: gatevision-rtsp-stream
-    volumes:
-      - ./gate_vision_ai/sample1.mp4:/videos/sample1.mp4:ro
-    ports:
-      - "8554:8554" # RTSP
-      - "8888:8888" # HLS browser preview
-    networks:
-      - devnet
-    restart: unless-stopped
+  #rtsp-stream:
+  # build:
+  #   context: ./rtsp-stream
+  #   dockerfile: Dockerfile
+  # container_name: gatevision-rtsp-stream
+  # volumes:
+  #   - ./gate_vision_ai/sample1.mp4:/videos/sample1.mp4:ro
+  # ports:
+  #   - "8554:8554" # RTSP
+  #   - "8888:8888" # HLS browser preview
+  # networks:
+  #   - devnet
+  # restart: unless-stopped
 
   # ── gate_vision_ai_v2 ───────────────────────────────────────
   # FastAPI edge service — PyramidBox + MobileFace, reads RTSP from rtsp-stream.

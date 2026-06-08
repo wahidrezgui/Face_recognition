@@ -11,6 +11,7 @@ import {
   fetchLogUnknown, setLogUnknown,
   fetchAdminGates, updateGate, deleteGate,
   stopGate, startGate,
+  fetchGateKioskSettings, setGateKioskSettings,
   gateStreamUrl, GateStatus,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,23 @@ export default function GateDetailPage() {
   const [rtspUrl, setRtspUrl] = useState("");
   const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [configSaving, setConfigSaving] = useState(false);
+
+  // Kiosk display settings (persisted server-side so the /desk machine picks them up)
+  const [speechBuffered, setSpeechBuffered] = useState(false);
+  const [speechBufferedLoaded, setSpeechBufferedLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try { const s = await fetchGateKioskSettings(gateId); setSpeechBuffered(s.speechBuffered); }
+      catch { } finally { setSpeechBufferedLoaded(true); }
+    })();
+  }, [gateId]);
+
+  async function handleSpeechBuffered(val: boolean) {
+    setSpeechBuffered(val);
+    try { await setGateKioskSettings(gateId, { speechBuffered: val }); }
+    catch { toast.error("Failed to save kiosk settings"); }
+  }
 
   // Global toggles
   const [trainingMode, setTrainingModeState] = useState(false);
@@ -362,6 +380,36 @@ export default function GateDetailPage() {
               {editSaving ? "Saving…" : "Save Settings"}
             </Button>
           </form>
+        </section>
+
+        <Separator className="bg-gv-border" />
+
+        {/* Kiosk display */}
+        <section>
+          <h2 className="mb-1 text-sm font-bold tracking-wide">Kiosk Display</h2>
+          <p className="mb-4 text-xs text-gv-muted">Settings for the /desk screen attached to this gate.</p>
+          <div>
+            <h3 className="mb-1 text-xs font-semibold text-gray-300">Voice Greeting Buffer</h3>
+            <p className="mb-3 text-[11px] text-gv-muted">
+              When enabled, each greeting plays in full before the next one starts.
+              When disabled, a new detection immediately interrupts the current greeting.
+            </p>
+            <div className="flex items-center gap-3">
+              <Switch
+                id="speech-buffer"
+                checked={speechBuffered}
+                disabled={!speechBufferedLoaded}
+                onCheckedChange={handleSpeechBuffered}
+              />
+              <label htmlFor="speech-buffer" className="text-xs text-gray-400">
+                {!speechBufferedLoaded
+                  ? "Loading…"
+                  : speechBuffered
+                    ? "ON — queue greetings, play in order"
+                    : "OFF — interrupt and play immediately"}
+              </label>
+            </div>
+          </div>
         </section>
 
         <Separator className="bg-gv-border" />

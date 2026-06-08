@@ -557,7 +557,7 @@ def register_routes(app, state: dict):
                     frame = s["latest_frame_jpg"]
                     if frame is not None:
                         yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + frame + b"\r\n"
-                    await asyncio.sleep(0.05)
+                    await asyncio.sleep(0.033)
             finally:
                 s["stream_connections"] = max(0, s["stream_connections"] - 1)
         return StreamingResponse(generate(), media_type="multipart/x-mixed-replace; boundary=frame")

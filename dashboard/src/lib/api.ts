@@ -677,6 +677,27 @@ export async function startGate(gateId: string): Promise<{ status: string; messa
   return res.json();
 }
 
+export async function fetchGateKioskSettings(gateId: string): Promise<{ speechBuffered: boolean }> {
+  try {
+    const res = await fetch(`${API_BASE}/api/config/gates/${gateId}/kiosk-settings`);
+    if (!res.ok) return { speechBuffered: false };
+    return res.json();
+  } catch {
+    return { speechBuffered: false };
+  }
+}
+
+export async function setGateKioskSettings(
+  gateId: string,
+  settings: { speechBuffered: boolean },
+): Promise<void> {
+  await apiFetch(`${API_BASE}/api/config/gates/${gateId}/kiosk-settings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(settings),
+  });
+}
+
 export async function setGateVideoSource(
   gateId: string,
   cameraSource: string,

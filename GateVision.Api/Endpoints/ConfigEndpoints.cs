@@ -223,6 +223,38 @@ public static class ConfigEndpoints
             catch { return Results.Problem("Gate AI service unreachable."); }
         }).RequireAuthorization();
 
+        // ── GET /api/config/gates/{gateId}/kiosk-settings ─────────────────────
+        // No auth required — the /desk kiosk display reads this on a separate machine
+        // that only has a read-only token, not admin credentials.
+        app.MapGet("/api/config/gates/{gateId:guid}/kiosk-settings",
+            async (Guid gateId, IWebHostEnvironment env, CancellationToken ct) =>
+        {
+            var path = Path.Combine(env.ContentRootPath, "config", $"kiosk_{gateId}.json");
+            if (!File.Exists(path))
+                return Results.Ok(new { speechBuffered = false });
+            try
+            {
+                var json = await File.ReadAllTextAsync(path, ct);
+                using var doc = JsonDocument.Parse(json);
+                var buffered = doc.RootElement.TryGetProperty("speechBuffered", out var p) && p.GetBoolean();
+                return Results.Ok(new { speechBuffered = buffered });
+            }
+            catch { return Results.Ok(new { speechBuffered = false }); }
+        });
+
+        // ── POST /api/config/gates/{gateId}/kiosk-settings ────────────────────
+        app.MapPost("/api/config/gates/{gateId:guid}/kiosk-settings",
+            async (Guid gateId, KioskSettingsRequest req, IWebHostEnvironment env, CancellationToken ct) =>
+        {
+            var dir = Path.Combine(env.ContentRootPath, "config");
+            Directory.CreateDirectory(dir);
+            var path = Path.Combine(dir, $"kiosk_{gateId}.json");
+            var tmp = path + ".tmp";
+            await File.WriteAllTextAsync(tmp, JsonSerializer.Serialize(new { speechBuffered = req.SpeechBuffered }), ct);
+            File.Move(tmp, path, overwrite: true);
+            return Results.Ok(new { speechBuffered = req.SpeechBuffered });
+        }).RequireAuthorization();
+
         // ── POST /api/config/gates/{gateId}/processing-fps ──────────────────────
         app.MapPost("/api/config/gates/{gateId:guid}/processing-fps",
             async (Guid gateId, ProcessingFpsRequest req, GateService gateService, CancellationToken ct) =>
@@ -483,3 +515,8 @@ internal record RestartRequestBody(string Source, string? Direction = null, stri
 internal record HealthResponse(string Status, bool Camera);
 
 internal record ProcessingFpsRequest(int Fps);
+
+public class KioskSettingsRequest
+{
+    public bool SpeechBuffered { get; set; }
+}

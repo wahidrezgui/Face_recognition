@@ -78,7 +78,6 @@ function DeskPageInner() {
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEventIdRef = useRef<string | null>(null);
   const activePersonIdRef = useRef<string | null>(null);
-
   const clearTimers = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (dismissRef.current) clearTimeout(dismissRef.current);
@@ -140,7 +139,7 @@ function DeskPageInner() {
     onError: () => setConnected(false),
   });
 
-  useEffect(() => () => clearTimers(), []);
+  useEffect(() => () => { clearTimers(); }, []);
 
   const showing = event !== null && visible;
   const t = mode !== "idle" ? THEMES[mode] : THEMES.identified;
