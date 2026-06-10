@@ -41,6 +41,7 @@ export interface Person {
   enrollmentStatus: "Pending" | "Active" | "Suspended";
   createdAt: string;
   faceCount: number;
+  hasProfileImage?: boolean;
   welcomeMessage?: string | null;
 }
 
@@ -580,6 +581,37 @@ export async function setGateProcessingFps(gateId: string, fps: number): Promise
   });
   if (!res.ok) throw new Error("Failed to set processing FPS");
   return res.json();
+}
+
+export interface HikvisionCameraEvent {
+  timestamp: string;
+  eventType: string;
+  eventState: string;
+  channelId: string;
+  detectionTarget: string | null;
+  qualified: boolean;
+  reason: string | null;
+}
+
+export interface GateCameraEvents {
+  enabled: boolean;
+  connected: boolean;
+  active: boolean;
+  url: string | null;
+  event_types: string;
+  event_ttl_ms: number;
+  detection_target: string;
+  events: HikvisionCameraEvent[];
+}
+
+export async function fetchGateCameraEvents(gateId: string): Promise<GateCameraEvents | null> {
+  try {
+    const res = await apiFetch(`${API_BASE}/api/config/gates/${gateId}/camera-events`, { headers: authHeaders() });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchGateStatus(gateId: string): Promise<GateStreamStatus | null> {

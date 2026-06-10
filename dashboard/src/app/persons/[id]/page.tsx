@@ -258,7 +258,7 @@ export default function PersonDetailPage() {
         {/* Hero */}
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
           <div className="relative shrink-0 self-center sm:self-start">
-            {profileError ? (
+            {profileError || !person.hasProfileImage ? (
               <div className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-dashed border-gv-border bg-gv-panel text-gv-muted">
                 <User className="size-10 opacity-50" />
               </div>

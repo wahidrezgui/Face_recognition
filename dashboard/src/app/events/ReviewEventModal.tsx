@@ -68,20 +68,23 @@ export default function ReviewEventModal({
     setBusy(true);
     setStatusMsg(null);
     try {
+      if (mode === "enroll" && hasFace) {
+        // Enroll first — if the face service is down the event stays NeedsReview
+        setCapturePhase("enrolling");
+        const result = await enrollFromEventFace(selectedPersonId, event.faceImageBase64!);
+        await reviewEvent(event.eventId, selectedPersonId);
+        setEnrolledPoses(result.poses ?? []);
+        setLinkedPersonId(selectedPersonId);
+        setCapturePhase("done");
+        invalidateAll();
+        return;
+      }
+
       await reviewEvent(event.eventId, selectedPersonId);
 
       if (mode === "capture") {
         setLinkedPersonId(selectedPersonId);
         setCapturePhase("capturing");
-        return; // QuickCapture takes over from here
-      }
-
-      if (mode === "enroll" && hasFace) {
-        setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(selectedPersonId, event.faceImageBase64!);
-        setEnrolledPoses(result.poses ?? []);
-        setLinkedPersonId(selectedPersonId);
-        setCapturePhase("done");
         return;
       }
 
@@ -103,20 +106,24 @@ export default function ReviewEventModal({
     setStatusMsg(null);
     try {
       const person = await createPerson(newName, newDept);
+
+      if (mode === "enroll" && hasFace) {
+        // Enroll first — if the face service is down the event stays NeedsReview
+        setCapturePhase("enrolling");
+        const result = await enrollFromEventFace(person.id, event.faceImageBase64!);
+        await reviewEvent(event.eventId, person.id);
+        setEnrolledPoses(result.poses ?? []);
+        setLinkedPersonId(person.id);
+        setCapturePhase("done");
+        invalidateAll();
+        return;
+      }
+
       await reviewEvent(event.eventId, person.id);
 
       if (mode === "capture") {
         setLinkedPersonId(person.id);
         setCapturePhase("capturing");
-        return;
-      }
-
-      if (mode === "enroll" && hasFace) {
-        setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(person.id, event.faceImageBase64!);
-        setEnrolledPoses(result.poses ?? []);
-        setLinkedPersonId(person.id);
-        setCapturePhase("done");
         return;
       }
 

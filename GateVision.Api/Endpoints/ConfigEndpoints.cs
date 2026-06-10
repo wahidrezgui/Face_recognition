@@ -205,7 +205,7 @@ public static class ConfigEndpoints
                 var resp = await http.GetStringAsync($"{gate.PythonUrl}/cameras", ct);
                 return Results.Content(resp, "application/json");
             }
-            catch { return Results.Problem("Gate AI service unreachable."); }
+            catch { return Results.Ok(Array.Empty<object>()); }
         }).RequireAuthorization();
 
         // ── GET /api/config/gates/{gateId}/processing-fps ───────────────────────
@@ -221,6 +221,23 @@ public static class ConfigEndpoints
                 return Results.Content(resp, "application/json");
             }
             catch { return Results.Problem("Gate AI service unreachable."); }
+        }).RequireAuthorization();
+
+        // ── GET /api/config/gates/{gateId}/camera-events ───────────────────────
+        // Returns recent Hikvision ISAPI events from the Python service.
+        // Returns empty event list (not 500) when the gate is offline.
+        app.MapGet("/api/config/gates/{gateId:guid}/camera-events",
+            async (Guid gateId, GateService gateService, CancellationToken ct) =>
+        {
+            var gate = await gateService.GetByIdAsync(gateId, ct);
+            if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
+            try
+            {
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                var resp = await http.GetStringAsync($"{gate.PythonUrl}/camera-events", ct);
+                return Results.Content(resp, "application/json");
+            }
+            catch { return Results.Ok(new { enabled = false, connected = false, active = false, url = (string?)null, events = Array.Empty<object>() }); }
         }).RequireAuthorization();
 
         // ── GET /api/config/gates/{gateId}/kiosk-settings ─────────────────────

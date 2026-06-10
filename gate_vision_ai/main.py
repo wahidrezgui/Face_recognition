@@ -17,6 +17,7 @@ from .config import settings
 from .capture import CameraCapture
 from .detector import DetectorPool
 from .client import NetBackendClient
+from .hikvision import HikvisionEventListener
 from .window import InteractionWindowManager, IdentityScheduler
 from .routes import register_routes
 
@@ -67,6 +68,22 @@ if os.path.isfile(_python_settings_path):
         if "detect_max_width" in _ps and "GV_DETECT_MAX_WIDTH" not in os.environ:
             settings.detect_max_width = int(_ps["detect_max_width"])
             logger.info("Loaded detect_max_width from config: %d", settings.detect_max_width)
+        if "hikvision_url" in _ps and "GV_HIKVISION_URL" not in os.environ:
+            settings.hikvision_url = str(_ps["hikvision_url"])
+            logger.info("Loaded hikvision_url from config: %s", settings.hikvision_url)
+        if "hikvision_user" in _ps and "GV_HIKVISION_USER" not in os.environ:
+            settings.hikvision_user = str(_ps["hikvision_user"])
+        if "hikvision_password" in _ps and "GV_HIKVISION_PASSWORD" not in os.environ:
+            settings.hikvision_password = str(_ps["hikvision_password"])
+        if "hikvision_event_ttl_ms" in _ps and "GV_HIKVISION_EVENT_TTL_MS" not in os.environ:
+            settings.hikvision_event_ttl_ms = int(_ps["hikvision_event_ttl_ms"])
+            logger.info("Loaded hikvision_event_ttl_ms from config: %d", settings.hikvision_event_ttl_ms)
+        if "hikvision_event_types" in _ps and "GV_HIKVISION_EVENT_TYPES" not in os.environ:
+            settings.hikvision_event_types = str(_ps["hikvision_event_types"])
+            logger.info("Loaded hikvision_event_types from config: %s", settings.hikvision_event_types)
+        if "hikvision_detection_target" in _ps and "GV_HIKVISION_DETECTION_TARGET" not in os.environ:
+            settings.hikvision_detection_target = str(_ps["hikvision_detection_target"])
+            logger.info("Loaded hikvision_detection_target from config: %s", settings.hikvision_detection_target)
     except (json.JSONDecodeError, OSError, ValueError) as e:
         logger.warning("Failed to read python settings %s: %s", _python_settings_path, e)
 
@@ -130,6 +147,7 @@ _state = {
     "capture": None,
     "detector": None,
     "backend": None,
+    "hikvision": None,
     "stats": _stats,
     "events_log": _events_log,
     "latest_frame_jpg": _latest_frame_jpg,
@@ -264,9 +282,18 @@ async def _capture_loop():
                 detect_frame = detect_source
 
             # Motion gate: skip expensive inference when the scene is static.
-            # Operates on a 160×120 downscale so the diff costs ~0.5ms on CPU.
-            # Bypassed while active face tracks exist (person is mid-interaction).
-            if settings.motion_threshold > 0 and not _active_tracks:
+            # Hikvision hardware events take priority over the software pixel-diff gate
+            # when the listener is configured.  Falls back to pixel-diff when it is not.
+            # Either gate is bypassed while active face tracks exist (mid-interaction).
+            _hikvision: HikvisionEventListener | None = _state.get("hikvision")
+            if _hikvision is not None:
+                # Hardware gate: block detection unless the camera fired an event recently,
+                # OR the listener is still connecting (don't lock out during reconnect).
+                if not _active_tracks and not _hikvision.is_active() and _hikvision.is_connected():
+                    _stats["motion_skipped"] += 1
+                    continue
+            elif settings.motion_threshold > 0 and not _active_tracks:
+                # Software pixel-diff gate (fallback when no Hikvision listener)
                 _gray = cv2.cvtColor(
                     cv2.resize(detect_frame, (160, 120), interpolation=cv2.INTER_NEAREST),
                     cv2.COLOR_BGR2GRAY,
@@ -338,6 +365,24 @@ async def lifespan(app: FastAPI):
     logger.info("Backend client initialized → %s  gate=%s  api_key=%s",
                 settings.net_backend_url, settings.gate_id, key_hint)
 
+    if settings.hikvision_url:
+        hik = HikvisionEventListener(
+            base_url=settings.hikvision_url,
+            user=settings.hikvision_user,
+            password=settings.hikvision_password,
+            event_types=settings.hikvision_event_types,
+            ttl_ms=settings.hikvision_event_ttl_ms,
+            detection_target=settings.hikvision_detection_target,
+        )
+        _state["hikvision"] = hik
+        logger.info(
+            "Hikvision listener started → %s  types=%s  target=%s  ttl=%dms",
+            settings.hikvision_url,
+            settings.hikvision_event_types or "all",
+            settings.hikvision_detection_target or "any",
+            settings.hikvision_event_ttl_ms,
+        )
+
     capture_task = asyncio.create_task(_capture_loop())
     drain_task = asyncio.create_task(_drain_loop())
     yield
@@ -351,6 +396,9 @@ async def lifespan(app: FastAPI):
         await drain_task
     except asyncio.CancelledError:
         pass
+    hik = _state.get("hikvision")
+    if hik:
+        hik.stop()
     if detector:
         detector.shutdown()
     cap = _state.get("capture")

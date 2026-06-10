@@ -51,6 +51,14 @@ class Settings(BaseSettings):
 
     detect_max_width: int = 0  # downscale frame to this width before detection; 0 = disabled (use full res)
 
+    # Hikvision ISAPI event listener — leave hikvision_url empty to disable
+    hikvision_url: str = ""           # camera base URL, e.g. "http://192.168.1.64"
+    hikvision_user: str = "admin"
+    hikvision_password: str = ""
+    hikvision_event_ttl_ms: int = 5000   # keep gate open this many ms after last event
+    hikvision_event_types: str = "VMD,fielddetection,linedetection"  # comma-separated; empty = all
+    hikvision_detection_target: str = ""  # e.g. "human"; empty = no filter
+
     class Config:
         env_prefix = "GV_"
         env_file = os.path.join(os.path.dirname(__file__), ".env")

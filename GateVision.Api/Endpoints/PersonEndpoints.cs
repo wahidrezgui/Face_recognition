@@ -19,6 +19,13 @@ public static class PersonEndpoints
             .Count(f => Guid.TryParse(Path.GetFileNameWithoutExtension(f), out _));
     }
 
+    private static bool HasProfileImage(Guid personId)
+    {
+        var dir = Path.Combine(FaceImagesDir, personId.ToString());
+        return new[] { ".jpg", ".jpeg", ".png" }
+            .Any(ext => File.Exists(Path.Combine(dir, $"profile{ext}")));
+    }
+
     public static void MapPersonEndpoints(this WebApplication app)
     {
         app.MapGet("/api/persons/count", async (AppDbContext db, CancellationToken ct) =>
@@ -41,6 +48,7 @@ public static class PersonEndpoints
                 enrollmentStatus = person.EnrollmentStatus.ToString(),
                 person.CreatedAt,
                 faceCount = CountEnrolledFaces(id),
+                hasProfileImage = HasProfileImage(id),
                 person.WelcomeMessage,
             });
         });
@@ -160,6 +168,7 @@ public static class PersonEndpoints
                 enrollmentStatus = p.EnrollmentStatus.ToString(),
                 p.CreatedAt,
                 faceCount = CountEnrolledFaces(p.Id),
+                hasProfileImage = HasProfileImage(p.Id),
                 welcomeMessage = p.WelcomeMessage,
             }));
         });

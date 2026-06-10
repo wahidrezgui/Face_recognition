@@ -18,18 +18,17 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
 const STATUS_FILTERS = ["All", "Active", "Pending", "Suspended"] as const;
 type StatusFilter = (typeof STATUS_FILTERS)[number];
 
-function PersonAvatar({ personId, fullName }: { personId: string; fullName: string }) {
+function PersonAvatar({ personId, fullName, hasProfileImage }: { personId: string; fullName: string; hasProfileImage?: boolean }) {
   const [error, setError] = useState(false);
   const url = `${API_BASE}/api/persons/${personId}/profile-image`;
-  if (error) {
-    return (
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gv-border bg-gv-panel text-gray-500">
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-        </svg>
-      </div>
-    );
-  }
+  const fallback = (
+    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-gv-border bg-gv-panel text-gray-500">
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+      </svg>
+    </div>
+  );
+  if (!hasProfileImage || error) return fallback;
   return (
     <img
       src={url}
@@ -149,7 +148,7 @@ export default function PersonsPage() {
                 href={`/persons/${person.id}`}
                 className="flex items-center gap-3 rounded-lg border border-gv-border bg-gv-panel px-4 py-3 transition hover:border-gv-muted/50 hover:bg-[#0d1a2f]"
               >
-                <PersonAvatar personId={person.id} fullName={person.fullName} />
+                <PersonAvatar personId={person.id} fullName={person.fullName} hasProfileImage={person.hasProfileImage} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-gray-100">{person.fullName}</p>
                   <p className="truncate text-sm text-gv-muted">{person.department}</p>

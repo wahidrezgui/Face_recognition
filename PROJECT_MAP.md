@@ -199,6 +199,8 @@ Proxied via dashboard/next.config.js: /stream → localhost:8000/stream
 | `POST /roi` | Set Region of Interest `{x, y, width, height}` (0 = full frame) |
 | `GET /config/processing-fps` | Return current processing FPS |
 | `POST /config/processing-fps` | Set processing FPS (1–30); persists to `config/python_settings.json` |
+| `GET /config/hikvision` | Return Hikvision listener status: enabled, connected, active, url, event_types, event_ttl_ms |
+| `POST /config/hikvision` | Configure Hikvision listener `{url, user, password, event_ttl_ms, event_types}`; persists to `config/python_settings.json`; empty `url` disables |
 
 ---
 
@@ -213,6 +215,7 @@ Two sample edge-node configurations are provided at `run-gate-a.sh` and `run-gat
 | `main.py` | FastAPI lifespan, **event-window-driven** capture loop. Detected faces fed to `_window_manager.collect()`; when 250 ms window expires, `_window_manager.finalize()` produces a frozen `InteractionSnapshot` and `_process_snapshot()` is dispatched as an asyncio task. Assigns `track_id` per face via bbox-IoU tracker (`_bbox_iou`, `_match_or_create_track`, 3s track expiry). State dict for route closures. Contains `_drain_loop()` background task that replays buffered events every 10s. |
 | `window.py` | **InteractionWindowManager**: collects detections over a fixed window, deduplicates by `track_id` (highest confidence wins), locks ordering at `finalize()`. **IdentityScheduler**: resolves at most `max_identity_requests_per_window` identities per snapshot in rank order with `greeting_delay_ms` sleep between each. Data classes: `InteractionSnapshot`, `SnapshotPerson`, `IdentityResult`. |
 | `capture.py` | OpenCV video source (USB device index, RTSP URL, or file). Exponential backoff reconnect on failure. Graceful `_stopped` flag for shutdown. |
+| `hikvision.py` | `HikvisionEventListener`: daemon thread that maintains a persistent HTTP connection to the camera's ISAPI alert stream (`/ISAPI/Event/notification/alertStream`). Uses stdlib Digest auth. Sets `_last_event_time` on qualifying events. `is_active()` returns True if an event fired within `hikvision_event_ttl_ms`. `_extract_xml_chunks()` parses multipart XML from the byte buffer. `_get_detection_target()` extracts flat `<detectionTarget>` or nested `<*><targetType>` from any XML firmware variant. Optional `detection_target` filter (e.g. `"human"`) ignores non-human events; absent field = allow through. When configured, replaces the software pixel-diff motion gate in `_capture_loop`. Falls back to pixel-diff gate when `GV_HIKVISION_URL` is empty. |
 | `detector.py` | InsightFace SCRFD detector wrapper. Returns per-face: bbox, confidence, landmarks, 512-dim embedding, pose (pitch/yaw/roll), age, gender. |
 | `embedder.py` | ArcFace 512-dim extraction. `average_embeddings()` for weighted multi-angle enrollment. |
 | `quality.py` | Pose estimation from 5-point landmarks (yaw/pitch). Quality check: confidence ≥ 0.5, bbox ≥ 40px, yaw ≤ 30°. `crop_face_b64()` for face region extraction. |
@@ -414,6 +417,8 @@ Remaining future items (not yet planned):
 | G95 | Multi-origin CORS config — `Cors:AllowedOrigins` reads from `appsettings.json` instead of hardcoded `localhost:3000` | ✅ ADDED v18 |
 | G96 | Gates moved to DB — `gates` table (migration 015); `GateService` singleton with 60s cache; `AuthMiddleware` reads gate API keys from DB; admin CRUD via `/api/admin/gates`; dashboard Gates page adds create/edit/delete UI; `Gates` + `GateApiKeys` config sections removed | ✅ ADDED v19 |
 | G97 | Welcome dedup guard — suppress repeated identified welcomes per `(gateId, personId, direction)` for 12s in `IdentifyEndpoints` using `WelcomeDedupService`; added unit tests in `GateVision.Api.Tests` | ✅ ADDED v20 |
+| G98 | Hikvision ISAPI event listener (`hikvision.py`) — daemon thread streams camera hardware events via Digest-auth HTTP; sets time-based gate that replaces software pixel-diff motion gate in `_capture_loop`; fallback to pixel-diff when unconfigured; `GET/POST /config/hikvision`; persists to `python_settings.json`; unit-tested (17 tests) | ✅ ADDED v21 |
+| G99 | Hikvision `detection_target` filter — optional per-event target-type filter (`GV_HIKVISION_DETECTION_TARGET=human`); checks flat `<detectionTarget>` and nested `<*><targetType>` XML fields; absent field = allow through (older-firmware safe); `POST /config/hikvision` accepts `detection_target`; `.env` updated to `regionEntrance` + `human`; unit-tested (26 tests total) | ✅ ADDED v21 |
 
 ---
 
@@ -463,6 +468,12 @@ Auth__ApiKey                           Shared API key
 | `GV_ROI_Y` | `0` | Region of Interest top edge |
 | `GV_ROI_WIDTH` | `0` | Region of Interest width (0 = disabled) |
 | `GV_ROI_HEIGHT` | `0` | Region of Interest height |
+| `GV_HIKVISION_URL` | `""` | Hikvision camera base URL, e.g. `"http://192.168.1.64"`. Empty = disabled (uses software motion gate). |
+| `GV_HIKVISION_USER` | `"admin"` | Camera username for Digest auth |
+| `GV_HIKVISION_PASSWORD` | `""` | Camera password for Digest auth |
+| `GV_HIKVISION_EVENT_TTL_MS` | `5000` | Gate stays open this many ms after the last qualifying camera event |
+| `GV_HIKVISION_EVENT_TYPES` | `"VMD,fielddetection,linedetection"` | Comma-separated event types to respond to; empty = all types |
+| `GV_HIKVISION_DETECTION_TARGET` | `""` | Target type filter: `"human"` = human-only events; empty = no filter. Checks `<detectionTarget>` (flat) and `<targetType>` (nested) in XML. If field absent → allow through |
 | `GV_NET_BACKEND_URL` | `"http://localhost:5000"` | .NET backend base URL |
 | `GV_NET_API_KEY` | `""` | API key for `X-API-Key` header |
 | `GV_NET_TIMEOUT` | `5` | Backend request timeout (seconds) |

@@ -1,4 +1,5 @@
 import logging
+import cv2
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
 from insightface.app import FaceAnalysis
@@ -120,6 +121,38 @@ def _worker_detect(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list:
     return results
 
 
+def _worker_embed_crop(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list | None:
+    """Directly embed an already-cropped face image using only the ArcFace recognition model.
+
+    Bypasses SCRFD detection — use when we KNOW the image is a face (e.g. a gate event crop)
+    but the detector fails to re-locate it in the padded image.  Resizes the crop to 112x112
+    (ArcFace input) without landmark alignment; quality is slightly lower than a fully-aligned
+    embedding but still useful for identity matching.
+
+    Returns an L2-normalised embedding as a plain Python list, or None on failure.
+    """
+    global _worker_app
+    if _worker_app is None:
+        return None
+    rec_model = _worker_app.models.get("recognition")
+    if rec_model is None:
+        return None
+    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape)
+    input_size = getattr(rec_model, "input_size", (112, 112))
+    aligned = cv2.resize(frame, input_size)
+    try:
+        feats = rec_model.get_feat([aligned])
+        if feats is None or len(feats) == 0:
+            return None
+        emb = np.array(feats[0], dtype=np.float32)
+        norm = float(np.linalg.norm(emb))
+        if norm > 0:
+            emb = emb / norm
+        return emb.tolist()
+    except Exception:
+        return None
+
+
 # ── Main-process detector pool ─────────────────────────────────────────────────
 
 class DetectorPool:
@@ -183,6 +216,19 @@ class DetectorPool:
             if "embedding" in r:
                 r["embedding"] = np.array(r["embedding"], dtype=np.float32)
         return raw
+
+    def embed_crop(self, frame: np.ndarray) -> np.ndarray | None:
+        """Directly embed a known face crop without running detection.
+
+        Useful when SCRFD fails to re-detect in an already-tight gate camera crop.
+        Returns an L2-normalised float32 numpy array, or None on failure.
+        """
+        raw = self._executor.submit(
+            _worker_embed_crop, frame.tobytes(), frame.shape, frame.dtype.str
+        ).result()
+        if raw is None:
+            return None
+        return np.array(raw, dtype=np.float32)
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)

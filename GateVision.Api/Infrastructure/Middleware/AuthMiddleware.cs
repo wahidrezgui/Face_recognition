@@ -60,6 +60,15 @@ public class AuthMiddleware
             return;
         }
 
+        // Kiosk-settings GET is intentionally public — the /desk display on a separate
+        // machine reads it without admin credentials.
+        if (ctx.Request.Method == "GET"
+            && path.Contains("/kiosk-settings", StringComparison.OrdinalIgnoreCase))
+        {
+            await _next(ctx);
+            return;
+        }
+
         if (ctx.User.Identity?.IsAuthenticated == true)
         {
             await _next(ctx);

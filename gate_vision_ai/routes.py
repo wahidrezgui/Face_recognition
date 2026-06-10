@@ -78,6 +78,15 @@ class DetSizeRequest(BaseModel):
     height: int
 
 
+class HikvisionConfigRequest(BaseModel):
+    url: str          # camera base URL, e.g. "http://192.168.1.64"; empty = disable
+    user: str = "admin"
+    password: str = ""
+    event_ttl_ms: int = 5000
+    event_types: str = "VMD,fielddetection,linedetection"  # comma-separated; empty = all
+    detection_target: str = ""  # e.g. "human"; empty = no filter
+
+
 class MotionConfigRequest(BaseModel):
     threshold: float       # fraction of pixels that must change; 0 = disabled
     pixel_threshold: int   # per-pixel magnitude (0–255) to count as changed
@@ -106,6 +115,19 @@ def _save_python_setting(key: str, value) -> None:
         os.replace(tmp_path, config_path)
     except OSError as e:
         logger.warning("Failed to persist %s: %s", key, e)
+
+
+def _hikvision_status(state: dict) -> dict:
+    hik = state.get("hikvision")
+    return {
+        "enabled": hik is not None,
+        "connected": hik.is_connected() if hik else False,
+        "active": hik.is_active() if hik else False,
+        "url": settings.hikvision_url or None,
+        "event_types": settings.hikvision_event_types or "all",
+        "event_ttl_ms": settings.hikvision_event_ttl_ms,
+        "detection_target": settings.hikvision_detection_target or "any",
+    }
 
 
 def register_routes(app, state: dict):
@@ -220,7 +242,12 @@ def register_routes(app, state: dict):
             if frame is None or frame.size == 0:
                 rejected.append({"frame": i, "reason": "decode_failed"})
                 continue
-            faces = det.detect(frame)
+            try:
+                faces = await asyncio.to_thread(det.detect, frame)
+            except Exception as exc:
+                logger.error("Detection failed for frame %d in enroll/webcam: %s", i, exc, exc_info=True)
+                rejected.append({"frame": i, "reason": f"detection_error:{exc}"})
+                continue
             if not faces:
                 rejected.append({"frame": i, "reason": "no_face"})
                 continue
@@ -291,21 +318,38 @@ def register_routes(app, state: dict):
                 interpolation=cv2.INTER_LANCZOS4,
             )
 
-        faces = det.detect(detect_frame)
-        if not faces:
-            raise HTTPException(400, "No face detected in image")
-        face = faces[0]
-        emb = extract_embedding(face)
-        if emb is None:
-            raise HTTPException(400, "Failed to extract embedding from image")
-        # Crop from detect_frame so bbox coords are consistent with the detection
-        crop = crop_face_b64(detect_frame, face["bbox"])
-        if face.get("pose"):
-            pitch, yaw, _roll = face["pose"]
-            pitch = -pitch
+        try:
+            faces = await asyncio.to_thread(det.detect, detect_frame)
+        except Exception as exc:
+            logger.error("Detection failed in enroll/from-image: %s", exc, exc_info=True)
+            raise HTTPException(500, f"Face detection failed: {exc}")
+
+        if faces:
+            face = faces[0]
+            emb = extract_embedding(face)
+            if emb is None:
+                raise HTTPException(400, "Failed to extract embedding from image")
+            crop = crop_face_b64(detect_frame, face["bbox"])
+            if face.get("pose"):
+                pitch, yaw, _roll = face["pose"]
+                pitch = -pitch
+            else:
+                yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
+            pose = classify_pose(yaw, pitch)
         else:
-            yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
-        pose = classify_pose(yaw, pitch)
+            # SCRFD couldn't re-locate the face in the padded crop (common for tight
+            # gate camera crops).  Fall back to running ArcFace directly on the
+            # original crop — lower accuracy than a detection-aligned embedding but
+            # sufficient for initial enrollment.
+            logger.warning(
+                "enroll/from-image: no face detected after padding; "
+                "falling back to direct ArcFace embedding"
+            )
+            emb = await asyncio.to_thread(det.embed_crop, frame)
+            if emb is None:
+                raise HTTPException(400, "No face detected in image and direct embedding failed")
+            crop = crop_face_b64(frame, [0, 0, frame.shape[1], frame.shape[0]])
+            pose = "frontal"
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
         result = await s["backend"].enroll(req.personId, [emb], [crop] if crop else None, [pose])
@@ -337,6 +381,7 @@ def register_routes(app, state: dict):
                 "pixel_threshold": settings.motion_pixel_threshold,
                 "skipped_total": s["stats"].get("motion_skipped", 0),
             },
+            "hikvision": _hikvision_status(s),
             "detect_max_width": settings.detect_max_width,
             "window_duration_ms": settings.window_duration_ms,
             "max_identity_requests_per_window": settings.max_identity_requests_per_window,
@@ -477,6 +522,56 @@ def register_routes(app, state: dict):
             "threshold": req.threshold,
             "pixel_threshold": req.pixel_threshold,
         }
+
+    @app.get("/config/hikvision")
+    def get_hikvision_config():
+        return _hikvision_status(s)
+
+    @app.post("/config/hikvision")
+    async def set_hikvision_config(req: HikvisionConfigRequest):
+        from .hikvision import HikvisionEventListener
+        if req.event_ttl_ms < 100:
+            raise HTTPException(400, "event_ttl_ms must be >= 100")
+        # Stop existing listener if any
+        old = s.get("hikvision")
+        if old:
+            old.stop()
+            s["hikvision"] = None
+        # Persist settings
+        settings.hikvision_url = req.url
+        settings.hikvision_user = req.user
+        settings.hikvision_password = req.password
+        settings.hikvision_event_ttl_ms = req.event_ttl_ms
+        settings.hikvision_event_types = req.event_types
+        settings.hikvision_detection_target = req.detection_target
+        _save_python_setting("hikvision_url", req.url)
+        _save_python_setting("hikvision_user", req.user)
+        _save_python_setting("hikvision_password", req.password)
+        _save_python_setting("hikvision_event_ttl_ms", req.event_ttl_ms)
+        _save_python_setting("hikvision_event_types", req.event_types)
+        _save_python_setting("hikvision_detection_target", req.detection_target)
+        if req.url:
+            hik = await asyncio.to_thread(
+                HikvisionEventListener,
+                req.url, req.user, req.password, req.event_types, req.event_ttl_ms,
+                req.detection_target,
+            )
+            s["hikvision"] = hik
+            logger.info(
+                "Hikvision listener restarted → %s  types=%s  ttl=%dms",
+                req.url, req.event_types or "all", req.event_ttl_ms,
+            )
+        else:
+            logger.info("Hikvision listener disabled")
+        return _hikvision_status(s)
+
+    @app.get("/camera-events")
+    def get_camera_events(limit: int = 30):
+        """Return recent Hikvision ISAPI events for dashboard monitoring."""
+        hik = s.get("hikvision")
+        status = _hikvision_status(s)
+        events = hik.get_recent_events()[:limit] if hik else []
+        return {**status, "events": events}
 
     _DETECT_SCALE_PRESETS = [
         {"max_width": 0,    "label": "disabled", "note": "Full camera resolution (default)"},
