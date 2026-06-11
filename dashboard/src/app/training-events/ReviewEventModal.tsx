@@ -53,6 +53,7 @@ export default function ReviewEventModal({
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["training-events"] });
     queryClient.invalidateQueries({ queryKey: ["persons"] });
   }
 

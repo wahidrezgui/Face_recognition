@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchEvents,
@@ -37,8 +37,14 @@ export default function EventsPage() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<EventActivityRange>("today");
   const [statusTab, setStatusTab] = useState("");
+  const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const id = setTimeout(() => setName(nameInput), 300);
+    return () => clearTimeout(id);
+  }, [nameInput]);
   const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
@@ -80,6 +86,10 @@ export default function EventsPage() {
       queryClient.invalidateQueries({ queryKey: ["events-activity", period] });
     },
   });
+
+  const handleViewDetails = useCallback((event: GateEvent) => {
+    setSelectedEvent(event);
+  }, []);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
 
@@ -169,9 +179,9 @@ export default function EventsPage() {
                 <div className="relative ml-auto min-w-[160px] flex-1 sm:max-w-[200px]">
                   <Input
                     placeholder="Search name…"
-                    value={name}
+                    value={nameInput}
                     onChange={(e) => {
-                      setName(e.target.value);
+                      setNameInput(e.target.value);
                       setPage(1);
                     }}
                     className="h-8 border-gv-border bg-gv-bg pl-8 text-xs"
@@ -218,7 +228,7 @@ export default function EventsPage() {
                     <EventCard
                       key={event.eventId}
                       event={event}
-                      onViewDetails={() => setSelectedEvent(event)}
+                      onViewDetails={handleViewDetails}
                     />
                   ))}
 

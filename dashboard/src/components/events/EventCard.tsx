@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { memo, useState } from "react";
 import { type GateEvent } from "@/lib/api";
 
 // ── Event helpers ──────────────────────────────────────────────
@@ -78,12 +78,12 @@ function FaceRing({ event }: { event: GateEvent }) {
 }
 
 // ── Event card row ─────────────────────────────────────────────
-export function EventCard({
+export const EventCard = memo(function EventCard({
   event,
   onViewDetails,
 }: {
   event: GateEvent;
-  onViewDetails?: () => void;
+  onViewDetails?: (event: GateEvent) => void;
 }) {
   const col        = statusColor(event.status);
   const isReview   = event.status === "NeedsReview";
@@ -159,7 +159,7 @@ export function EventCard({
       {/* View Details button */}
       <div className="flex gap-1.5 shrink-0">
         <button
-          onClick={() => onViewDetails?.()}
+          onClick={() => onViewDetails?.(event)}
           className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all"
           style={{
             background: "rgba(99,102,241,0.08)",
@@ -178,4 +178,9 @@ export function EventCard({
       </div>
     </div>
   );
-}
+}, (prev, next) =>
+  prev.event.eventId === next.event.eventId &&
+  prev.event.confidence === next.event.confidence &&
+  prev.event.status === next.event.status &&
+  prev.onViewDetails === next.onViewDetails,
+);

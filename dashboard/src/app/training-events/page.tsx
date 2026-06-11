@@ -1,10 +1,11 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchTrainingEvents, deleteEvent, type GateEvent } from "@/lib/api";
 import { toast } from "sonner";
 import ReviewEventModal from "./ReviewEventModal";
+import EditTrainingEventModal from "./EditTrainingEventModal";
 
 import { EventCard } from "@/components/events/EventCard";
 import EventDetailModal from "@/components/events/EventDetailModal";
@@ -18,8 +19,14 @@ const TABS = [
 export default function TrainingEventsPage() {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState("");
+  const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    const id = setTimeout(() => setName(nameInput), 300);
+    return () => clearTimeout(id);
+  }, [nameInput]);
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const [mutatingOp, setMutatingOp] = useState<"delete" | null>(null);
   const limit = 50;
@@ -38,6 +45,7 @@ export default function TrainingEventsPage() {
 
   const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
   const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
+  const [editEvent, setEditEvent] = useState<GateEvent | null>(null);
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteEvent(id),
@@ -53,6 +61,10 @@ export default function TrainingEventsPage() {
   const tabCounts: Record<string, number | undefined> = {
     NeedsReview: reviewCount?.total,
   };
+
+  const handleViewDetails = useCallback((event: GateEvent) => {
+    setSelectedEvent(event);
+  }, []);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / limit)) : 1;
 
@@ -118,8 +130,8 @@ export default function TrainingEventsPage() {
               </svg>
               <input
                 placeholder="Search name..."
-                value={name}
-                onChange={(e) => { setName(e.target.value); setPage(1); }}
+                value={nameInput}
+                onChange={(e) => { setNameInput(e.target.value); setPage(1); }}
                 className="pl-7 pr-3 py-1.5 rounded text-xs"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2640", color: "#cbd5e1", outline: "none", width: 180 }}
               />
@@ -150,48 +162,62 @@ export default function TrainingEventsPage() {
                   borderColor: event.status === "NeedsReview" ? "rgba(245,158,11,0.18)" : "#1a2640",
                 }}
               >
-                <EventCard event={event} onViewDetails={() => setSelectedEvent(event)} />
+                <EventCard event={event} onViewDetails={handleViewDetails} />
                 <div className="flex gap-1.5 shrink-0">
                   {event.status === "NeedsReview" && (
-                    <>
-                      <button
-                        onClick={() => setReviewEvent(event)}
-                        disabled={mutatingId === event.eventId && mutatingOp === "delete"}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
-                        style={{
-                          background: "rgba(34,211,165,0.08)",
-                          color: "#22d3a5",
-                          border: "1px solid rgba(34,211,165,0.22)",
-                          fontFamily: "'Oxanium', monospace",
-                        }}
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                        </svg>
-                        Review
-                      </button>
-                      <button
-                        onClick={() => deleteMutation.mutate(event.eventId)}
-                        disabled={mutatingId === event.eventId}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
-                        style={{
-                          background: "rgba(248,113,113,0.08)",
-                          color: "#f87171",
-                          border: "1px solid rgba(248,113,113,0.22)",
-                          fontFamily: "'Oxanium', monospace",
-                        }}
-                      >
-                        {mutatingId === event.eventId ? (
-                          <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
-                        ) : (
-                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
-                          </svg>
-                        )}
-                        Delete
-                      </button>
-                    </>
+                    <button
+                      onClick={() => setReviewEvent(event)}
+                      disabled={mutatingId === event.eventId && mutatingOp === "delete"}
+                      className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
+                      style={{
+                        background: "rgba(34,211,165,0.08)",
+                        color: "#22d3a5",
+                        border: "1px solid rgba(34,211,165,0.22)",
+                        fontFamily: "'Oxanium', monospace",
+                      }}
+                    >
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                      Review
+                    </button>
                   )}
+                  <button
+                    onClick={() => setEditEvent(event)}
+                    disabled={mutatingId === event.eventId}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
+                    style={{
+                      background: "rgba(99,102,241,0.08)",
+                      color: "#818cf8",
+                      border: "1px solid rgba(99,102,241,0.22)",
+                      fontFamily: "'Oxanium', monospace",
+                    }}
+                  >
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                    </svg>
+                    Edit
+                  </button>
+                  <button
+                    onClick={() => deleteMutation.mutate(event.eventId)}
+                    disabled={mutatingId === event.eventId}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded text-[11px] font-semibold transition-all disabled:opacity-40"
+                    style={{
+                      background: "rgba(248,113,113,0.08)",
+                      color: "#f87171",
+                      border: "1px solid rgba(248,113,113,0.22)",
+                      fontFamily: "'Oxanium', monospace",
+                    }}
+                  >
+                    {mutatingId === event.eventId && mutatingOp === "delete" ? (
+                      <span className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin" />
+                    ) : (
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+                      </svg>
+                    )}
+                    Delete
+                  </button>
                 </div>
               </div>
             ))}
@@ -239,6 +265,13 @@ export default function TrainingEventsPage() {
           event={reviewEvent}
           onClose={() => setReviewEvent(null)}
           onDone={() => setReviewEvent(null)}
+        />
+      )}
+      {editEvent && (
+        <EditTrainingEventModal
+          event={editEvent}
+          onClose={() => setEditEvent(null)}
+          onDone={() => setEditEvent(null)}
         />
       )}
     </>

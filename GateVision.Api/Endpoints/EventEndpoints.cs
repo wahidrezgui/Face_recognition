@@ -323,6 +323,51 @@ public static class EventEndpoints
             return Results.Ok(new { items = events, total, page, limit });
         });
 
+        app.MapPatch("/api/training-events/{id:guid}", async (Guid id, UpdateTrainingEventDto dto, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
+        {
+            var evt = await db.TrainingEvents.FindAsync([id], ct);
+            if (evt is null)
+                return Results.NotFound(new { error = "Training event not found" });
+
+            if (!Enum.TryParse<Direction>(dto.Direction, true, out var direction))
+                return Results.BadRequest(new { error = $"Invalid direction: {dto.Direction}" });
+
+            if (!Enum.TryParse<EventStatus>(dto.Status, true, out var status))
+                return Results.BadRequest(new { error = $"Invalid status: {dto.Status}" });
+
+            Guid? personId = dto.PersonId;
+
+            if (personId.HasValue)
+            {
+                var personExists = await db.Persons.AnyAsync(p => p.Id == personId.Value, ct);
+                if (!personExists)
+                    return Results.NotFound(new { error = "Person not found" });
+            }
+
+            Person? person = personId.HasValue
+                ? await db.Persons.FindAsync([personId.Value], ct)
+                : null;
+
+            evt.Update(personId, dto.Confidence, direction, status, dto.CapturedAt, dto.Emotion, dto.Age, dto.Gender);
+            await db.SaveChangesAsync(ct);
+            logger.LogInformation("Training event {EventId} updated", id);
+
+            return Results.Ok(new
+            {
+                eventId = evt.Id,
+                gateId = evt.GateId,
+                personId = evt.PersonId.HasValue ? evt.PersonId.Value.ToString() : (string?)null,
+                personName = person?.FullName ?? "UNKNOWN",
+                confidence = evt.Confidence,
+                timestamp = evt.CapturedAt.ToString("O"),
+                direction = evt.Direction.ToString().ToLower(),
+                status = evt.Status.ToString(),
+                emotion = evt.Emotion,
+                age = evt.Age,
+                gender = evt.Gender,
+            });
+        }).RequireAuthorization();
+
         app.MapGet("/api/events/stream", async (HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, string? gateId, CancellationToken ct) =>
         {
             var normalizedGateId = NormalizeGateId(gateId);
@@ -543,4 +588,16 @@ public static class EventEndpoints
 public class ReviewEventDto
 {
     public Guid PersonId { get; set; }
+}
+
+public class UpdateTrainingEventDto
+{
+    public Guid? PersonId { get; set; }
+    public float Confidence { get; set; }
+    public string Direction { get; set; } = "entry";
+    public string Status { get; set; } = "NeedsReview";
+    public DateTime CapturedAt { get; set; }
+    public string? Emotion { get; set; }
+    public int? Age { get; set; }
+    public string? Gender { get; set; }
 }

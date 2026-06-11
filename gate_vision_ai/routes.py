@@ -288,9 +288,19 @@ def register_routes(app, state: dict):
 
     @app.post("/enroll/from-image")
     async def enroll_from_image(req: EnrollFromImageRequest):
-        """Enroll a single face image (e.g. gate event crop) without requiring webcam capture.
-        Extracts one embedding, detects pose, and stores it for the person.
-        Use /enroll/webcam with replace=true later to upgrade to multi-angle webcam embeddings."""
+        """Enroll a single face image without requiring webcam capture.
+
+        Handles two source types automatically:
+        - Tight gate-camera crops (shorter side < 400 px): adds 40% padding so
+          SCRFD has enough context to locate landmarks.
+        - Full photos from disk (shorter side >= 400 px): runs detection directly
+          on the image; large inputs are downscaled to 1024 px (longer side) to
+          keep the IPC payload to the detector subprocess manageable.
+
+        Picks the most prominent face (highest confidence × largest bbox area) when
+        multiple faces are present. Falls back to direct ArcFace embedding when
+        SCRFD finds nothing.
+        """
         det = s["detector"]
         if det is None:
             raise HTTPException(503, "detector not available")
@@ -298,25 +308,38 @@ def register_routes(app, state: dict):
         if frame is None or frame.size == 0:
             raise HTTPException(400, "Failed to decode image")
 
-        # Gate camera crops are tight bbox cuts — no margin.
-        # SCRFD (InsightFace detector) needs the face to occupy a fraction of the
-        # image to locate landmarks and score confidence. Add ~40% padding on each
-        # side using BORDER_REPLICATE to avoid black-edge artifacts.
         h, w = frame.shape[:2]
-        pad_y = max(int(h * 0.4), 20)
-        pad_x = max(int(w * 0.4), 20)
-        detect_frame = cv2.copyMakeBorder(
-            frame, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REPLICATE
-        )
-        # Upscale if still too small for the detector (min 160px on shorter side)
-        dh, dw = detect_frame.shape[:2]
-        if dw < 160 or dh < 160:
-            scale = max(160 / dw, 160 / dh)
-            detect_frame = cv2.resize(
-                detect_frame,
-                (int(dw * scale), int(dh * scale)),
-                interpolation=cv2.INTER_LANCZOS4,
+        shorter = min(h, w)
+
+        if shorter < 400:
+            # Tight gate-camera crop — add context padding before detection.
+            pad_y = max(int(h * 0.4), 20)
+            pad_x = max(int(w * 0.4), 20)
+            detect_frame = cv2.copyMakeBorder(
+                frame, pad_y, pad_y, pad_x, pad_x, cv2.BORDER_REPLICATE
             )
+            dh, dw = detect_frame.shape[:2]
+            if min(dh, dw) < 160:
+                scale = 160 / min(dh, dw)
+                detect_frame = cv2.resize(
+                    detect_frame,
+                    (int(dw * scale), int(dh * scale)),
+                    interpolation=cv2.INTER_LANCZOS4,
+                )
+        else:
+            # Full photo — detect on the image as-is. Downscale only when the
+            # longer side exceeds 1024 px to limit IPC payload to the subprocess.
+            max_dim = 1024
+            longer = max(h, w)
+            if longer > max_dim:
+                scale = max_dim / longer
+                detect_frame = cv2.resize(
+                    frame,
+                    (int(w * scale), int(h * scale)),
+                    interpolation=cv2.INTER_AREA,
+                )
+            else:
+                detect_frame = frame.copy()
 
         try:
             faces = await asyncio.to_thread(det.detect, detect_frame)
@@ -325,7 +348,11 @@ def register_routes(app, state: dict):
             raise HTTPException(500, f"Face detection failed: {exc}")
 
         if faces:
-            face = faces[0]
+            # Pick the most prominent face when multiple are present.
+            def _face_score(f: dict) -> float:
+                x1, y1, x2, y2 = f["bbox"]
+                return f["confidence"] * (x2 - x1) * (y2 - y1)
+            face = max(faces, key=_face_score)
             emb = extract_embedding(face)
             if emb is None:
                 raise HTTPException(400, "Failed to extract embedding from image")
@@ -337,19 +364,16 @@ def register_routes(app, state: dict):
                 yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
             pose = classify_pose(yaw, pitch)
         else:
-            # SCRFD couldn't re-locate the face in the padded crop (common for tight
-            # gate camera crops).  Fall back to running ArcFace directly on the
-            # original crop — lower accuracy than a detection-aligned embedding but
-            # sufficient for initial enrollment.
+            # SCRFD found nothing — fall back to direct ArcFace on the original frame.
             logger.warning(
-                "enroll/from-image: no face detected after padding; "
-                "falling back to direct ArcFace embedding"
+                "enroll/from-image: no face detected; falling back to direct ArcFace embedding"
             )
             emb = await asyncio.to_thread(det.embed_crop, frame)
             if emb is None:
-                raise HTTPException(400, "No face detected in image and direct embedding failed")
+                raise HTTPException(400, "No face detected in image and direct embedding also failed")
             crop = crop_face_b64(frame, [0, 0, frame.shape[1], frame.shape[0]])
             pose = "frontal"
+
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
         result = await s["backend"].enroll(req.personId, [emb], [crop] if crop else None, [pose])

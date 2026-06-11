@@ -69,4 +69,24 @@ public class TrainingEvent
     }
 
     public void MarkIdentified() => Status = EventStatus.Identified;
+
+    public void Update(
+        Guid? personId,
+        float confidence,
+        Direction direction,
+        EventStatus status,
+        DateTime capturedAt,
+        string? emotion,
+        int? age,
+        string? gender)
+    {
+        PersonId = personId;
+        Confidence = confidence;
+        Direction = direction;
+        Status = status;
+        CapturedAt = capturedAt;
+        Emotion = string.IsNullOrEmpty(emotion) ? null : emotion;
+        Age = age;
+        Gender = string.IsNullOrEmpty(gender) ? null : gender;
+    }
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { memo, useState, useEffect, useMemo, useCallback } from "react";
+import { LiveClock } from "@/components/LiveClock";
 import { useQuery } from "@tanstack/react-query";
 import {
   fetchEvents,
@@ -18,7 +19,7 @@ import { IconCamera, IconFace, IconTarget, IconChart, IconShield, IconUsers, Ico
 import { PanelHeader, StatItem, CaptureThumb, EventCard } from "@/components/face-display";
 
 // ── Compact gate card shown in the "no gate selected" overview ──────────────
-function DashboardGateCard({ gate, onFocus }: { gate: GateStatus; onFocus: () => void }) {
+const DashboardGateCard = memo(function DashboardGateCard({ gate, onFocus }: { gate: GateStatus; onFocus: (id: string) => void }) {
   const [streamErr, setStreamErr] = useState(false);
   const isLive = gate.online && (gate.status?.camera_open ?? false);
   return (
@@ -63,7 +64,7 @@ function DashboardGateCard({ gate, onFocus }: { gate: GateStatus; onFocus: () =>
 
       <div className="flex gap-2">
         <button
-          onClick={onFocus}
+          onClick={() => onFocus(gate.id)}
           disabled={!isLive}
           className="flex-1 py-1 text-[10px] rounded border border-blue-600/30 text-blue-400 hover:bg-blue-950/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
         >
@@ -78,13 +79,12 @@ function DashboardGateCard({ gate, onFocus }: { gate: GateStatus; onFocus: () =>
       </div>
     </div>
   );
-}
+});
 
 // ── page ──────────────────────────────────────────────────────
 export default function DashboardPage() {
   const [liveEvents, setLiveEvents] = useState<GateEvent[]>([]);
   const [streamError, setStreamError] = useState(false);
-  const [now, setNow] = useState(new Date());
   const [selectedGate, setSelectedGate] = useState<string | undefined>(undefined);
 
   const { data: initialData, refetch: refetchEvents } = useQuery({
@@ -170,11 +170,7 @@ export default function DashboardPage() {
     onError: () => setStreamError(true),
   });
 
-  // live clock
-  useEffect(() => {
-    const t = setInterval(() => setNow(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+  const handleGateFocus = useCallback((id: string) => setSelectedGate(id), []);
 
   const handleClearCaptures = useCallback(() => {
     setLiveEvents([]);
@@ -207,10 +203,8 @@ export default function DashboardPage() {
         </div>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-500 font-mono">
-          <span suppressHydrationWarning>{now.toLocaleDateString("en-US", { weekday: "short", year: "numeric", month: "short", day: "numeric" })}</span>
-          <span className="text-blue-300 text-sm font-bold" suppressHydrationWarning>
-            {now.toLocaleTimeString("en-US", { hour12: false })}
-          </span>
+          <LiveClock mode="date" options={{ weekday: "short", year: "numeric", month: "short", day: "numeric" }} />
+          <LiveClock mode="time" options={{ hour12: false }} className="text-blue-300 text-sm font-bold" />
         </div>
       </header>
 
@@ -303,7 +297,7 @@ export default function DashboardPage() {
                     <DashboardGateCard
                       key={gate.id}
                       gate={gate}
-                      onFocus={() => setSelectedGate(gate.id)}
+                      onFocus={handleGateFocus}
                     />
                   ))}
                 </div>
@@ -317,9 +311,9 @@ export default function DashboardPage() {
                   className="w-full h-full object-contain"
                   onError={() => setStreamError(true)}
                 />
-                <div className="absolute top-3 left-3 font-mono text-xs text-white/70 bg-black/50 px-2 py-1 rounded" suppressHydrationWarning>
-                  {now.toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }).replace(/\//g, "-")}
-                  &nbsp;{now.toLocaleTimeString("en-US", { hour12: false })}
+                <div className="absolute top-3 left-3 font-mono text-xs text-white/70 bg-black/50 px-2 py-1 rounded">
+                  <LiveClock mode="date" options={{ year: "numeric", month: "2-digit", day: "2-digit" }} transform={(s) => s.replace(/\//g, "-")} />
+                  &nbsp;<LiveClock mode="time" options={{ hour12: false }} />
                 </div>
                 {[
                   "top-2 left-2 border-t border-l",

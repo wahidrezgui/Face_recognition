@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   Camera,
   Check,
+  ImagePlus,
   Loader2,
   Pencil,
   Trash2,
@@ -20,6 +21,7 @@ import {
   updatePersonStatus,
   fetchPersonFaces,
   uploadFace,
+  enrollFromEventFace,
   updateWelcomeMessage,
   deletePerson,
   fetchPersonPoses,
@@ -50,6 +52,35 @@ import {
 } from "@/components/ui/dialog";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
+
+function fileToBase64Jpeg(file: File, maxDim = 800): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      let { width, height } = img;
+      if (width > maxDim || height > maxDim) {
+        if (width >= height) {
+          height = Math.round((height * maxDim) / width);
+          width = maxDim;
+        } else {
+          width = Math.round((width * maxDim) / height);
+          height = maxDim;
+        }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas unavailable")); return; }
+      ctx.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", 0.92).replace(/^data:[^;]+;base64,/, ""));
+    };
+    img.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Failed to load image")); };
+    img.src = objectUrl;
+  });
+}
 
 const POSES = ["frontal", "left", "right", "up", "down"] as const;
 const POSE_LABEL: Record<(typeof POSES)[number], string> = {
@@ -87,9 +118,11 @@ export default function PersonDetailPage() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const enrollFileInputRef = useRef<HTMLInputElement>(null);
   const welcomeInitRef = useRef(false);
   const [profileError, setProfileError] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [enrollingFromFile, setEnrollingFromFile] = useState(false);
   const [imgCacheBust, setImgCacheBust] = useState(() => Date.now());
   const [welcomeMsg, setWelcomeMsg] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -212,6 +245,25 @@ export default function PersonDetailPage() {
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleEnrollFromFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setEnrollingFromFile(true);
+    try {
+      const b64 = await fileToBase64Jpeg(file);
+      await enrollFromEventFace(id, b64);
+      queryClient.invalidateQueries({ queryKey: ["person-faces", id] });
+      queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
+      toast.success("Face enrolled from photo");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Enrollment failed");
+    } finally {
+      setEnrollingFromFile(false);
+      if (enrollFileInputRef.current) enrollFileInputRef.current.value = "";
     }
   };
 
@@ -435,23 +487,47 @@ export default function PersonDetailPage() {
             title="Enrolled faces"
             description="Reference images used for recognition"
             action={
-              faces.length > 0 ? (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="border-gv-border text-gv-muted">
-                    {faces.length}
-                  </Badge>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 gap-1 border-red-900/50 px-2 text-xs text-red-300 hover:bg-red-950/40"
-                    onClick={() => setResetOpen(true)}
-                    disabled={resetFacesMutation.isPending}
-                  >
-                    <Trash2 className="size-3" />
-                    Reset
-                  </Button>
-                </div>
-              ) : undefined
+              <div className="flex items-center gap-2">
+                {faces.length > 0 && (
+                  <>
+                    <Badge variant="outline" className="border-gv-border text-gv-muted">
+                      {faces.length}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 gap-1 border-red-900/50 px-2 text-xs text-red-300 hover:bg-red-950/40"
+                      onClick={() => setResetOpen(true)}
+                      disabled={resetFacesMutation.isPending}
+                    >
+                      <Trash2 className="size-3" />
+                      Reset
+                    </Button>
+                  </>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 gap-1 border-blue-900/50 px-2 text-xs text-blue-300 hover:bg-blue-950/40"
+                  onClick={() => enrollFileInputRef.current?.click()}
+                  disabled={enrollingFromFile}
+                  title="Select a photo from disk — face will be detected and enrolled"
+                >
+                  {enrollingFromFile ? (
+                    <Loader2 className="size-3 animate-spin" />
+                  ) : (
+                    <ImagePlus className="size-3" />
+                  )}
+                  {enrollingFromFile ? "Processing…" : "Upload photo"}
+                </Button>
+                <input
+                  ref={enrollFileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleEnrollFromFile}
+                />
+              </div>
             }
             className="lg:col-span-2"
           >
@@ -479,11 +555,14 @@ export default function PersonDetailPage() {
                 ))}
               </div>
             ) : (
-              <div className="flex flex-col items-center rounded-lg border border-dashed border-gv-border py-10 text-center">
-                <User className="mb-2 size-10 text-gv-muted opacity-30" />
+              <div
+                className="flex cursor-pointer flex-col items-center rounded-lg border border-dashed border-gv-border py-10 text-center transition hover:border-blue-500/40 hover:bg-blue-950/10"
+                onClick={() => enrollFileInputRef.current?.click()}
+              >
+                <ImagePlus className="mb-2 size-10 text-gv-muted opacity-40" />
                 <p className="text-sm text-gv-muted">No face frames enrolled yet</p>
                 <p className="mt-1 max-w-xs text-xs text-gv-muted/80">
-                  Use the enrollment panel below to capture frames from different angles.
+                  Click to upload a photo, or use the webcam panel below.
                 </p>
               </div>
             )}

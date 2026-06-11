@@ -93,7 +93,9 @@ def _worker_detect(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list:
     process boundary without special pickling. DetectorPool.detect() converts them
     back to float32 arrays after receiving them.
     """
-    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape)
+    # np.frombuffer returns a read-only view; .copy() makes it writable so
+    # InsightFace preprocessing steps can modify it in-place without raising.
+    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape).copy()
     faces = _worker_app.get(frame)
     results = []
     for face in faces:
@@ -137,7 +139,7 @@ def _worker_embed_crop(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list
     rec_model = _worker_app.models.get("recognition")
     if rec_model is None:
         return None
-    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape)
+    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape).copy()
     input_size = getattr(rec_model, "input_size", (112, 112))
     aligned = cv2.resize(frame, input_size)
     try:

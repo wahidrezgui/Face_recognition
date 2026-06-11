@@ -29,26 +29,49 @@ public class BufferedTrack
 public record FlushResult(GateEvent? GateEvent, TrainingEvent? TrainingEvent);
 
 public readonly record struct TrackKey(string GateId, int TrackId);
+internal readonly record struct PersonKey(string GateId, Guid PersonId);
 
 public class EventBufferService
 {
     private readonly ConcurrentDictionary<TrackKey, BufferedTrack> _tracks = new();
+    private readonly ConcurrentDictionary<PersonKey, TrackKey> _personToTrack = new();
     private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
+    private static readonly TimeSpan PersonDedup = TimeSpan.FromSeconds(2);
 
     /// <summary>
     /// Adds or updates a track in the buffer.
     /// Returns the stable event Guid and whether this frame is the new confidence best.
     /// Callers should publish to SSE only when IsNewBest is true.
+    /// If the same identified person was seen within the dedup window on the same gate,
+    /// this frame is merged into the existing track instead of creating a new event.
     /// </summary>
     public (Guid EventId, bool IsNewBest) BufferOrUpdate(BufferedTrack track)
     {
         var key = new TrackKey(track.GateId, track.TrackId);
+
+        // Merge into an existing track if the same identified person was seen within 2 seconds
+        // on the same gate (handles camera tracking resets that produce new TrackIds).
+        if (track.PersonId.HasValue)
+        {
+            var personKey = new PersonKey(track.GateId, track.PersonId.Value);
+            if (_personToTrack.TryGetValue(personKey, out var existingKey)
+                && existingKey != key
+                && _tracks.TryGetValue(existingKey, out var existingPersonTrack)
+                && DateTime.UtcNow - existingPersonTrack.LastSeen <= PersonDedup)
+            {
+                key = existingKey;
+                track.TrackId = existingPersonTrack.TrackId;
+            }
+        }
+
         bool isNewBest = false;
         var result = _tracks.AddOrUpdate(key,
             _ =>
             {
                 track.LastSeen = DateTime.UtcNow;
                 isNewBest = true;
+                if (track.PersonId.HasValue)
+                    _personToTrack[new PersonKey(track.GateId, track.PersonId.Value)] = key;
                 return track;
             },
             (_, existing) =>
@@ -70,6 +93,8 @@ public class EventBufferService
                 }
                 existing.CapturedAt = track.CapturedAt;
                 existing.LastSeen = DateTime.UtcNow;
+                if (track.PersonId.HasValue)
+                    _personToTrack[new PersonKey(track.GateId, track.PersonId.Value)] = key;
                 return existing;
             });
         return (result.Id, isNewBest);
@@ -83,6 +108,8 @@ public class EventBufferService
 
         var key = new TrackKey(match.GateId, match.TrackId);
         if (!_tracks.TryRemove(key, out _)) return null;
+        if (match.PersonId.HasValue)
+            _personToTrack.TryRemove(new KeyValuePair<PersonKey, TrackKey>(new PersonKey(match.GateId, match.PersonId.Value), key));
 
         if (match.IsTrainingEvent)
         {
@@ -120,6 +147,8 @@ public class EventBufferService
         foreach (var (key, track) in expired)
         {
             if (!_tracks.TryRemove(key, out _)) continue;
+            if (track.PersonId.HasValue)
+                _personToTrack.TryRemove(new KeyValuePair<PersonKey, TrackKey>(new PersonKey(track.GateId, track.PersonId.Value), key));
 
             if (track.IsTrainingEvent)
             {

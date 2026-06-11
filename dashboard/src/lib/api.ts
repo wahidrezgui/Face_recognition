@@ -337,6 +337,29 @@ export async function fetchTrainingEvents(
   return res.json();
 }
 
+export async function updateTrainingEvent(eventId: string, data: {
+  personId?: string | null;
+  confidence: number;
+  direction: "entry" | "exit";
+  status: "NeedsReview" | "Identified";
+  capturedAt: string;
+  emotion?: string | null;
+  age?: number | null;
+  gender?: string | null;
+}): Promise<GateEvent> {
+  const res = await apiFetch(`${API_BASE}/api/training-events/${eventId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    let detail = "Failed to update training event";
+    try { const b = await res.json(); if (b?.error) detail = b.error; } catch { }
+    throw new Error(detail);
+  }
+  return res.json();
+}
+
 export async function deletePersonFace(personId: string, faceId: string): Promise<void> {
   const res = await apiFetch(`${API_BASE}/api/persons/${personId}/faces/${faceId}`, {
     method: "DELETE",
