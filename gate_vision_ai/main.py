@@ -284,12 +284,12 @@ async def _capture_loop():
             # Motion gate: skip expensive inference when the scene is static.
             # Hikvision hardware events take priority over the software pixel-diff gate
             # when the listener is configured.  Falls back to pixel-diff when it is not.
-            # Either gate is bypassed while active face tracks exist (mid-interaction).
             _hikvision: HikvisionEventListener | None = _state.get("hikvision")
             if _hikvision is not None:
-                # Hardware gate: block detection unless the camera fired an event recently,
-                # OR the listener is still connecting (don't lock out during reconnect).
-                if not _active_tracks and not _hikvision.is_active() and _hikvision.is_connected():
+                # Hardware gate: strictly honor the TTL window — detection only runs while
+                # the camera has recently fired a qualifying active event.
+                # Skip the gate only while still connecting (don't lock out during reconnect).
+                if not _hikvision.is_active() and _hikvision.is_connected():
                     _stats["motion_skipped"] += 1
                     continue
             elif settings.motion_threshold > 0 and not _active_tracks:

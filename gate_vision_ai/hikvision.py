@@ -13,6 +13,10 @@ _ALERT_PATH = "/ISAPI/Event/notification/alertStream"
 _HIKVISION_NS = "http://www.hikvision.com/ver20/XMLSchema"
 _END_TAG = b"</EventNotificationAlert>"
 
+# Hikvision sends these as ISAPI connection keepalives — they carry no detection
+# meaning and must never trigger face detection, regardless of the event_types filter.
+_KEEPALIVE_EVENT_TYPES: frozenset[str] = frozenset({"duration", "videoloss"})
+
 
 def _extract_xml_chunks(buf: bytes) -> tuple[list[bytes], bytes]:
     """Extract complete EventNotificationAlert XML documents from a byte buffer.
@@ -180,9 +184,13 @@ class HikvisionEventListener:
             # Determine whether this event qualifies to trigger detection
             qualified = True
             reason: str | None = None
-            type_ok = not self._event_types or event_type.lower() in self._event_types
+            type_lower = event_type.lower()
+            type_ok = not self._event_types or type_lower in self._event_types
             state_ok = event_state.lower() == "active"
-            if not type_ok:
+            if type_lower in _KEEPALIVE_EVENT_TYPES:
+                qualified = False
+                reason = f"type '{event_type}' is a keepalive (never triggers detection)"
+            elif not type_ok:
                 qualified = False
                 reason = f"type '{event_type}' not in filter ({','.join(self._event_types) or 'all'})"
             elif not state_ok:
