@@ -10,6 +10,13 @@ import {
   type ValidatedEvent,
   type EventActivityRange,
 } from "@/lib/api";
+import {
+  fetchGateAutoValidateThresholds,
+  resolveAutoValidateThreshold,
+  shouldAutoValidate,
+  gateEventToValidatedPreview,
+} from "@/lib/gateRecognition";
+import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { formatLocalDate, formatLocalTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -177,7 +184,7 @@ function StatsStrip({
   if (!stats) return null;
   const cards = [
     { label: PERIOD_TOTAL_LABEL[period], value: stats.total, col: "#e2e8f0" },
-    { label: "Auto (>85%)", value: stats.autoCount, col: "#22d3a5" },
+    { label: "Auto-validated", value: stats.autoCount, col: "#22d3a5" },
     { label: "Manual", value: stats.manualCount, col: "#818cf8" },
     { label: "Entries", value: stats.entries, col: "#38bdf8" },
     { label: "Exits", value: stats.exits, col: "#f59e0b" },
@@ -212,6 +219,22 @@ export default function AccessLogPage() {
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
+  const validatedQueryKey = [
+    "validated-events",
+    period,
+    page,
+    name,
+    dirTab,
+    bounds.from,
+    bounds.to,
+  ] as const;
+
+  const { data: gateThresholds } = useQuery({
+    queryKey: ["gate-auto-validate-thresholds"],
+    queryFn: fetchGateAutoValidateThresholds,
+    staleTime: 60_000,
+  });
+
   const { data: stats } = useQuery({
     queryKey: ["validated-events-stats", period, bounds.from, bounds.to],
     queryFn: () => fetchValidatedEventStats(bounds.from, bounds.to),
@@ -219,10 +242,51 @@ export default function AccessLogPage() {
   });
 
   const { data, isLoading } = useQuery({
-    queryKey: ["validated-events", period, page, name, dirTab, bounds.from, bounds.to],
+    queryKey: validatedQueryKey,
     queryFn: () =>
       fetchValidatedEvents(page, LIMIT, name || undefined, dirTab || undefined, bounds.from, bounds.to),
     refetchInterval: 30_000,
+  });
+
+  useGateEventStream({
+    enabled: !!gateThresholds,
+    onEvent: (evt) => {
+      if (!gateThresholds) return;
+
+      const threshold = resolveAutoValidateThreshold(
+        evt.gateId,
+        gateThresholds.thresholds,
+        gateThresholds.gateIds,
+      );
+      if (!shouldAutoValidate(evt, threshold)) return;
+
+      const ts = new Date(evt.timestamp).getTime();
+      const fromMs = new Date(bounds.from).getTime();
+      const toMs = new Date(bounds.to).getTime();
+      if (ts < fromMs || ts >= toMs) return;
+      if (dirTab && evt.direction !== dirTab) return;
+      if (name && !evt.personName.toLowerCase().includes(name.toLowerCase())) return;
+
+      const preview = gateEventToValidatedPreview(evt);
+      queryClient.setQueryData(
+        validatedQueryKey,
+        (old: { items?: ValidatedEvent[]; total?: number } | undefined) => {
+          if (!old?.items) return old;
+          const filtered = old.items.filter(
+            (i) => i.gateEventId !== evt.eventId && i.eventId !== evt.eventId,
+          );
+          const isNew = filtered.length === old.items.length;
+          return {
+            ...old,
+            items: [preview, ...filtered].slice(0, LIMIT),
+            total: old.total! + (isNew ? 1 : 0),
+          };
+        },
+      );
+      queryClient.invalidateQueries({
+        queryKey: ["validated-events-stats", period, bounds.from, bounds.to],
+      });
+    },
   });
 
   const handleDelete = useCallback(async (eventId: string) => {
@@ -290,7 +354,7 @@ export default function AccessLogPage() {
           <div className="flex flex-wrap gap-4 text-[11px]" style={{ color: "#475569" }}>
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
-              Auto — confidence &gt; 85%, no operator needed
+              Auto — above the gate&apos;s auto-validate threshold, no operator needed
             </span>
             <span className="flex items-center gap-1.5">
               <span className="inline-block w-2 h-2 rounded-full bg-indigo-400" />
@@ -371,7 +435,7 @@ export default function AccessLogPage() {
                   <div className="mb-3 text-3xl">🛡️</div>
                   <p className="text-sm text-gv-muted">No validated records in this period</p>
                   <p className="mt-1 text-xs text-gv-muted/70">
-                    Records appear here automatically when confidence &gt; 85%, or when you approve an event from the Events page.
+                    Records appear here when a gate auto-validates an event (per gate threshold), or when you approve one from the Events page.
                   </p>
                 </div>
               )}

@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 import asyncio
 from collections import deque
@@ -7,8 +6,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
 import cv2
-import httpx
 import numpy as np
+from scipy.optimize import linear_sum_assignment as _hungarian
 from fastapi import FastAPI
 from fastapi.middleware import Middleware
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,6 +19,7 @@ from .client import NetBackendClient
 from .hikvision import HikvisionEventListener
 from .window import InteractionWindowManager, IdentityScheduler
 from .routes import register_routes
+from .config_loader import load_gate_config_from_api
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level.upper(), logging.INFO),
@@ -30,77 +30,7 @@ logger = logging.getLogger("gate_vision_ai")
 
 # Fetch gate processing config from the .NET API at startup.
 # Env vars (GV_*) always take priority — the API fills in everything else.
-# Retries up to 5 times with 2s delay to handle the case where the .NET API
-# starts slightly after the Python service.
-_gate_id = settings.gate_id
-if _gate_id and _gate_id != "default":
-    _cfg_url = f"{settings.net_backend_url}/api/v1/gates/{_gate_id}/config"
-    _cfg_headers = {"X-API-Key": settings.net_api_key} if settings.net_api_key else {}
-    _cfg: dict | None = None
-    for _attempt in range(1, 6):
-        try:
-            _resp = httpx.get(_cfg_url, headers=_cfg_headers, timeout=5.0)
-            if _resp.status_code == 200:
-                _cfg = _resp.json()
-                break
-            logger.warning("Gate config fetch attempt %d/%d returned HTTP %d — retrying in 2s",
-                           _attempt, 5, _resp.status_code)
-        except Exception as _e:
-            logger.warning("Gate config fetch attempt %d/%d failed (%s) — retrying in 2s",
-                           _attempt, 5, _e)
-        if _attempt < 5:
-            time.sleep(2)
-
-    if _cfg is not None:
-        _ENV = os.environ
-        if "camera_source" in _cfg and "GV_CAMERA_SOURCE" not in _ENV:
-            settings.camera_source = str(_cfg["camera_source"])
-        if "direction" in _cfg and "GV_DIRECTION" not in _ENV:
-            settings.direction = str(_cfg["direction"])
-        if "processing_fps" in _cfg and "GV_PROCESSING_FPS" not in _ENV:
-            settings.processing_fps = int(_cfg["processing_fps"])
-        if "model_profile" in _cfg and "GV_MODEL_PROFILE" not in _ENV:
-            settings.model_profile = str(_cfg["model_profile"])
-        if _cfg.get("detector_input_size") and "GV_DETECTOR_INPUT_SIZE" not in _ENV:
-            settings.detector_input_size = tuple(_cfg["detector_input_size"])
-        if "motion_threshold" in _cfg and "GV_MOTION_THRESHOLD" not in _ENV:
-            settings.motion_threshold = float(_cfg["motion_threshold"])
-        if "motion_pixel_threshold" in _cfg and "GV_MOTION_PIXEL_THRESHOLD" not in _ENV:
-            settings.motion_pixel_threshold = int(_cfg["motion_pixel_threshold"])
-        if "detect_max_width" in _cfg and "GV_DETECT_MAX_WIDTH" not in _ENV:
-            settings.detect_max_width = int(_cfg["detect_max_width"])
-        if "hikvision_url" in _cfg and "GV_HIKVISION_URL" not in _ENV:
-            settings.hikvision_url = str(_cfg["hikvision_url"])
-        if "hikvision_user" in _cfg and "GV_HIKVISION_USER" not in _ENV:
-            settings.hikvision_user = str(_cfg["hikvision_user"])
-        if "hikvision_password" in _cfg and "GV_HIKVISION_PASSWORD" not in _ENV:
-            settings.hikvision_password = str(_cfg["hikvision_password"])
-        if "hikvision_event_ttl_ms" in _cfg and "GV_HIKVISION_EVENT_TTL_MS" not in _ENV:
-            settings.hikvision_event_ttl_ms = int(_cfg["hikvision_event_ttl_ms"])
-        if "hikvision_event_types" in _cfg and "GV_HIKVISION_EVENT_TYPES" not in _ENV:
-            settings.hikvision_event_types = str(_cfg["hikvision_event_types"])
-        if "hikvision_detection_target" in _cfg and "GV_HIKVISION_DETECTION_TARGET" not in _ENV:
-            settings.hikvision_detection_target = str(_cfg["hikvision_detection_target"])
-        if "min_face_confidence" in _cfg and "GV_MIN_FACE_CONFIDENCE" not in _ENV:
-            settings.min_face_confidence = float(_cfg["min_face_confidence"])
-            settings.detector_confidence = float(_cfg["min_face_confidence"])
-        if "identify_confidence_threshold" in _cfg and "GV_IDENTIFY_CONFIDENCE_THRESHOLD" not in _ENV:
-            settings.auto_improve_max_conf = float(_cfg["identify_confidence_threshold"])
-        if "min_match_score" in _cfg and "GV_MIN_MATCH_SCORE" not in _ENV:
-            settings.auto_improve_min_conf = max(0.55, float(_cfg["min_match_score"]) + 0.05)
-        logger.info(
-            "Gate config loaded from API — gate=%s  camera=%s  fps=%d  direction=%s  "
-            "hikvision=%s  motion_threshold=%.3f  detect_max_width=%d  "
-            "min_face_conf=%.2f  identify_threshold=%.2f",
-            _gate_id, settings.camera_source, settings.processing_fps, settings.direction,
-            settings.hikvision_url or "(none)", settings.motion_threshold, settings.detect_max_width,
-            settings.min_face_confidence, settings.auto_improve_max_conf,
-        )
-    else:
-        logger.error("Gate config could not be fetched after 5 attempts — running with env/defaults "
-                     "(camera=%s, fps=%d)", settings.camera_source, settings.processing_fps)
-else:
-    logger.warning("GV_GATE_ID not set — skipping API config fetch, using env/defaults")
+load_gate_config_from_api()
 
 capture: CameraCapture | None = None
 detector: DetectorPool | None = None
@@ -114,16 +44,6 @@ _motion_prev_gray: np.ndarray | None = None  # previous downscaled gray frame fo
 
 _roi: dict = {"x": settings.roi_x, "y": settings.roi_y, "width": settings.roi_width, "height": settings.roi_height}
 
-# Bbox-based face tracker: maps track_id → {bbox, last_seen (time.time())}
-_active_tracks: dict[int, dict] = {}
-_track_counter: int = 0
-_TRACK_IOU_THRESHOLD: float = 0.15   # min overlap to count as same track
-_TRACK_EXPIRY_S: float = 3.0         # drop track after 3s of no updates
-_window_manager = InteractionWindowManager(settings.window_duration_ms)
-_scheduler = IdentityScheduler(settings.max_identity_requests_per_window, settings.greeting_delay_ms)
-_snapshot_semaphore = asyncio.Semaphore(5)  # cap concurrent in-flight snapshot tasks
-
-
 def _bbox_iou(a: list[float], b: list[float]) -> float:
     ax1, ay1, ax2, ay2 = a
     bx1, by1, bx2, by2 = b
@@ -136,27 +56,107 @@ def _bbox_iou(a: list[float], b: list[float]) -> float:
     return inter / union if union > 0 else 0.0
 
 
-def _match_or_create_track(bbox: list[float], now: float) -> int:
-    """Match bbox against all active tracks (highest IoU wins). Creates a new track if no match."""
-    global _track_counter
-    # Expire tracks that haven't been seen recently
-    expired = [tid for tid, d in _active_tracks.items() if now - d["t"] > _TRACK_EXPIRY_S]
-    for tid in expired:
-        del _active_tracks[tid]
-    # Find the active track with the best IoU
-    best_tid, best_iou = None, _TRACK_IOU_THRESHOLD
-    for tid, d in _active_tracks.items():
-        iou = _bbox_iou(bbox, d["bbox"])
-        if iou > best_iou:
-            best_iou, best_tid = iou, tid
-    if best_tid is not None:
-        _active_tracks[best_tid] = {"bbox": bbox, "t": now}
-        return best_tid
-    # No match — start a new track
-    _track_counter += 1
-    _active_tracks[_track_counter] = {"bbox": bbox, "t": now}
-    logger.debug("New track %d created (active: %d)", _track_counter, len(_active_tracks))
-    return _track_counter
+class _KalmanTrack:
+    """Constant-velocity Kalman filter for a single face track.
+    State vector: [cx, cy, w, h, vx, vy, vw, vh]
+    """
+
+    def __init__(self, bbox: list[float], track_id: int) -> None:
+        self.id = track_id
+        self.hits = 0
+        self.last_seen: float = 0.0
+        self.confirmed = False
+        cx, cy, w, h = self._to_cwh(bbox)
+        self._x = np.array([cx, cy, w, h, 0.0, 0.0, 0.0, 0.0])
+        self._F = np.eye(8); self._F[0, 4] = self._F[1, 5] = self._F[2, 6] = self._F[3, 7] = 1.0
+        self._H = np.zeros((4, 8)); self._H[0, 0] = self._H[1, 1] = self._H[2, 2] = self._H[3, 3] = 1.0
+        self._Q = np.diag([1.0, 1.0, 1.0, 1.0, 0.01, 0.01, 0.01, 0.01])
+        self._R = np.diag([1.0, 1.0, 10.0, 10.0])
+        self._P = np.diag([10.0, 10.0, 10.0, 10.0, 100.0, 100.0, 100.0, 100.0])
+
+    @staticmethod
+    def _to_cwh(bbox: list[float]) -> tuple:
+        x1, y1, x2, y2 = bbox
+        return (x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1
+
+    @staticmethod
+    def _to_bbox(cx: float, cy: float, w: float, h: float) -> list[float]:
+        return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]
+
+    def predict(self) -> list[float]:
+        self._x = self._F @ self._x
+        self._P = self._F @ self._P @ self._F.T + self._Q
+        return self._to_bbox(*self._x[:4])
+
+    def update(self, bbox: list[float], now: float) -> None:
+        z = np.array(self._to_cwh(bbox))
+        innov = z - self._H @ self._x
+        S = self._H @ self._P @ self._H.T + self._R
+        K = self._P @ self._H.T @ np.linalg.inv(S)
+        self._x += K @ innov
+        self._P = (np.eye(8) - K @ self._H) @ self._P
+        self.hits += 1
+        self.last_seen = now
+        if self.hits >= 2:
+            self.confirmed = True
+
+
+class _SORTTracker:
+    """SORT: Kalman prediction + Hungarian assignment for multi-face tracking."""
+
+    _IOU_THRESHOLD: float = 0.30
+    _MAX_LOST_S: float = 3.0
+
+    def __init__(self) -> None:
+        self._tracks: list[_KalmanTrack] = []
+        self._next_id: int = 0
+
+    def has_active_tracks(self) -> bool:
+        return any(t.confirmed for t in self._tracks)
+
+    def update(self, detections: list[list[float]], now: float) -> list[tuple[int, bool]]:
+        """Return (track_id, is_confirmed) for each input detection, preserving order."""
+        self._tracks = [t for t in self._tracks if now - t.last_seen <= self._MAX_LOST_S]
+        n_t, n_d = len(self._tracks), len(detections)
+        det_results: dict[int, tuple[int, bool]] = {}
+
+        if n_t == 0:
+            for di, bbox in enumerate(detections):
+                t = self._spawn(bbox, now)
+                det_results[di] = (t.id, t.confirmed)
+            return [det_results[di] for di in range(n_d)]
+
+        preds = [t.predict() for t in self._tracks]
+        iou_mat = np.array([[_bbox_iou(preds[ti], detections[di]) for di in range(n_d)] for ti in range(n_t)])
+        row_ind, col_ind = _hungarian(1.0 - iou_mat)
+
+        matched_d: set[int] = set()
+        for ti, di in zip(row_ind, col_ind):
+            if iou_mat[ti, di] >= self._IOU_THRESHOLD:
+                self._tracks[ti].update(detections[di], now)
+                matched_d.add(di)
+                det_results[di] = (self._tracks[ti].id, self._tracks[ti].confirmed)
+
+        for di, bbox in enumerate(detections):
+            if di not in matched_d:
+                t = self._spawn(bbox, now)
+                det_results[di] = (t.id, t.confirmed)
+
+        return [det_results[di] for di in range(n_d)]
+
+    def _spawn(self, bbox: list[float], now: float) -> _KalmanTrack:
+        self._next_id += 1
+        t = _KalmanTrack(bbox, self._next_id)
+        t.update(bbox, now)
+        self._tracks.append(t)
+        logger.debug("New track %d (total: %d)", t.id, len(self._tracks))
+        return t
+
+
+_window_manager = InteractionWindowManager(settings.window_duration_ms)
+_scheduler = IdentityScheduler(settings.max_identity_requests_per_window, settings.greeting_delay_ms)
+_snapshot_semaphore = asyncio.Semaphore(5)  # cap concurrent in-flight snapshot tasks
+_tracker = _SORTTracker()
 
 # Mutable container for route closures (captured by reference at import time)
 _state = {
@@ -330,7 +330,7 @@ async def _capture_loop():
                 if not _hikvision.is_active() and _hikvision.is_connected():
                     _stats["motion_skipped"] += 1
                     continue
-            elif settings.motion_threshold > 0 and not _active_tracks:
+            elif settings.motion_threshold > 0 and not _tracker.has_active_tracks():
                 # Software pixel-diff gate (fallback when no Hikvision listener)
                 _gray = cv2.cvtColor(
                     cv2.resize(detect_frame, (160, 120), interpolation=cv2.INTER_NEAREST),
@@ -366,9 +366,10 @@ async def _capture_loop():
             _stats["faces_detected"] += len(faces)
             now_iso = datetime.now(timezone.utc).isoformat()
 
-            for face in faces:
-                tid = _match_or_create_track(face["bbox"], now)
-                _window_manager.collect(tid, face, frame, face["confidence"], now_iso)
+            track_results = _tracker.update([f["bbox"] for f in faces], now)
+            for (tid, confirmed), face in zip(track_results, faces):
+                if confirmed:
+                    _window_manager.collect(tid, face, frame, face["confidence"], now_iso)
 
             if not _window_manager.is_window_open() and _window_manager.has_faces():
                 snapshot = _window_manager.finalize()
@@ -384,9 +385,9 @@ async def _capture_loop():
 async def lifespan(app: FastAPI):
     global capture, detector, backend
     try:
-        capture = CameraCapture()
+        capture = CameraCapture(settings.camera_source)
         _state["capture"] = capture
-        logger.info("Camera initialized")
+        logger.info("Camera initialized (source=%s)", settings.camera_source)
     except Exception as e:
         logger.warning("Camera not available: %s", e)
     try:

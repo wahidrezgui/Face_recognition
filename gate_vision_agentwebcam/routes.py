@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 import cv2
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -110,6 +110,13 @@ def _hikvision_status(state: dict) -> dict:
     }
 
 
+def require_local_api_key(request: Request) -> None:
+    if not settings.local_api_key:
+        return
+    if request.headers.get("X-API-Key", "") != settings.local_api_key:
+        raise HTTPException(401, "Invalid or missing API key")
+
+
 def register_routes(app, state: dict):
     s = state  # shorthand
 
@@ -136,7 +143,7 @@ def register_routes(app, state: dict):
         return await process_single_face(dummy_face, np.zeros((1, 1, 3), dtype=np.uint8), req.captured_at, req.direction, s["backend"])
 
     @app.post("/enroll")
-    async def enroll(req: EnrollRequest):
+    async def enroll(req: EnrollRequest, _auth: None = Depends(require_local_api_key)):
         det = s["detector"]
         if det is None:
             raise HTTPException(503, "detector not available")
@@ -168,13 +175,13 @@ def register_routes(app, state: dict):
         return {"personId": req.personId, "accepted": len(accepted), "rejected": rejected, "backend_result": result}
 
     @app.post("/enroll/capture")
-    async def enroll_capture(req: EnrollCaptureRequest):
+    async def enroll_capture(req: EnrollCaptureRequest, _auth: None = Depends(require_local_api_key)):
         # Release main capture to free camera device (Windows CAP_DSHOW locks)
         old = s["capture"]
         s["capture"] = None
         if old:
             await asyncio.to_thread(old.release)
-        cap = await asyncio.to_thread(CameraCapture, "0")
+        cap = await asyncio.to_thread(CameraCapture, settings.camera_source)
         try:
             result = await _run_enrollment_from_camera(req.personId, cap, s["detector"], s["backend"])
             return result
@@ -207,7 +214,7 @@ def register_routes(app, state: dict):
         return {"detected": True, "yaw": round(float(yaw), 1), "pitch": round(float(pitch), 1)}
 
     @app.post("/enroll/webcam")
-    async def enroll_webcam(req: EnrollWebcamRequest):
+    async def enroll_webcam(req: EnrollWebcamRequest, _auth: None = Depends(require_local_api_key)):
         det = s["detector"]
         if det is None:
             raise HTTPException(503, "detector not available")
@@ -267,7 +274,7 @@ def register_routes(app, state: dict):
         }
 
     @app.post("/enroll/from-image")
-    async def enroll_from_image(req: EnrollFromImageRequest):
+    async def enroll_from_image(req: EnrollFromImageRequest, _auth: None = Depends(require_local_api_key)):
         """Enroll a single face image without requiring webcam capture.
 
         Handles two source types automatically:
@@ -443,7 +450,7 @@ def register_routes(app, state: dict):
             }
 
     @app.post("/roi")
-    def set_roi(req: RoiRequest):
+    def set_roi(req: RoiRequest, _auth: None = Depends(require_local_api_key)):
         if req.width < 0 or req.height < 0 or req.x < 0 or req.y < 0:
             raise HTTPException(400, "ROI coordinates must be non-negative")
         s["roi"] = {"x": req.x, "y": req.y, "width": req.width, "height": req.height}
@@ -455,7 +462,7 @@ def register_routes(app, state: dict):
         return {"fps": s.get("processing_fps", settings.processing_fps)}
 
     @app.post("/config/processing-fps")
-    async def set_processing_fps(req: ProcessingFpsRequest):
+    async def set_processing_fps(req: ProcessingFpsRequest, _auth: None = Depends(require_local_api_key)):
         if req.fps < 1 or req.fps > 30:
             raise HTTPException(400, "fps must be between 1 and 30")
         s["processing_fps"] = req.fps
@@ -477,7 +484,7 @@ def register_routes(app, state: dict):
         }
 
     @app.post("/config/model-profile")
-    def set_model_profile(req: ModelProfileRequest):
+    def set_model_profile(req: ModelProfileRequest, _auth: None = Depends(require_local_api_key)):
         valid = {"auto", "performance", "lite"}
         if req.profile not in valid:
             raise HTTPException(400, f"profile must be one of: {', '.join(sorted(valid))}")
@@ -510,7 +517,7 @@ def register_routes(app, state: dict):
         }
 
     @app.post("/config/det-size")
-    def set_det_size(req: DetSizeRequest):
+    def set_det_size(req: DetSizeRequest, _auth: None = Depends(require_local_api_key)):
         valid_sizes = {s_["size"][0] for s_ in _DET_SIZE_PRESETS}
         if req.width not in valid_sizes or req.height not in valid_sizes:
             raise HTTPException(
@@ -527,7 +534,7 @@ def register_routes(app, state: dict):
         }
 
     @app.delete("/config/det-size")
-    def clear_det_size():
+    def clear_det_size(_auth: None = Depends(require_local_api_key)):
         settings.detector_input_size = None
         logger.info("det_size override cleared — profile default will be used after restart")
         det = s.get("detector")
@@ -548,7 +555,7 @@ def register_routes(app, state: dict):
         }
 
     @app.post("/config/motion")
-    def set_motion_config(req: MotionConfigRequest):
+    def set_motion_config(req: MotionConfigRequest, _auth: None = Depends(require_local_api_key)):
         if req.threshold < 0 or req.threshold > 1:
             raise HTTPException(400, "threshold must be between 0 and 1")
         if req.pixel_threshold < 1 or req.pixel_threshold > 255:
@@ -570,7 +577,7 @@ def register_routes(app, state: dict):
         return _hikvision_status(s)
 
     @app.post("/config/hikvision")
-    async def set_hikvision_config(req: HikvisionConfigRequest):
+    async def set_hikvision_config(req: HikvisionConfigRequest, _auth: None = Depends(require_local_api_key)):
         from .hikvision import HikvisionEventListener
         if req.event_ttl_ms < 100:
             raise HTTPException(400, "event_ttl_ms must be >= 100")
@@ -629,7 +636,7 @@ def register_routes(app, state: dict):
         }
 
     @app.post("/config/detect-scale")
-    def set_detect_scale(req: DetectScaleRequest):
+    def set_detect_scale(req: DetectScaleRequest, _auth: None = Depends(require_local_api_key)):
         if req.max_width < 0:
             raise HTTPException(400, "max_width must be >= 0 (0 = disabled)")
         if req.max_width != 0 and req.max_width < 160:
@@ -733,7 +740,7 @@ def register_routes(app, state: dict):
         ]
 
     @app.post("/stop")
-    async def stop():
+    async def stop(_auth: None = Depends(require_local_api_key)):
         """Gracefully shut down the AI service."""
         import signal
         logger.info("Shutdown requested via /stop endpoint")
@@ -742,7 +749,7 @@ def register_routes(app, state: dict):
         return {"status": "stopping"}
 
     @app.post("/restart")
-    async def restart(req: RestartRequest):
+    async def restart(req: RestartRequest, _auth: None = Depends(require_local_api_key)):
         source = req.source
         if not source:
             raise HTTPException(400, "source is required")

@@ -283,6 +283,13 @@ export default function GateDetailPage() {
   const dotColor = gateOnline === null ? "bg-gray-500" : gateOnline ? "bg-emerald-400" : "bg-red-500";
   const statusLabel = gateOnline === null ? "Checking…" : gateOnline ? "Online" : "Offline";
   const stats = gate?.status?.stats;
+  const liveFps = gate?.status?.processing_fps;
+  const liveCamera = gate?.status?.camera_source;
+  const runtimeDrift =
+    gate?.online &&
+    gate.status &&
+    ((liveFps != null && processingFpsLoaded && liveFps !== processingFps) ||
+      (liveCamera != null && liveCamera !== getCameraSource()));
 
   return (
     <div className="flex min-h-[calc(100vh-44px)] flex-col overflow-y-auto bg-gv-bg text-gv-text">
@@ -346,6 +353,14 @@ export default function GateDetailPage() {
               </div>
             )}
             <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-[11px]">
+              <span className="col-span-2 text-[10px] uppercase tracking-wider text-gv-muted">
+                Live runtime (Python agent)
+              </span>
+              {runtimeDrift && (
+                <p className="col-span-2 rounded border border-amber-600/30 bg-amber-900/15 px-2.5 py-1.5 text-[10px] text-amber-300/90">
+                  Differs from saved config below — click <strong>Apply &amp; Restart</strong> or restart the service to sync.
+                </p>
+              )}
               <span className="text-gray-500">Direction</span>
               <span className="capitalize text-gray-300">{gate.status.direction}</span>
               <span className="text-gray-500">Processing FPS</span>
@@ -421,8 +436,8 @@ export default function GateDetailPage() {
                         <div
                           key={i}
                           className={`flex items-center gap-3 px-3 py-1.5 text-[11px] ${ev.qualified
-                              ? "bg-emerald-950/30"
-                              : "bg-[#0d1a2f]"
+                            ? "bg-emerald-950/30"
+                            : "bg-[#0d1a2f]"
                             }`}
                         >
                           <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${ev.qualified ? "bg-emerald-400" : "bg-gray-600"}`} />
@@ -639,7 +654,9 @@ export default function GateDetailPage() {
             {/* Processing FPS */}
             <div>
               <h3 className="mb-1 text-xs font-semibold text-gray-300">Processing FPS</h3>
-              <p className="mb-3 text-[11px] text-gv-muted">Frames per second sent to face detection. Lower = less CPU.</p>
+              <p className="mb-3 text-[11px] text-gv-muted">
+                Saved in the database and pushed to the agent on Apply. Live value is shown above the video feed.
+              </p>
               <div className="flex items-center gap-3">
                 <input
                   type="number" min={1} max={30}

@@ -82,33 +82,18 @@ public static class GateEndpoints
         {
             var gate = await gateService.GetByIdAsync(gateId, ct);
             if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
+            return Results.Json(BuildGateConfigDto(gate), _jsonOpts);
+        });
 
-            int[]? detSize = (gate.DetectorInputWidth.HasValue && gate.DetectorInputHeight.HasValue)
-                ? [gate.DetectorInputWidth.Value, gate.DetectorInputHeight.Value]
-                : null;
-
-            return Results.Json(new
-            {
-                gate_id = gateId,
-                camera_source = gate.CameraSource,
-                direction = gate.Direction,
-                processing_fps = gate.ProcessingFps,
-                model_profile = gate.ModelProfile,
-                detector_input_size = detSize,
-                motion_threshold = gate.MotionThreshold,
-                motion_pixel_threshold = gate.MotionPixelThreshold,
-                detect_max_width = gate.DetectMaxWidth,
-                hikvision_url = gate.HikvisionUrl,
-                hikvision_user = gate.HikvisionUser,
-                hikvision_password = gate.HikvisionPassword ?? "",
-                hikvision_event_ttl_ms = gate.HikvisionEventTtlMs,
-                hikvision_event_types = gate.HikvisionEventTypes,
-                hikvision_detection_target = gate.HikvisionDetectionTarget,
-                min_match_score = gate.MinMatchScore,
-                identify_confidence_threshold = gate.IdentifyConfidenceThreshold,
-                auto_validate_confidence = gate.AutoValidateConfidence,
-                min_face_confidence = gate.MinFaceConfidence,
-            }, _jsonOpts);
+        // Resolves gate from per-gate X-API-Key (or single-gate install with global key).
+        app.MapGet("/api/v1/gates/me/config",
+            async (HttpContext ctx, GateService gateService, CancellationToken ct) =>
+        {
+            var gate = await ResolveGateFromAuthAsync(ctx, gateService, ct);
+            if (gate is null)
+                return Results.NotFound(
+                    "Gate could not be resolved. Use a per-gate API key or configure exactly one gate.");
+            return Results.Json(BuildGateConfigDto(gate), _jsonOpts);
         });
 
         // ── GET /api/config/gates/{gateId}/status ──────────────────────────────
@@ -151,6 +136,8 @@ public static class GateEndpoints
 
             var client = http.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(10);
+            if (!string.IsNullOrEmpty(gate.ApiKey))
+                client.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
 
             try
             {
@@ -243,7 +230,7 @@ public static class GateEndpoints
             if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(60));
                 var content = new StringContent(body.GetRawText(), Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/enroll/webcam", content, ct);
                 var result = await resp.Content.ReadAsStringAsync(ct);
@@ -260,7 +247,7 @@ public static class GateEndpoints
             if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(30));
                 var content = new StringContent(body.GetRawText(), Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/enroll/from-image", content, ct);
                 var result = await resp.Content.ReadAsStringAsync(ct);
@@ -277,7 +264,7 @@ public static class GateEndpoints
             if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(60));
                 var content = new StringContent(body.GetRawText(), Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/enroll/capture", content, ct);
                 var result = await resp.Content.ReadAsStringAsync(ct);
@@ -311,7 +298,7 @@ public static class GateEndpoints
             if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(5));
                 var content = new StringContent(body.GetRawText(), Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/roi", content, ct);
                 var result = await resp.Content.ReadAsStringAsync(ct);
@@ -412,7 +399,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(3));
                 var body = JsonSerializer.Serialize(new { fps = req.Fps });
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/config/processing-fps", content, ct);
@@ -481,7 +468,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(5));
                 var body = JsonSerializer.Serialize(req, _jsonOpts);
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/config/hikvision", content, ct);
@@ -510,7 +497,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(3));
                 var body = JsonSerializer.Serialize(new { threshold = req.Threshold, pixel_threshold = req.PixelThreshold });
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/config/motion", content, ct);
@@ -535,7 +522,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(3));
                 var body = JsonSerializer.Serialize(new { profile = req.Profile });
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/config/model-profile", content, ct);
@@ -565,7 +552,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(3));
                 var body = req.Width.HasValue
                     ? JsonSerializer.Serialize(new { width = req.Width, height = req.Height })
                     : "{}";
@@ -595,7 +582,7 @@ public static class GateEndpoints
 
             try
             {
-                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(3) };
+                using var http = CreateAiClient(gate, TimeSpan.FromSeconds(3));
                 var body = JsonSerializer.Serialize(new { max_width = req.MaxWidth });
                 var content = new StringContent(body, Encoding.UTF8, "application/json");
                 var resp = await http.PostAsync($"{gate.PythonUrl}/config/detect-scale", content, ct);
@@ -633,6 +620,8 @@ public static class GateEndpoints
             var content = new StringContent(body, Encoding.UTF8, "application/json");
             var client = http.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(10);
+            if (!string.IsNullOrEmpty(gate?.ApiKey))
+                client.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
 
             try
             {
@@ -686,6 +675,8 @@ public static class GateEndpoints
             {
                 var client = http.CreateClient();
                 client.Timeout = TimeSpan.FromSeconds(5);
+                if (!string.IsNullOrEmpty(gate.ApiKey))
+                    client.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
                 var resp = await client.PostAsync($"{gate.PythonUrl}/stop", null, ct);
                 logger.LogInformation("Stop signal sent to gate {GateId} (HTTP {Status})", gateId, (int)resp.StatusCode);
                 return Results.Ok(new { status = "stopping", gate_id = gateId });
@@ -719,7 +710,10 @@ public static class GateEndpoints
                 logger.LogInformation("Start command executed for gate {GateId}: {Cmd}", gateId, gate.StartCommand);
 
                 var client = http.CreateClient();
-                client.Timeout = TimeSpan.FromSeconds(5);
+                client.Timeout = TimeSpan.FromSeconds(10);
+                if (!string.IsNullOrEmpty(gate.ApiKey))
+                    client.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
+
                 for (var i = 0; i < 10; i++)
                 {
                     await Task.Delay(500, ct);
@@ -727,7 +721,15 @@ public static class GateEndpoints
                     {
                         var h = await client.GetFromJsonAsync<HealthResponse>($"{gate.PythonUrl}/health", _jsonOpts, ct);
                         if (h?.Status == "ok")
-                            return Results.Ok(new { status = "running", gate_id = gateId });
+                        {
+                            await SyncGateRuntimeFromDbAsync(gate, client, logger, ct);
+                            return Results.Ok(new
+                            {
+                                status = "running",
+                                gate_id = gateId,
+                                camera_source = gate.CameraSource,
+                            });
+                        }
                     }
                     catch { /* not up yet */ }
                 }
@@ -847,6 +849,112 @@ public static class GateEndpoints
             logger.LogInformation("Gate {GateId} deleted", id);
             return Results.NoContent();
         }).RequireAuthorization();
+    }
+
+    private static HttpClient CreateAiClient(Gate gate, TimeSpan timeout)
+    {
+        var client = new HttpClient { Timeout = timeout };
+        if (!string.IsNullOrEmpty(gate.ApiKey))
+            client.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
+        return client;
+    }
+
+    private static async Task<Gate?> ResolveGateFromAuthAsync(
+        HttpContext ctx, GateService gateService, CancellationToken ct)
+    {
+        var gateIdClaim = ctx.User.FindFirst("GateId")?.Value;
+        if (gateIdClaim is not null && Guid.TryParse(gateIdClaim, out var gid))
+            return await gateService.GetByIdAsync(gid, ct);
+
+        var gates = await gateService.GetAllAsync(ct);
+        return gates.Count == 1 ? gates[0] : null;
+    }
+
+    private static object BuildGateConfigDto(Gate gate)
+    {
+        int[]? detSize = (gate.DetectorInputWidth.HasValue && gate.DetectorInputHeight.HasValue)
+            ? [gate.DetectorInputWidth.Value, gate.DetectorInputHeight.Value]
+            : null;
+
+        return new
+        {
+            gate_id = gate.Id,
+            camera_source = gate.CameraSource,
+            direction = gate.Direction,
+            processing_fps = gate.ProcessingFps,
+            model_profile = gate.ModelProfile,
+            detector_input_size = detSize,
+            motion_threshold = gate.MotionThreshold,
+            motion_pixel_threshold = gate.MotionPixelThreshold,
+            detect_max_width = gate.DetectMaxWidth,
+            hikvision_url = gate.HikvisionUrl,
+            hikvision_user = gate.HikvisionUser,
+            hikvision_password = gate.HikvisionPassword ?? "",
+            hikvision_event_ttl_ms = gate.HikvisionEventTtlMs,
+            hikvision_event_types = gate.HikvisionEventTypes,
+            hikvision_detection_target = gate.HikvisionDetectionTarget,
+            min_match_score = gate.MinMatchScore,
+            identify_confidence_threshold = gate.IdentifyConfidenceThreshold,
+            auto_validate_confidence = gate.AutoValidateConfidence,
+            min_face_confidence = gate.MinFaceConfidence,
+        };
+    }
+
+    private static async Task SyncGateRuntimeFromDbAsync(
+        Gate gate, HttpClient client, ILogger logger, CancellationToken ct)
+    {
+        try
+        {
+            if (gate.ProcessingFps is >= 1 and <= 30)
+            {
+                var fpsBody = JsonSerializer.Serialize(new { fps = gate.ProcessingFps });
+                var fpsResp = await client.PostAsync($"{gate.PythonUrl}/config/processing-fps",
+                    new StringContent(fpsBody, Encoding.UTF8, "application/json"), ct);
+                if (!fpsResp.IsSuccessStatusCode)
+                {
+                    logger.LogWarning(
+                        "Sync processing_fps failed for gate {GateId} (HTTP {Status})",
+                        gate.Id, (int)fpsResp.StatusCode);
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(gate.CameraSource))
+                return;
+
+            var direction = string.Equals(gate.Direction, "exit", StringComparison.OrdinalIgnoreCase)
+                ? "exit"
+                : "entry";
+            var body = JsonSerializer.Serialize(
+                new RestartRequestBody(gate.CameraSource, direction, gate.Id.ToString()), _jsonOpts);
+            var restart = await client.PostAsync($"{gate.PythonUrl}/restart",
+                new StringContent(body, Encoding.UTF8, "application/json"), ct);
+            if (!restart.IsSuccessStatusCode)
+            {
+                logger.LogWarning(
+                    "Sync camera_source failed for gate {GateId} (HTTP {Status})",
+                    gate.Id, (int)restart.StatusCode);
+                return;
+            }
+
+            for (var i = 0; i < 10; i++)
+            {
+                await Task.Delay(300, ct);
+                try
+                {
+                    var h = await client.GetFromJsonAsync<HealthResponse>($"{gate.PythonUrl}/health", _jsonOpts, ct);
+                    if (h?.Camera == true) break;
+                }
+                catch { /* not ready */ }
+            }
+
+            logger.LogInformation(
+                "Gate {GateId} Python service synced — camera_source={Source}, processing_fps={Fps}",
+                gate.Id, gate.CameraSource, gate.ProcessingFps);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Failed to sync DB runtime config to gate {GateId}", gate.Id);
+        }
     }
 }
 

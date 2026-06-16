@@ -204,31 +204,7 @@ The Python FastAPI service has no authentication. `POST /stop`, `POST /restart`,
 
 ---
 
-## Step 8 — Encrypt Biometric Data in Local SQLite Buffer ⬜ TODO
-
-**Files:** `gate_vision_agenthikvision/local_buffer.py`, `gate_vision_agentwebcam/local_buffer.py`, both `config.py`  
-**Risk:** Low-Medium — replaces plaintext JSON storage with encrypted JSON, no API surface change  
-**Security Impact:** High — GDPR/CCPA compliance for biometric data at rest  
-
-**Problem:**  
-Face embeddings stored in `gate_events_local.db` are plain JSON. Embeddings are biometric data under GDPR Article 9 and equivalent laws. If the SQLite file is copied or accessed by an unauthorized process, all buffered identities are exposed.
-
-**What will be changed:**
-- Add `local_buffer_encryption_key: str = ""` to `config.py` (opt-in, empty = no encryption, backward compatible).
-- In `local_buffer.py`: when key is set, encrypt the JSON payload using `cryptography.fernet.Fernet` (symmetric AES-128-CBC with HMAC) before `INSERT` and decrypt on `SELECT`.
-- Add `cryptography` to `requirements.txt`.
-- Existing unencrypted databases continue to work when the key is empty.
-
-**Verification checklist (for user to confirm):**
-- [ ] With no `GV_LOCAL_BUFFER_KEY` set, buffer works exactly as before (plaintext)
-- [ ] With key set, buffered events are stored as encrypted blobs (unreadable in SQLite Browser)
-- [ ] Drain loop (`drain_local_buffer`) correctly decrypts and replays events
-- [ ] Application restart with same key correctly reads existing encrypted events
-- [ ] `requirements.txt` updated
-
----
-
-## Step 9 — Upgrade Tracker to SORT (Kalman Filter + Hungarian Assignment) ⬜ TODO
+## Step 8 — Upgrade Tracker to SORT (Kalman Filter + Hungarian Assignment) ⬜ TODO
 
 **Files:** `gate_vision_agenthikvision/main.py`, `gate_vision_agentwebcam/main.py`  
 **Risk:** Medium-High — replaces core tracking logic in `_capture_loop()`  
@@ -318,14 +294,13 @@ Every `detector.detect()` call performs `frame.tobytes()` (6MB copy) + IPC trans
 | 4 | Add IQA Gates (Blur + Brightness) | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
 | 5 | Fix `embed_crop()` Alignment | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
 | 6 | Fix Window Timing + Cap Concurrent Tasks | 🟡 AWAITING VERIFICATION | — | — |
-| 7 | Add Auth to Python Endpoints | ⬜ TODO | — | — |
-| 8 | Encrypt Biometric Data in SQLite Buffer | ⬜ TODO | — | — |
-| 9 | Upgrade Tracker to SORT | ⬜ TODO | — | — |
-| 10 | Optimize Frame Transfer (Shared Memory) | ⬜ TODO | — | — |
-| 11 | Consolidate Dual Packages | ⬜ TODO | — | — |
+| 7 | Add Auth to Python Endpoints | 🟡 AWAITING VERIFICATION | — | — |
+| 8 | Upgrade Tracker to SORT | 🟡 AWAITING VERIFICATION | — | — |
+| 9 | Optimize Frame Transfer (Shared Memory) | ⬜ TODO | — | — |
+| 10 | Consolidate Dual Packages | ⬜ TODO | — | — |
 
 ---
 
-## Current Step: Step 6 — Fix Interaction Window Timing + Cap Concurrent Tasks 🟡
+## Current Step: Step 8 — Upgrade Tracker to SORT (Kalman Filter + Hungarian Assignment) 🟡
 
-> **Implementation complete.** Please verify using the checklist above, then confirm to proceed to Step 7.
+> **Implementation complete.** Please verify using the checklist above, then confirm to proceed to Step 9.

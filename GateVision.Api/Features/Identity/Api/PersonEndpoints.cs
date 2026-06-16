@@ -382,6 +382,8 @@ public static class PersonEndpoints
                     using var content = new StringContent(payload, System.Text.Encoding.UTF8, "application/json");
                     var http = httpClientFactory.CreateClient();
                     http.Timeout = TimeSpan.FromSeconds(30);
+                    if (!string.IsNullOrEmpty(gate.ApiKey))
+                        http.DefaultRequestHeaders.Add("X-API-Key", gate.ApiKey);
                     var resp = await http.PostAsync($"{gate.PythonUrl}/enroll/from-image", content, ct);
 
                     if (resp.IsSuccessStatusCode)

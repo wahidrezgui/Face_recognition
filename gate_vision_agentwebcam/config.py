@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     net_enroll_path: str = "/api/v1/persons/{person_id}/enroll"
     net_timeout: int = 5
     net_api_key: str = ""
+    local_api_key: str = ""  # if set, X-API-Key header required on management endpoints
     net_circuit_threshold: int = 5
     net_circuit_reset_timeout: float = 30.0
 
