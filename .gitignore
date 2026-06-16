@@ -29,6 +29,7 @@ Thumbs.db
 
 # Face image uploads
 GateVision.Api/FaceImages/
+uploads/
 
 # Runtime-generated gate config files (written by API on video-source apply)
 GateVision.Api/config/
