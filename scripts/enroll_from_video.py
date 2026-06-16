@@ -8,7 +8,8 @@ logger = logging.getLogger("enroll_from_video")
 VIDEO_PATH = os.path.join(os.path.dirname(__file__), "..", "gate_vision_ai", "sample1.mp4")
 NET = "http://localhost:5000"
 HEADERS = {"X-API-Key": "dev-api-key-change-me", "Content-Type": "application/json"}
-SIM_TH = 0.55
+SIM_TH = 0.65              # raised from 0.55 — prevents different-person cluster merges
+INTRA_CLUSTER_MIN_SIM = 0.60  # minimum pairwise similarity required within a cluster
 FRAME_SKIP = 10
 MAX_FRAMES = 80
 
@@ -58,20 +59,30 @@ top = [c for c in clusters if len(c) >= 3][:2]
 if len(top) < 2:
     logger.error("Need 2 clusters with >=3 samples, found %d", len(top)); sys.exit(1)
 
-# Intra-cluster similarity check
+# Intra-cluster quality guard: discard clusters with insufficient purity.
+pure_top = []
 for idx, c in enumerate(top):
-    sims = []
-    for i in range(len(c)):
-        for j in range(i+1, len(c)):
-            sims.append(cos_sim(all_embs[c[i]][0], all_embs[c[j]][0]))
-    logger.info(f"Cluster {idx}: {len(c)} samples, intra-sim: mean={np.mean(sims):.3f}, min={min(sims):.3f}")
+    sims = [cos_sim(all_embs[c[i]][0], all_embs[c[j]][0])
+            for i in range(len(c)) for j in range(i + 1, len(c))]
+    mean_sim, min_sim = float(np.mean(sims)), float(min(sims))
+    if min_sim < INTRA_CLUSTER_MIN_SIM:
+        logger.warning(f"Cluster {idx}: discarded (size={len(c)}, min intra-sim={min_sim:.3f} < {INTRA_CLUSTER_MIN_SIM})")
+    else:
+        logger.info(f"Cluster {idx}: {len(c)} samples, intra-sim: mean={mean_sim:.3f}, min={min_sim:.3f}")
+        pure_top.append(c)
+top = pure_top
 
-# Inter-cluster similarity check
-sims_between = []
-for i in top[0]:
-    for j in top[1]:
-        sims_between.append(cos_sim(all_embs[i][0], all_embs[j][0]))
-logger.info(f"Between clusters: mean sim={np.mean(sims_between):.3f}, max={max(sims_between):.3f}")
+if len(top) < 2:
+    logger.error("Need 2 pure clusters after quality filtering, found %d", len(top)); sys.exit(1)
+
+# Inter-cluster separation check: warn if clusters risk containing the same person.
+sims_between = [cos_sim(all_embs[i][0], all_embs[j][0]) for i in top[0] for j in top[1]]
+max_between = float(max(sims_between))
+mean_between = float(np.mean(sims_between))
+if max_between >= 0.55:
+    logger.warning(f"Inter-cluster max sim={max_between:.3f} (mean={mean_between:.3f}) — clusters may be same person, review before enrolling")
+else:
+    logger.info(f"Inter-cluster separation ok: max sim={max_between:.3f}, mean={mean_between:.3f}")
 
 for idx, (name, dept) in enumerate([("Alice Johnson", "Engineering"), ("Bob Smith", "Marketing")]):
     embs = [all_embs[i][0] for i in top[idx]]

@@ -31,7 +31,29 @@ def yaw_from_landmarks(landmarks: list) -> float:
     return abs(math.degrees(math.atan2(dy, dx)))
 
 
-def check_quality(face: dict) -> tuple[bool, str]:
+def face_sharpness_score(frame: np.ndarray, bbox: list) -> float:
+    x1, y1, x2, y2 = [int(v) for v in bbox]
+    h, w = frame.shape[:2]
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    if x2 <= x1 or y2 <= y1:
+        return 0.0
+    gray = cv2.cvtColor(frame[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def face_mean_brightness(frame: np.ndarray, bbox: list) -> float:
+    x1, y1, x2, y2 = [int(v) for v in bbox]
+    h, w = frame.shape[:2]
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    if x2 <= x1 or y2 <= y1:
+        return 128.0
+    gray = cv2.cvtColor(frame[y1:y2, x1:x2], cv2.COLOR_BGR2GRAY)
+    return float(np.mean(gray))
+
+
+def check_quality(face: dict, frame: np.ndarray | None = None) -> tuple[bool, str]:
     bbox = face["bbox"]
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
@@ -39,10 +61,32 @@ def check_quality(face: dict) -> tuple[bool, str]:
         return False, f"low_confidence:{face['confidence']:.2f}"
     if w < settings.min_face_size or h < settings.min_face_size:
         return False, f"small_bbox:{w}x{h}"
-    if face.get("landmarks"):
-        yaw = yaw_from_landmarks(face["landmarks"])
-        if yaw > settings.max_yaw:
-            return False, f"high_yaw:{yaw:.1f}"
+
+    # Prefer model-computed pose [pitch, yaw, roll]; fall back to landmark estimation.
+    pose = face.get("pose")
+    if pose is not None and len(pose) >= 2:
+        yaw = abs(float(pose[1]))
+        pitch = abs(float(pose[0]))
+    elif face.get("landmarks"):
+        yaw, pitch = estimate_pose_from_kps(face["landmarks"])
+        yaw, pitch = abs(yaw), abs(pitch)
+    else:
+        yaw, pitch = 0.0, 0.0
+
+    if yaw > settings.max_yaw:
+        return False, f"high_yaw:{yaw:.1f}"
+    if pitch > settings.max_pitch:
+        return False, f"high_pitch:{pitch:.1f}"
+
+    # IQA: sharpness and brightness (only when frame pixel data is available).
+    if frame is not None:
+        sharpness = face_sharpness_score(frame, bbox)
+        if sharpness < settings.min_sharpness_score:
+            return False, f"blurry:{sharpness:.1f}"
+        brightness = face_mean_brightness(frame, bbox)
+        if brightness < settings.min_brightness or brightness > settings.max_brightness:
+            return False, f"bad_illumination:{brightness:.0f}"
+
     return True, ""
 
 

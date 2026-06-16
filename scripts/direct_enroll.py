@@ -25,7 +25,8 @@ HEADERS = {"X-API-Key": "dev-api-key-change-me", "Content-Type": "application/js
 
 FRAME_SKIP = 10
 MAX_FRAMES = 60
-SIMILARITY_THRESHOLD = 0.5
+SIMILARITY_THRESHOLD = 0.65   # raised from 0.5 — prevents different-person cluster merges
+INTRA_CLUSTER_MIN_SIM = 0.60  # minimum pairwise similarity required within a cluster
 
 
 def cosine_similarity(a, b):
@@ -85,10 +86,39 @@ def main():
     clusters.sort(key=lambda c: len(c), reverse=True)
     logger.info("Clusters: %s", [len(c) for c in clusters])
 
+    # Intra-cluster quality guard: discard clusters where any pair falls below min sim.
+    clean_clusters = []
+    for c in clusters:
+        if len(c) < 2:
+            clean_clusters.append(c)
+            continue
+        sims = [cosine_similarity(all_embeddings[i], all_embeddings[j])
+                for i in range(len(c)) for j in range(i + 1, len(c))]
+        min_sim = min(sims)
+        mean_sim = sum(sims) / len(sims)
+        if min_sim < INTRA_CLUSTER_MIN_SIM:
+            logger.warning("Discarding cluster (size=%d): min intra-sim=%.3f < %.2f (mean=%.3f)",
+                           len(c), min_sim, INTRA_CLUSTER_MIN_SIM, mean_sim)
+        else:
+            logger.info("Cluster ok (size=%d): intra-sim mean=%.3f min=%.3f", len(c), mean_sim, min_sim)
+            clean_clusters.append(c)
+    clusters = clean_clusters
+
     top_clusters = [c for c in clusters if len(c) >= 3][:2]
     if len(top_clusters) < 2:
-        logger.error("Need 2 clusters with >=3 detections")
+        logger.error("Need 2 clusters with >=3 detections after quality filtering")
         return
+
+    # Inter-cluster separation check: warn if two clusters risk being the same person.
+    sims_between = [cosine_similarity(all_embeddings[i], all_embeddings[j])
+                    for i in top_clusters[0] for j in top_clusters[1]]
+    max_between = max(sims_between)
+    mean_between = sum(sims_between) / len(sims_between)
+    if max_between >= 0.55:
+        logger.warning("Clusters may contain the same person: inter-cluster max sim=%.3f (mean=%.3f) — review before enrolling",
+                       max_between, mean_between)
+    else:
+        logger.info("Inter-cluster separation ok: max sim=%.3f mean=%.3f", max_between, mean_between)
 
     person_names = ["Alice Johnson", "Bob Smith"]
     departments = ["Engineering", "Marketing"]

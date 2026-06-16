@@ -29,7 +29,7 @@ Face recognition access-control platform composed of three services: a Python AI
         ▼
 ┌───────────────────┐    ArcFace 512-dim     ┌──────────────────────┐
 │  gate_vision_ai   │ ──── embeddings ──────▶│  GateVision.Api      │
-│  (Python FastAPI) │ ◀──── identify ────────│  (.NET 9 / ASP.NET)  │
+│  (Python FastAPI) │ ◀──── identify ────────│  (.NET 10 / ASP.NET) │
 │  port 8001        │                         │  port 5000           │
 └───────────────────┘                         └──────────┬───────────┘
                                                          │

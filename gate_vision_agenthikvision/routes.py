@@ -148,7 +148,7 @@ def register_routes(app, state: dict):
                 rejected.append({"frame": i, "reason": "no_face"})
                 continue
             face = faces[0]
-            ok, reason = check_quality(face)
+            ok, reason = check_quality(face, frame)
             if not ok:
                 rejected.append({"frame": i, "reason": reason})
                 continue
@@ -231,7 +231,7 @@ def register_routes(app, state: dict):
                 rejected.append({"frame": i, "reason": "no_face"})
                 continue
             face = faces[0]
-            ok, reason = check_quality(face)
+            ok, reason = check_quality(face, frame)
             if not ok:
                 rejected.append({"frame": i, "reason": reason})
                 continue
@@ -343,15 +343,42 @@ def register_routes(app, state: dict):
                 yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
             pose = classify_pose(yaw, pitch)
         else:
-            # SCRFD found nothing — fall back to direct ArcFace on the original frame.
-            logger.warning(
-                "enroll/from-image: no face detected; falling back to direct ArcFace embedding"
+            # Padding retry: give SCRFD more context before falling back to embed_crop.
+            retry_pad = max(int(h * 0.4), 20)
+            retry_frame = cv2.copyMakeBorder(
+                frame, retry_pad, retry_pad, retry_pad, retry_pad, cv2.BORDER_REPLICATE
             )
-            emb = await asyncio.to_thread(det.embed_crop, frame)
-            if emb is None:
-                raise HTTPException(400, "No face detected in image and direct embedding also failed")
-            crop = crop_face_b64(frame, [0, 0, frame.shape[1], frame.shape[0]])
-            pose = "frontal"
+            retry_faces = []
+            try:
+                retry_faces = await asyncio.to_thread(det.detect, retry_frame)
+            except Exception as exc:
+                logger.debug("enroll/from-image: padding retry detection error: %s", exc)
+
+            if retry_faces:
+                face = max(retry_faces, key=lambda f: f["confidence"] * (f["bbox"][2] - f["bbox"][0]) * (f["bbox"][3] - f["bbox"][1]))
+                emb = extract_embedding(face)
+                if emb is not None:
+                    crop = crop_face_b64(retry_frame, face["bbox"])
+                    if face.get("pose"):
+                        pitch, yaw, _roll = face["pose"]
+                        pitch = -pitch
+                    else:
+                        yaw, pitch = estimate_pose_from_kps(face.get("landmarks") or [])
+                    pose = classify_pose(yaw, pitch)
+                    logger.info("enroll/from-image: face found after padding retry — using aligned embedding")
+                else:
+                    retry_faces = []  # force last-resort path below
+
+            if not retry_faces:
+                # Last resort: direct ArcFace on the whole image with estimated affine alignment.
+                logger.warning(
+                    "enroll/from-image: no face after padding retry — falling back to direct ArcFace embedding"
+                )
+                emb = await asyncio.to_thread(det.embed_crop, frame)
+                if emb is None:
+                    raise HTTPException(400, "No face detected in image and direct embedding also failed")
+                crop = crop_face_b64(frame, [0, 0, frame.shape[1], frame.shape[0]])
+                pose = "frontal"
 
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
@@ -763,7 +790,7 @@ async def _run_enrollment_from_camera(person_id: str, capture, detector, backend
             rejected.append({"attempt": attempts, "reason": "no_face"})
             continue
         face = faces[0]
-        ok, reason = check_quality(face)
+        ok, reason = check_quality(face, frame)
         if not ok:
             rejected.append({"attempt": attempts, "reason": reason})
             continue

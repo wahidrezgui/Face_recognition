@@ -1,0 +1,74 @@
+name: .NET CI
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "GateVision.Api/**"
+      - "GateVision.Api.Tests/**"
+      - "global.json"
+      - ".github/workflows/dotnet-ci.yml"
+  pull_request:
+    paths:
+      - "GateVision.Api/**"
+      - "GateVision.Api.Tests/**"
+      - "global.json"
+      - ".github/workflows/dotnet-ci.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: dotnet-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: gatevision
+          POSTGRES_PASSWORD: ci-password
+          POSTGRES_DB: gatevision
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U gatevision -d gatevision"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ConnectionStrings__DefaultConnection: Host=localhost;Port=5432;Database=gatevision;Username=gatevision;Password=ci-password
+      Auth__JwtSecret: ci-secret-key-32-chars-minimum!!
+      Auth__ApiKey: ci-api-key
+      ASPNETCORE_ENVIRONMENT: Development
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Restore
+        run: |
+          dotnet restore GateVision.Api/GateVision.Api.csproj
+          dotnet restore GateVision.Api.Tests/GateVision.Api.Tests.csproj
+
+      - name: Build
+        run: dotnet build GateVision.Api.Tests/GateVision.Api.Tests.csproj -c Release --no-restore
+
+      - name: Test
+        run: dotnet test GateVision.Api.Tests/GateVision.Api.Tests.csproj -c Release --no-build --verbosity normal

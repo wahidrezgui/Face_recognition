@@ -28,7 +28,7 @@ Steps are ordered **safest-first, highest-ROI-first**:
 
 ---
 
-## Step 1 — Fix Pose Estimation Bug ⬜ TODO
+## Step 1 — Fix Pose Estimation Bug ✅ VERIFIED
 
 **Files:** `gate_vision_agenthikvision/quality.py`, `gate_vision_agentwebcam/quality.py`  
 **Risk:** Very Low — isolated to `check_quality()`, no downstream API changes  
@@ -55,7 +55,7 @@ Steps are ordered **safest-first, highest-ROI-first**:
 
 ---
 
-## Step 2 — Raise Enrollment Clustering Threshold ⬜ TODO
+## Step 2 — Raise Enrollment Clustering Threshold ✅ VERIFIED
 
 **Files:** `scripts/direct_enroll.py`, `scripts/enroll_from_video.py`  
 **Risk:** Very Low — scripts only, zero effect on the live pipeline  
@@ -80,7 +80,7 @@ NIST FRVT-validated systems use ≥ 0.65 for same-person determination at 0.1% F
 
 ---
 
-## Step 3 — Fix Auto-Improve Memory Leak + Add Quality Gate ⬜ TODO
+## Step 3 — Fix Auto-Improve Memory Leak + Add Quality Gate ✅ VERIFIED
 
 **Files:** `gate_vision_agenthikvision/processing.py`, `gate_vision_agentwebcam/processing.py`  
 **Risk:** Low — contained in `processing.py`, no API surface change  
@@ -104,7 +104,7 @@ NIST FRVT-validated systems use ≥ 0.65 for same-person determination at 0.1% F
 
 ---
 
-## Step 4 — Add Face Image Quality Assessment (IQA) Gates ⬜ TODO
+## Step 4 — Add Face Image Quality Assessment (IQA) Gates ✅ VERIFIED
 
 **Files:** `gate_vision_agenthikvision/quality.py`, `gate_vision_agentwebcam/quality.py`, both `config.py`  
 **Risk:** Low-Medium — adds new rejection reasons, could increase rejection rate  
@@ -133,7 +133,7 @@ NIST FRVT-validated systems use ≥ 0.65 for same-person determination at 0.1% F
 
 ---
 
-## Step 5 — Fix `embed_crop()` Alignment ⬜ TODO
+## Step 5 — Fix `embed_crop()` Alignment ✅ VERIFIED
 
 **Files:** `gate_vision_agenthikvision/detector.py`, `gate_vision_agentwebcam/detector.py`  
 **Risk:** Low — only affects the fallback path when SCRFD fails on a tight crop  
@@ -312,12 +312,12 @@ Every `detector.detect()` call performs `frame.tobytes()` (6MB copy) + IPC trans
 
 | Step | Title | Status | Verified By | Date |
 |------|-------|--------|-------------|------|
-| 1 | Fix Pose Estimation Bug | ⬜ TODO | — | — |
-| 2 | Raise Enrollment Clustering Threshold | ⬜ TODO | — | — |
-| 3 | Fix Auto-Improve Memory Leak + Quality Gate | ⬜ TODO | — | — |
-| 4 | Add IQA Gates (Blur + Brightness) | ⬜ TODO | — | — |
-| 5 | Fix `embed_crop()` Alignment | ⬜ TODO | — | — |
-| 6 | Fix Window Timing + Cap Concurrent Tasks | ⬜ TODO | — | — |
+| 1 | Fix Pose Estimation Bug | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
+| 2 | Raise Enrollment Clustering Threshold | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
+| 3 | Fix Auto-Improve Memory Leak + Quality Gate | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
+| 4 | Add IQA Gates (Blur + Brightness) | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
+| 5 | Fix `embed_crop()` Alignment | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
+| 6 | Fix Window Timing + Cap Concurrent Tasks | 🟡 AWAITING VERIFICATION | — | — |
 | 7 | Add Auth to Python Endpoints | ⬜ TODO | — | — |
 | 8 | Encrypt Biometric Data in SQLite Buffer | ⬜ TODO | — | — |
 | 9 | Upgrade Tracker to SORT | ⬜ TODO | — | — |
@@ -326,6 +326,6 @@ Every `detector.detect()` call performs `frame.tobytes()` (6MB copy) + IPC trans
 
 ---
 
-## Current Step: Step 1 — Fix Pose Estimation Bug
+## Current Step: Step 6 — Fix Interaction Window Timing + Cap Concurrent Tasks 🟡
 
-> **Ready to implement.** Awaiting your go-ahead to begin Step 1.
+> **Implementation complete.** Please verify using the checklist above, then confirm to proceed to Step 7.

@@ -9,7 +9,7 @@ flowchart TB
 
   subgraph platform [GateVision Platform]
     dashboard["Dashboard<br/>Next.js 15"]
-    api["GateVision.Api<br/>.NET 9 ASP.NET Core"]
+    api["GateVision.Api<br/>.NET 10 ASP.NET Core"]
     agent["Edge Agent<br/>Python FastAPI"]
   end
 

@@ -729,7 +729,13 @@ export async function setGateRecognitionConfig(
   const res = await apiFetch(`${API_BASE}/api/v1/config/gates/${gateId}/recognition`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify(config),
+    // ASP.NET minimal APIs bind camelCase; GET responses use snake_case.
+    body: JSON.stringify({
+      identifyConfidenceThreshold: config.identify_confidence_threshold,
+      minMatchScore: config.min_match_score,
+      autoValidateConfidence: config.auto_validate_confidence,
+      minFaceConfidence: config.min_face_confidence,
+    }),
   });
   if (!res.ok) throw new Error("Failed to set recognition thresholds");
   return res.json();

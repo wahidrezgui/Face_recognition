@@ -121,6 +121,7 @@ _TRACK_IOU_THRESHOLD: float = 0.15   # min overlap to count as same track
 _TRACK_EXPIRY_S: float = 3.0         # drop track after 3s of no updates
 _window_manager = InteractionWindowManager(settings.window_duration_ms)
 _scheduler = IdentityScheduler(settings.max_identity_requests_per_window, settings.greeting_delay_ms)
+_snapshot_semaphore = asyncio.Semaphore(5)  # cap concurrent in-flight snapshot tasks
 
 
 def _bbox_iou(a: list[float], b: list[float]) -> float:
@@ -174,34 +175,56 @@ _state = {
 
 async def _process_snapshot(snapshot, backend) -> None:
     global _stats
-    results = await _scheduler.schedule(snapshot, settings.direction, backend)
-    window_ms = (snapshot.window_end - snapshot.window_start) * 1000
-    _stats["windows_processed"] += 1
+    async with _snapshot_semaphore:
+        results = await _scheduler.schedule(snapshot, settings.direction, backend)
+        window_ms = (snapshot.window_end - snapshot.window_start) * 1000
+        _stats["windows_processed"] += 1
 
-    for identity_result in results:
-        r = identity_result.result
-        if isinstance(r, Exception):
-            logger.error("Face processing error: %s", r)
-        elif r.get("circuit_open"):
-            _stats["circuit_open"] = True
-        elif r.get("backend_down"):
-            _stats["backend_errors"] += 1
-        elif r.get("quality"):
-            _stats["events_sent"] += 1
-            _stats["circuit_open"] = False
-            _events_log.append({
-                "timestamp": snapshot.persons[0].timestamp if snapshot.persons else "",
-                "confidence": r["match"]["confidence"] if r.get("match") else 0,
-                "personName": r["match"]["personName"] if r.get("match") else "UNKNOWN",
-            })
-        else:
-            _stats["rejected"] += 1
-            logger.info("Frame rejected: %s", r.get("reason"))
+        for identity_result in results:
+            r = identity_result.result
+            if isinstance(r, Exception):
+                logger.error("Face processing error: %s", r)
+            elif r.get("circuit_open"):
+                _stats["circuit_open"] = True
+            elif r.get("backend_down"):
+                _stats["backend_errors"] += 1
+            elif r.get("quality"):
+                _stats["events_sent"] += 1
+                _stats["circuit_open"] = False
+                _events_log.append({
+                    "timestamp": snapshot.persons[0].timestamp if snapshot.persons else "",
+                    "confidence": r["match"]["confidence"] if r.get("match") else 0,
+                    "personName": r["match"]["personName"] if r.get("match") else "UNKNOWN",
+                })
+            else:
+                _stats["rejected"] += 1
+                logger.info("Frame rejected: %s", r.get("reason"))
 
-    logger.debug(
-        "Window: %.0fms, %d faces, %d identities resolved",
-        window_ms, len(snapshot), len(results),
-    )
+        logger.debug(
+            "Window: %.0fms, %d faces, %d identities resolved",
+            window_ms, len(snapshot), len(results),
+        )
+
+
+async def _window_watcher():
+    """Closes expired interaction windows independently of detection FPS.
+
+    _capture_loop() closes windows only when a new frame arrives, so at low FPS
+    a window can stay open far past its expiry. This coroutine sleeps for exactly
+    window_duration_ms and closes any overdue window, bounding close-latency to
+    roughly one window duration regardless of the detection rate.
+    """
+    logger.info("Window watcher started (window_duration=%.0fms)", settings.window_duration_ms)
+    while True:
+        try:
+            await asyncio.sleep(settings.window_duration_ms / 1000)
+            if not _window_manager.is_window_open() and _window_manager.has_faces():
+                snapshot = _window_manager.finalize()
+                asyncio.create_task(_process_snapshot(snapshot, backend))
+        except asyncio.CancelledError:
+            break
+        except Exception as e:
+            logger.error("Window watcher error: %s", e, exc_info=True)
 
 
 async def _drain_loop():
@@ -400,15 +423,21 @@ async def lifespan(app: FastAPI):
 
     capture_task = asyncio.create_task(_capture_loop())
     drain_task = asyncio.create_task(_drain_loop())
+    watcher_task = asyncio.create_task(_window_watcher())
     yield
     capture_task.cancel()
     drain_task.cancel()
+    watcher_task.cancel()
     try:
         await capture_task
     except asyncio.CancelledError:
         pass
     try:
         await drain_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await watcher_task
     except asyncio.CancelledError:
         pass
     hik = _state.get("hikvision")

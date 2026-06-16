@@ -24,7 +24,7 @@ public class CacheService
         var db = _redis.GetDatabase();
         var json = await db.StringGetAsync(key);
         if (json.IsNullOrEmpty) return null;
-        return JsonSerializer.Deserialize<T>(json!);
+        return JsonSerializer.Deserialize<T>(json.ToString());
     }
 
     public async Task RemoveAsync(string key)

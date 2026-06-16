@@ -21,9 +21,14 @@ class Settings(BaseSettings):
     min_face_confidence: float = 0.5
     min_face_size: int = 40
     max_yaw: int = 30
+    max_pitch: int = 30
+    min_sharpness_score: float = 60.0
+    min_brightness: int = 30
+    max_brightness: int = 220
 
     auto_improve_min_conf: float = 0.55
     auto_improve_max_conf: float = 0.85
+    auto_improve_min_sharpness: float = 80.0
 
     local_buffer_path: str = "gate_events_local.db"
 
