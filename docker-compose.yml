@@ -41,53 +41,38 @@ services:
     networks:
       - devnet
     restart: unless-stopped
+ 
+  # ── Test: MySQL + phpMyAdmin ────────────────────────────────
+  mysql-test:
+    image: mysql:8.0
+    container_name: gatevision-mysql-test
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpass
+      MYSQL_DATABASE: gatedb
+      MYSQL_USER: testuser
+      MYSQL_PASSWORD: testpass
+    ports:
+      - "3306:3306"
+    networks:
+      - devnet
+    volumes:
+      - mysql_test_data:/var/lib/mysql
+    restart: unless-stopped
 
-  # ── Edge Nodes ──────────────────────────────────────────────
-  # Gate A and Gate B run on separate Windows machines on the LAN.
-  # See gate_vision_ai/README for setup instructions.
-
-  # ── RTSP Test Stream ────────────────────────────────────────
-  # Loops sample1.mp4 as an RTSP stream for local testing.
-  # Stream URL (inside devnet): rtsp://rtsp-stream:8554/sample
-  # HLS preview (host browser): http://localhost:8888/sample
-  #rtsp-stream:
-  # build:
-  #   context: ./rtsp-stream
-  #   dockerfile: Dockerfile
-  # container_name: gatevision-rtsp-stream
-  # volumes:
-  #   - ./gate_vision_ai/sample1.mp4:/videos/sample1.mp4:ro
-  # ports:
-  #   - "8554:8554" # RTSP
-  #   - "8888:8888" # HLS browser preview
-  # networks:
-  #   - devnet
-  # restart: unless-stopped
-
-  # ── gate_vision_ai_v2 ───────────────────────────────────────
-  # FastAPI edge service — PyramidBox + MobileFace, reads RTSP from rtsp-stream.
-  # gate-vision-ai-v2:
-  #   build:
-  #     context: ./gate_vision_ai_v2
-  #     dockerfile: Dockerfile
-  #   container_name: gatevision-ai-v2
-  #   environment:
-  #     GV2_PORT: 8002
-  #     GV2_CAMERA_SOURCE: rtsp://rtsp-stream:8554/sample
-  #     GV2_RTSP_TRANSPORT: tcp
-  #     GV2_RTSP_BUFFER_SIZE: 1
-  #     GV2_NET_BACKEND_URL: http://host.docker.internal:5000
-  #     GV2_GATE_ID: gate-v2-sample
-  #   ports:
-  #     - "8002:8002"
-  #   volumes:
-  #     - gate_v2_data:/data
-  #     - ./gate_vision_ai_v2/Models/mobileface_v1.0_infer:/models/mobileface_v1.0_infer:ro
-  #   depends_on:
-  #     - rtsp-stream
-  #   networks:
-  #     - devnet
-  #   restart: on-failure
+  phpmyadmin:
+    image: phpmyadmin:latest
+    container_name: gatevision-phpmyadmin
+    environment:
+      PMA_HOST: mysql-test
+      PMA_PORT: 3306
+      MYSQL_ROOT_PASSWORD: rootpass
+    ports:
+      - "8080:80"
+    networks:
+      - devnet
+    depends_on:
+      - mysql-test
+    restart: unless-stopped
 
 volumes:
   postgres_gatevision_data:
@@ -95,6 +80,8 @@ volumes:
   qdrant_data:
     driver: local
   gate_v2_data:
+    driver: local
+  mysql_test_data:
     driver: local
 
 networks:

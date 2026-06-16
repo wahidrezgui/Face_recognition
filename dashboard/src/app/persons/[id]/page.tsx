@@ -6,17 +6,15 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  Camera,
   Check,
   ImagePlus,
   Loader2,
-  Pencil,
   Trash2,
   User,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
-  fetchPersons,
+  fetchPerson,
   updatePerson,
   updatePersonStatus,
   fetchPersonFaces,
@@ -28,12 +26,13 @@ import {
   poseCompletion,
   deletePersonFace,
   resetPersonFaces,
+  fetchAdminGates,
   type Person,
   type FaceImage,
 } from "@/lib/api";
-import { statusBadgeClass } from "@/lib/person-status";
 import { cn } from "@/lib/utils";
 import WebcamEnrollment from "@/components/WebcamEnrollment";
+import { UserBasicInfo } from "@/components/persons/UserBasicInfo";
 import { SectionCard } from "@/components/layout/SectionCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,12 +129,11 @@ export default function PersonDetailPage() {
   const [editName, setEditName] = useState("");
   const [editDept, setEditDept] = useState("");
 
-  const { data: persons = [], isLoading } = useQuery({
-    queryKey: ["persons"],
-    queryFn: fetchPersons,
-    staleTime: 0,
+  const { data: person, isLoading } = useQuery<Person>({
+    queryKey: ["person", id],
+    queryFn: () => fetchPerson(id),
+    retry: false,
   });
-  const person = persons.find((p: Person) => p.id === id);
 
   const { data: faces = [] } = useQuery({
     queryKey: ["person-faces", id],
@@ -149,12 +147,20 @@ export default function PersonDetailPage() {
     enabled: !!person,
   });
 
+  const { data: adminGates = [] } = useQuery({
+    queryKey: ["admin-gates"],
+    queryFn: fetchAdminGates,
+    staleTime: 60_000,
+  });
+  const firstGateId = adminGates[0]?.id ?? "";
+
   const comp = poseCompletion(poses);
 
   const statusMutation = useMutation({
     mutationFn: (status: string) => updatePersonStatus(id, status),
     onSuccess: (_, status) => {
       queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person", id] });
       toast.success(`Status updated to ${status}`);
     },
     onError: (err) =>
@@ -165,6 +171,7 @@ export default function PersonDetailPage() {
     mutationFn: (msg: string) => updateWelcomeMessage(id, msg.trim() || null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person", id] });
       toast.success("Welcome message saved");
     },
     onError: (err) =>
@@ -176,6 +183,7 @@ export default function PersonDetailPage() {
     onSuccess: () => {
       setEditOpen(false);
       queryClient.invalidateQueries({ queryKey: ["persons"] });
+      queryClient.invalidateQueries({ queryKey: ["person", id] });
       toast.success("Person updated");
     },
     onError: (err) =>
@@ -227,7 +235,7 @@ export default function PersonDetailPage() {
     }
   }, [person]);
 
-  const profileImageUrl = `${API_BASE}/api/persons/${id}/profile-image?t=${imgCacheBust}`;
+  const profileImageUrl = `${API_BASE}/api/v1/persons/${id}/profile-image?t=${imgCacheBust}`;
 
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -254,7 +262,8 @@ export default function PersonDetailPage() {
     setEnrollingFromFile(true);
     try {
       const b64 = await fileToBase64Jpeg(file);
-      await enrollFromEventFace(id, b64);
+      if (!firstGateId) throw new Error("No gate configured for enrollment");
+      await enrollFromEventFace(firstGateId, id, b64);
       queryClient.invalidateQueries({ queryKey: ["person-faces", id] });
       queryClient.invalidateQueries({ queryKey: ["persons"] });
       queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
@@ -308,83 +317,23 @@ export default function PersonDetailPage() {
 
       <div className="mx-auto w-full max-w-3xl flex-1 space-y-6 p-4 sm:p-6">
         {/* Hero */}
-        <div className="flex flex-col gap-5 sm:flex-row sm:items-start">
-          <div className="relative shrink-0 self-center sm:self-start">
-            {profileError || !person.hasProfileImage ? (
-              <div className="flex h-28 w-28 items-center justify-center rounded-full border-2 border-dashed border-gv-border bg-gv-panel text-gv-muted">
-                <User className="size-10 opacity-50" />
-              </div>
-            ) : (
-              <img
-                src={profileImageUrl}
-                alt={person.fullName}
-                onError={() => setProfileError(true)}
-                className="h-28 w-28 rounded-full border-2 border-gv-border object-cover shadow-lg shadow-black/30"
-              />
-            )}
-            <Button
-              type="button"
-              size="icon"
-              className="absolute -bottom-1 -right-1 size-9 rounded-full border-2 border-gv-bg bg-emerald-700 hover:bg-emerald-600"
-              onClick={() => fileInputRef.current?.click()}
-              disabled={uploading}
-              title="Upload profile picture"
-            >
-              {uploading ? (
-                <Loader2 className="size-4 animate-spin" />
-              ) : (
-                <Camera className="size-4" />
-              )}
-            </Button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".jpg,.jpeg,.png"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-
-          <div className="min-w-0 flex-1 text-center sm:text-left">
-            <div className="flex items-center justify-center gap-2 sm:justify-start">
-              <h1 className="font-display text-xl font-semibold tracking-wide text-white sm:text-2xl">
-                {person.fullName}
-              </h1>
-              <button
-                onClick={() => { setEditName(person.fullName); setEditDept(person.department); setEditOpen(true); }}
-                className="inline-flex size-7 items-center justify-center rounded-md text-gv-muted transition-colors hover:bg-gv-panel hover:text-white"
-                title="Edit person"
-              >
-                <Pencil className="size-3.5" />
-              </button>
-            </div>
-            <p className="mt-1 text-sm text-gv-muted">{person.department}</p>
-            <div className="mt-3 flex flex-wrap items-center justify-center gap-2 sm:justify-start">
-              <span
-                className={cn(
-                  "rounded border px-2.5 py-1 text-xs font-medium",
-                  statusBadgeClass(person.enrollmentStatus),
-                )}
-              >
-                {person.enrollmentStatus}
-              </span>
-              {person.faceCount > 0 && (
-                <Badge variant="outline" className="border-gv-border text-gv-muted">
-                  {person.faceCount} enrolled frame{person.faceCount !== 1 ? "s" : ""}
-                </Badge>
-              )}
-              <Badge
-                variant="outline"
-                className={cn(
-                  "border-gv-border",
-                  comp.percent === 100 ? "text-emerald-400" : "text-amber-400",
-                )}
-              >
-                {comp.percent}% poses
-              </Badge>
-            </div>
-          </div>
-        </div>
+        <UserBasicInfo
+          person={person}
+          profileImageUrl={profileImageUrl}
+          profileError={profileError}
+          onProfileError={() => setProfileError(true)}
+          uploading={uploading}
+          onUploadClick={() => fileInputRef.current?.click()}
+          comp={comp}
+          onEditClick={() => { setEditName(person.fullName); setEditDept(person.department); setEditOpen(true); }}
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".jpg,.jpeg,.png"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
 
         {/* Stats */}
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -668,9 +617,10 @@ export default function PersonDetailPage() {
         {/* Enrollment — full width */}
         <WebcamEnrollment
           personId={id}
+          gateId={firstGateId}
           onComplete={() => {
             queryClient.invalidateQueries({ queryKey: ["persons"] });
-            queryClient.refetchQueries({ queryKey: ["persons"] });
+            queryClient.invalidateQueries({ queryKey: ["person", id] });
             queryClient.invalidateQueries({ queryKey: ["person-faces", id] });
             queryClient.invalidateQueries({ queryKey: ["person-poses", id] });
             toast.success("Enrollment complete");

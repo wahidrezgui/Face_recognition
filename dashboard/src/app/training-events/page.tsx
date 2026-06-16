@@ -50,9 +50,12 @@ export default function TrainingEventsPage() {
   const deleteMutation = useMutation({
     mutationFn: (id: string) => deleteEvent(id),
     onMutate: (id) => { setMutatingId(id); setMutatingOp("delete"); },
-    onSettled: () => { setMutatingId(null); setMutatingOp(null); },
-    onSuccess: () => {
+    onSettled: () => {
+      setMutatingId(null);
+      setMutatingOp(null);
       queryClient.invalidateQueries({ queryKey: ["training-events"] });
+    },
+    onSuccess: () => {
       toast.success("Event removed");
     },
     onError: (err) => toast.error(err instanceof Error ? err.message : "Failed to remove event"),

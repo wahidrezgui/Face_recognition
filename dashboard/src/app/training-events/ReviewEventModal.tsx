@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchPersons,
+  fetchPersonsPaged,
   createPerson,
   reviewEvent,
   deleteEvent,
@@ -36,14 +36,17 @@ export default function ReviewEventModal({
   const [newName, setNewName] = useState("");
   const [newDept, setNewDept] = useState("");
 
-  const { data: persons = [] } = useQuery({
-    queryKey: ["persons"],
-    queryFn: fetchPersons,
-  });
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const filtered = persons.filter((p: Person) =>
-    !search || p.fullName.toLowerCase().includes(search.toLowerCase())
-  );
+  const { data: personsPage } = useQuery({
+    queryKey: ["persons-search", debouncedSearch],
+    queryFn: () => fetchPersonsPaged({ search: debouncedSearch || undefined, pageSize: 50 }),
+  });
+  const filtered = personsPage?.items ?? [];
 
   const faceSrc = event.faceImageBase64
     ? `data:image/jpeg;base64,${event.faceImageBase64}`
@@ -54,7 +57,7 @@ export default function ReviewEventModal({
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["events"] });
     queryClient.invalidateQueries({ queryKey: ["training-events"] });
-    queryClient.invalidateQueries({ queryKey: ["persons"] });
+    queryClient.invalidateQueries({ queryKey: ["persons-search"] });
   }
 
   const [busy, setBusy] = useState(false);
@@ -72,7 +75,7 @@ export default function ReviewEventModal({
       if (mode === "enroll" && hasFace) {
         // Enroll first — if the face service fails the event stays NeedsReview
         setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(selectedPersonId, event.faceImageBase64!);
+        const result = await enrollFromEventFace(event.gateId ?? "", selectedPersonId, event.faceImageBase64!);
         await reviewEvent(event.eventId, selectedPersonId);
         setEnrolledPoses(result.poses ?? []);
         setLinkedPersonId(selectedPersonId);
@@ -111,7 +114,7 @@ export default function ReviewEventModal({
       if (mode === "enroll" && hasFace) {
         // Enroll first — if the face service fails the event stays NeedsReview
         setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(person.id, event.faceImageBase64!);
+        const result = await enrollFromEventFace(event.gateId ?? "", person.id, event.faceImageBase64!);
         await reviewEvent(event.eventId, person.id);
         setEnrolledPoses(result.poses ?? []);
         setLinkedPersonId(person.id);
@@ -145,7 +148,7 @@ export default function ReviewEventModal({
     setStatusMsg(null);
     try {
       // replace=true: wipe gate-camera embedding and store fresh webcam embeddings
-      const result = await enrollWithFrames(linkedPersonId, frames, true);
+      const result = await enrollWithFrames(event.gateId ?? "", linkedPersonId, frames, true);
       setEnrolledPoses(result.poses ?? []);
       setCapturePhase("done");
     } catch (e) {

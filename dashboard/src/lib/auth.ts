@@ -19,7 +19,7 @@ export function isAuthenticated(): boolean {
 }
 
 export async function login(apiKey: string): Promise<string> {
-  const res = await fetch(`${API_BASE}/api/auth/login`, {
+  const res = await fetch(`${API_BASE}/api/v1/auth/token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ apiKey }),

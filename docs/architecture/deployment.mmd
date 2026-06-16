@@ -1,0 +1,23 @@
+graph TB
+  subgraph host [Host Machine]
+    API[GateVision.Api :5000]
+    Dash[Dashboard :3000]
+    Agent[Python Agent :8000+]
+  end
+
+  subgraph docker [Docker Compose devnet]
+    PG[postgres-gatevision :6667]
+    RD[redis :6379]
+    QD[qdrant :6333/:6334]
+    MY[mysql-test :3306]
+    PMA[phpmyadmin :8080]
+  end
+
+  Cam[IP Camera] --> Agent
+  Agent -->|identify config| API
+  Dash -->|REST JWT SSE| API
+  API --> PG
+  API --> RD
+  API --> QD
+  API --> MY
+  PMA --> MY

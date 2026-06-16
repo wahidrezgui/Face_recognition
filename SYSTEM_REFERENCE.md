@@ -2,6 +2,8 @@
 
 Face recognition access-control platform composed of three services: a Python AI service, a .NET backend API, and a Next.js dashboard.
 
+**Architecture documentation:** [docs/architecture/README.md](docs/architecture/README.md) — C4 diagrams, sequence flows, component graph, dependency report.
+
 ---
 
 ## Table of Contents

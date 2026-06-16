@@ -1,0 +1,148 @@
+{
+  "files": 35,
+  "namespaces": 20,
+  "edges": 114,
+  "cycles": [
+    [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Application"
+    ],
+    [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Application"
+    ],
+    [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Application"
+    ],
+    [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Application"
+    ],
+    [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Application"
+    ]
+  ],
+  "layer_violations": [],
+  "graph": {
+    "GateVision.Api.Features.AccessEvents.Api": [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.GateOperations.Infrastructure",
+      "GateVision.Api.Features.HrSync.Application",
+      "GateVision.Api.Features.Identity.Application",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Features.Identity.Infrastructure",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.AccessEvents.Application": [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.GateOperations.Infrastructure",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Infrastructure.Redis",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.AccessEvents.Domain": [
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.AccessEvents.Infrastructure": [
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.GateOperations.Api": [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.GateOperations.Infrastructure",
+      "GateVision.Api.Features.HrSync.Application",
+      "GateVision.Api.Features.Identity.Application",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Features.Identity.Infrastructure",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.GateOperations.Infrastructure": [
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.HrSync.Api": [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.GateOperations.Infrastructure",
+      "GateVision.Api.Features.HrSync.Application",
+      "GateVision.Api.Features.Identity.Application",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Features.Identity.Infrastructure"
+    ],
+    "GateVision.Api.Features.HrSync.Application": [
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.Identity.Api": [
+      "GateVision.Api.Features.AccessEvents.Application",
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.GateOperations.Infrastructure",
+      "GateVision.Api.Features.HrSync.Application",
+      "GateVision.Api.Features.Identity.Application",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Features.Identity.Infrastructure",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Infrastructure.Redis",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.Identity.Application": [
+      "GateVision.Api.Features.AccessEvents.Domain",
+      "GateVision.Api.Features.GateOperations.Domain",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence",
+      "GateVision.Api.Shared.Infrastructure.Redis",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Features.Identity.Infrastructure": [
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Infrastructure.Persistence"
+    ],
+    "GateVision.Api.Features.Platform.Api": [
+      "GateVision.Api.Shared.Infrastructure.Persistence"
+    ],
+    "GateVision.Api.Shared.Infrastructure": [
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Shared.Infrastructure.HostedServices": [
+      "GateVision.Api.Features.AccessEvents.Infrastructure",
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Features.Identity.Infrastructure",
+      "GateVision.Api.Shared.Infrastructure.Persistence"
+    ],
+    "GateVision.Api.Shared.Infrastructure.Middleware": [
+      "GateVision.Api.Features.GateOperations.Infrastructure"
+    ],
+    "GateVision.Api.Shared.Infrastructure.Persistence": [
+      "GateVision.Api.Features.Identity.Domain",
+      "GateVision.Api.Shared.Kernel"
+    ],
+    "GateVision.Api.Shared.Infrastructure.Redis": [
+      "GateVision.Api.Features.Identity.Domain"
+    ]
+  }
+}

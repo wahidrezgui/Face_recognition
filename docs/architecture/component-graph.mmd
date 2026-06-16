@@ -1,0 +1,43 @@
+graph TD
+  subgraph clients [Clients]
+    Dashboard[Dashboard Next.js]
+    Agent[Python Edge Agent]
+    Kiosk[Gate Kiosk]
+  end
+
+  subgraph api [GateVision.Api]
+    Platform[Platform Auth Health]
+    Identity[Identity Feature]
+    AccessEvents[AccessEvents Feature]
+    GateOps[GateOperations Feature]
+    HrSync[HrSync Feature]
+    Shared[Shared Infrastructure]
+  end
+
+  subgraph data [Data Stores]
+    PG[(PostgreSQL)]
+    QD[(Qdrant)]
+    RD[(Redis)]
+    MY[(MySQL HR)]
+  end
+
+  Dashboard --> Platform
+  Dashboard --> Identity
+  Dashboard --> AccessEvents
+  Dashboard --> GateOps
+  Agent --> AccessEvents
+  Agent --> GateOps
+  Kiosk --> AccessEvents
+
+  Identity --> Shared
+  AccessEvents --> Shared
+  GateOps --> Shared
+  HrSync --> Shared
+  Platform --> Shared
+
+  Shared --> PG
+  Shared --> RD
+  Identity --> QD
+  AccessEvents --> QD
+  HrSync --> MY
+  GateOps --> Agent

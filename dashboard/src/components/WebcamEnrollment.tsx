@@ -10,8 +10,8 @@ interface EnrollResult {
   rejected: { attempt: number; reason: string }[];
 }
 
-export default function WebcamEnrollment({ personId, onComplete }: { personId: string; onComplete?: () => void }) {
-  const { phase, zoneIdx, zoneFrames, inZone, faceDetected, error, enrollResult, videoRef, canvasRef, startEnrollment, startSystemEnrollment, reset, currentZone } = usePoseDetection(personId, onComplete);
+export default function WebcamEnrollment({ personId, gateId, onComplete }: { personId: string; gateId: string; onComplete?: () => void }) {
+  const { phase, zoneIdx, zoneFrames, inZone, faceDetected, error, enrollResult, videoRef, canvasRef, startEnrollment, startSystemEnrollment, reset, currentZone } = usePoseDetection(personId, gateId, onComplete);
 
   const isActive = phase === "scanning";
   const isProcessing = phase === "processing";

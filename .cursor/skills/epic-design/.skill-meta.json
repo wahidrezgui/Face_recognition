@@ -1,0 +1,13 @@
+{
+  "sourceType": "github",
+  "source": "github",
+  "url": "https://github.com/alirezarezvani/claude-skills",
+  "repo": "alirezarezvani/claude-skills",
+  "ref": null,
+  "subpath": "engineering-team/skills/epic-design",
+  "installSource": "alirezarezvani/claude-skills/engineering-team/skills/epic-design",
+  "skillName": "epic-design",
+  "scope": "legacy",
+  "installedAt": "2026-06-15T09:17:09.368Z",
+  "updatedAt": "2026-06-15T09:17:09.368Z"
+}

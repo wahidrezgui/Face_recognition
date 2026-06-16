@@ -1,33 +1,37 @@
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
 using System.Threading.RateLimiting;
 using DbUp;
-using GateVision.Api.Endpoints;
-using GateVision.Api.Infrastructure.Db;
-using GateVision.Api.Infrastructure.Middleware;
-using GateVision.Api.Infrastructure.Redis;
-using GateVision.Api.Services;
+using GateVision.Api.Features.AccessEvents.Api;
+using GateVision.Api.Features.AccessEvents.Application;
+using GateVision.Api.Features.AccessEvents.Infrastructure;
+using GateVision.Api.Features.GateOperations.Api;
+using GateVision.Api.Features.GateOperations.Infrastructure;
+using GateVision.Api.Features.HrSync.Api;
+using GateVision.Api.Features.HrSync.Application;
+using GateVision.Api.Features.Identity.Api;
+using GateVision.Api.Features.Identity.Application;
+using GateVision.Api.Features.Identity.Domain;
+using GateVision.Api.Features.Identity.Infrastructure;
+using GateVision.Api.Features.Platform.Api;
+using GateVision.Api.Shared.Infrastructure;
+using GateVision.Api.Shared.Infrastructure.HostedServices;
+using GateVision.Api.Shared.Infrastructure.Middleware;
+using GateVision.Api.Shared.Infrastructure.Persistence;
+using GateVision.Api.Shared.Infrastructure.Redis;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using StackExchange.Redis;
+
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-if (string.IsNullOrEmpty(connectionString))
-    throw new InvalidOperationException("Connection string 'DefaultConnection' not found. Set via appsettings.json, User Secrets, or environment variable.");
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
+    ?? throw new InvalidOperationException("Connection string 'DefaultConnection' not found.");
 
 builder.Services.AddDbContext<AppDbContext>(options =>
-{
-    options.UseNpgsql(connectionString, npgsql =>
-    {
-        npgsql.EnableRetryOnFailure(3);
-    });
-});
+    options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
 
-var redisConnection = builder.Configuration.GetConnectionString("Redis");
 IConnectionMultiplexer? redis = null;
+var redisConnection = builder.Configuration.GetConnectionString("Redis");
 if (!string.IsNullOrEmpty(redisConnection))
 {
     try
@@ -37,7 +41,7 @@ if (!string.IsNullOrEmpty(redisConnection))
     }
     catch (Exception ex)
     {
-        Console.Error.WriteLine($"[Redis] Connection failed: {ex.Message} — proceeding without cache");
+        Console.Error.WriteLine($"[Redis] Connection failed: {ex.Message}");
     }
 }
 
@@ -50,14 +54,20 @@ builder.Services.AddSingleton<GateService>();
 builder.Services.AddSingleton<WelcomeDedupService>();
 builder.Services.Configure<QdrantOptions>(builder.Configuration.GetSection(QdrantOptions.SectionName));
 builder.Services.AddSingleton<IVectorStore, QdrantVectorStore>();
+builder.Services.AddScoped<IPersonRepository, PersonRepository>();
 builder.Services.AddScoped<IdentificationService>();
+builder.Services.AddScoped<IdentifyPersonHandler>();
 builder.Services.AddScoped<EnrollmentService>();
+builder.Services.AddScoped<EmployeeSyncService>();
 builder.Services.AddHttpClient();
+builder.Services.AddHostedService<EventBufferFlushService>();
+builder.Services.AddHostedService<GateEventCleanupService>();
+builder.Services.AddHostedService<QdrantInitService>();
 
 var jwtSecret = builder.Configuration["Auth:JwtSecret"]
-    ?? throw new InvalidOperationException("Auth:JwtSecret not configured. Set via User Secrets, appsettings, or environment variable.");
+    ?? throw new InvalidOperationException("Auth:JwtSecret not configured.");
 var apiKey = builder.Configuration["Auth:ApiKey"]
-    ?? throw new InvalidOperationException("Auth:ApiKey not configured. Set via User Secrets, appsettings, or environment variable.");
+    ?? throw new InvalidOperationException("Auth:ApiKey not configured.");
 
 builder.Services.AddAuthentication("Bearer")
     .AddJwtBearer("Bearer", options =>
@@ -70,7 +80,7 @@ builder.Services.AddAuthentication("Bearer")
             ValidateIssuerSigningKey = true,
             ValidIssuer = "GateVision",
             ValidAudience = "GateVision",
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
+            IssuerSigningKey = new SymmetricSecurityKey(System.Text.Encoding.UTF8.GetBytes(jwtSecret)),
         };
         options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
         {
@@ -78,16 +88,13 @@ builder.Services.AddAuthentication("Bearer")
             {
                 var token = ctx.Request.Query["token"].FirstOrDefault();
                 if (!string.IsNullOrEmpty(token) &&
-                    ctx.Request.Path.StartsWithSegments("/api/events/stream"))
-                {
+                    ctx.Request.Path.StartsWithSegments("/api/v1/events/stream"))
                     ctx.Token = token;
-                }
                 return Task.CompletedTask;
             }
         };
     });
 builder.Services.AddAuthorization();
-
 builder.Services.AddProblemDetails();
 builder.Services.AddRateLimiter(options =>
 {
@@ -103,7 +110,7 @@ builder.Services.AddRateLimiter(options =>
         cfg.PermitLimit = 5;
         cfg.Window = TimeSpan.FromSeconds(1);
         cfg.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
-        cfg.QueueLimit = 0;
+        cfg.QueueLimit = 500;
     });
 });
 
@@ -113,7 +120,6 @@ builder.Services.AddCors(options =>
     options.AddDefaultPolicy(policy =>
     {
         if (builder.Environment.IsDevelopment())
-            // Allow any origin in dev so network-IP access (phones, other machines) works
             policy.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader();
         else
             policy.WithOrigins(allowedOrigins).AllowAnyMethod().AllowAnyHeader();
@@ -125,7 +131,7 @@ var app = builder.Build();
 if (app.Environment.IsDevelopment())
     app.UseDeveloperExceptionPage();
 else
-    app.UseExceptionHandler();
+    app.UseGateVisionExceptionHandling();
 
 var upgrader = DeployChanges.To
     .PostgresqlDatabase(connectionString)
@@ -144,17 +150,14 @@ for (var retry = 0; retry < 10; retry++)
     }
     catch (Exception ex)
     {
-        app.Logger.LogWarning(ex, "Database migration attempt {Attempt} threw, retrying in 3s…", retry + 1);
+        app.Logger.LogWarning(ex, "Database migration attempt {Attempt} threw", retry + 1);
     }
     Thread.Sleep(3000);
 }
 
 if (!migrated)
-{
-    var err = new InvalidOperationException("Database migration failed after 10 retries");
-    app.Logger.LogError(err, "Database migration failed");
-    throw err;
-}
+    throw new InvalidOperationException("Database migration failed after 10 retries");
+
 app.Logger.LogInformation("Database migration completed");
 
 app.UseCors();
@@ -163,101 +166,17 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseMiddleware<AuthMiddleware>();
 
-// Ensure Qdrant collection exists on startup (non-blocking best-effort)
-_ = Task.Run(async () =>
-{
-    try
-    {
-        var store = app.Services.GetRequiredService<IVectorStore>();
-        await store.EnsureCollectionAsync();
-        app.Logger.LogInformation("Qdrant collection ready");
-    }
-    catch (Exception ex)
-    {
-        app.Logger.LogWarning(ex, "Qdrant collection init failed — will retry on first use");
-    }
-});
-
+app.MapPlatformEndpoints(jwtSecret, apiKey);
 app.MapIdentifyEndpoints();
 app.MapPersonEndpoints();
 app.MapEventEndpoints();
-app.MapConfigEndpoints();
-
-app.MapPost("/api/auth/login", (LoginDto dto, HttpRequest request, ILogger<Program> logger) =>
-{
-    logger.LogInformation("Login attempt from {RemoteIp}", request.HttpContext.Connection.RemoteIpAddress);
-    if (dto.ApiKey != apiKey)
-        return Results.Unauthorized();
-    var handler = new JwtSecurityTokenHandler();
-    var key = Encoding.UTF8.GetBytes(jwtSecret);
-    var token = handler.CreateToken(new SecurityTokenDescriptor
-    {
-        Subject = new ClaimsIdentity([new Claim(ClaimTypes.Name, "dashboard")]),
-        Expires = DateTime.UtcNow.AddHours(8),
-        Issuer = "GateVision",
-        Audience = "GateVision",
-        SigningCredentials = new SigningCredentials(new SymmetricSecurityKey(key), SecurityAlgorithms.HmacSha256),
-    });
-    return Results.Ok(new { token = handler.WriteToken(token) });
-});
-
-app.MapGet("/api/health", async (AppDbContext db) =>
-{
-    var dbOk = false;
-    try
-    {
-        dbOk = await db.Database.CanConnectAsync();
-    }
-    catch { }
-    return Results.Ok(new { status = "ok", db = dbOk });
-});
-
-_ = Task.Run(async () =>
-{
-    var buffer = app.Services.GetRequiredService<EventBufferService>();
-    var timer = new PeriodicTimer(TimeSpan.FromSeconds(1));
-    while (await timer.WaitForNextTickAsync(app.Lifetime.ApplicationStopping))
-    {
-        try
-        {
-            using var scope = app.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var flushed = await buffer.FlushExpiredAsync(db);
-            if (flushed > 0)
-                app.Logger.LogInformation("Flushed {Count} expired tracks to gate_events", flushed);
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogError(ex, "Track flush error");
-        }
-    }
-});
-
-// ── Periodic cleanup of old gate_events (daily) ──────────────
-_ = Task.Run(async () =>
-{
-    var cleanupTimer = new PeriodicTimer(TimeSpan.FromHours(1));
-    while (await cleanupTimer.WaitForNextTickAsync(app.Lifetime.ApplicationStopping))
-    {
-        try
-        {
-            using var scope = app.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            var cutoff = DateTime.UtcNow.AddDays(-90);
-            var deleted = await db.GateEvents
-                .Where(e => e.CapturedAt < cutoff)
-                .ExecuteDeleteAsync();
-            if (deleted > 0)
-                app.Logger.LogInformation("Cleaned up {Count} gate_events older than 90 days", deleted);
-        }
-        catch (Exception ex)
-        {
-            app.Logger.LogError(ex, "Event cleanup error");
-        }
-    }
-});
+app.MapValidatedEventEndpoints();
+app.MapGateEndpoints();
+app.MapSyncEndpoints();
 
 app.Run();
+
+public partial class Program { }
 
 internal class DbUpLogger(ILogger logger) : DbUp.Engine.Output.IUpgradeLog
 {
@@ -265,5 +184,3 @@ internal class DbUpLogger(ILogger logger) : DbUp.Engine.Output.IUpgradeLog
     public void WriteError(string format, params object[] args) => logger.LogError(format, args);
     public void WriteWarning(string format, params object[] args) => logger.LogWarning(format, args);
 }
-
-public record LoginDto(string ApiKey);

@@ -5,14 +5,15 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { toast } from "sonner";
 import {
-  fetchGates, fetchGateStatus, setGateVideoSource,
-  fetchGateCameras, fetchGateProcessingFps, setGateProcessingFps,
+  fetchGates, setGateVideoSource,
+  fetchGateCameras, setGateProcessingFps,
   fetchTrainingMode, setTrainingMode,
   fetchLogUnknown, setLogUnknown,
   fetchAdminGates, updateGate, deleteGate,
   stopGate, startGate,
   fetchGateKioskSettings, setGateKioskSettings,
-  fetchGateCameraEvents,
+  fetchGateCameraEvents, fetchGateDbConfig,
+  setGateRecognitionConfig,
   gateStreamUrl, GateStatus, GateCameraEvents,
 } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -83,6 +84,11 @@ export default function GateDetailPage() {
   const [logUnknownLoaded, setLogUnknownLoaded] = useState(false);
   const [processingFps, setProcessingFpsState] = useState(3);
   const [processingFpsLoaded, setProcessingFpsLoaded] = useState(false);
+  const [identifyThreshold, setIdentifyThreshold] = useState(0.80);
+  const [minMatchScore, setMinMatchScore] = useState(0.35);
+  const [autoValidateConfidence, setAutoValidateConfidence] = useState(0.85);
+  const [minFaceConfidence, setMinFaceConfidence] = useState(0.50);
+  const [recognitionLoaded, setRecognitionLoaded] = useState(false);
 
   const [streamError, setStreamError] = useState(false);
 
@@ -112,21 +118,35 @@ export default function GateDetailPage() {
     return () => clearInterval(iv);
   }, [refreshGateStatus]);
 
-  // Pre-fill video source from live gate status
+  // Pre-fill form from DB config — the DB is the authoritative source, not Python's live state.
+  // Python's live stats are shown separately in the status section above.
   useEffect(() => {
     (async () => {
       try {
-        const status = await fetchGateStatus(gateId);
-        if (!status) return;
-        const src = status.camera_source || "";
+        const cfg = await fetchGateDbConfig(gateId);
+        if (!cfg) return;
+        const src = cfg.camera_source || "";
         if (src) {
           const kind = inferSourceType(src);
           setSourceType(kind);
-          if (kind === "webcam") { setSelectedCam(src); setUseCustom(false); }
-          else setRtspUrl(src);
+          if (kind === "webcam") {
+            setSelectedCam(src);
+            setCustomIndex(src);
+            setUseCustom(false);
+          } else {
+            setRtspUrl(src);
+          }
         }
-        if (status.direction === "exit" || status.direction === "entry") setDirection(status.direction);
-      } catch { /* gate offline */ }
+        if (cfg.direction === "exit" || cfg.direction === "entry") setDirection(cfg.direction);
+        if (cfg.processing_fps) setProcessingFpsState(cfg.processing_fps);
+        if (cfg.identify_confidence_threshold) setIdentifyThreshold(cfg.identify_confidence_threshold);
+        if (cfg.min_match_score) setMinMatchScore(cfg.min_match_score);
+        if (cfg.auto_validate_confidence) setAutoValidateConfidence(cfg.auto_validate_confidence);
+        if (cfg.min_face_confidence) setMinFaceConfidence(cfg.min_face_confidence);
+      } catch { /* ignore */ } finally {
+        setProcessingFpsLoaded(true);
+        setRecognitionLoaded(true);
+      }
     })();
   }, [gateId]);
 
@@ -141,14 +161,6 @@ export default function GateDetailPage() {
       catch { } finally { setLogUnknownLoaded(true); }
     })();
   }, []);
-
-  // Processing FPS
-  useEffect(() => {
-    (async () => {
-      try { const { fps } = await fetchGateProcessingFps(gateId); setProcessingFpsState(fps); }
-      catch { } finally { setProcessingFpsLoaded(true); }
-    })();
-  }, [gateId]);
 
   // Camera list
   const loadCameras = useCallback(async () => {
@@ -205,6 +217,12 @@ export default function GateDetailPage() {
       await setTrainingMode(trainingMode);
       await setLogUnknown(logUnknown);
       await setGateProcessingFps(gateId, processingFps);
+      await setGateRecognitionConfig(gateId, {
+        identify_confidence_threshold: identifyThreshold,
+        min_match_score: minMatchScore,
+        auto_validate_confidence: autoValidateConfidence,
+        min_face_confidence: minFaceConfidence,
+      });
       await setGateVideoSource(gateId, getCameraSource(), direction);
       toast.success("Configuration applied — AI service restarting");
     } catch (err: unknown) {
@@ -402,11 +420,10 @@ export default function GateDetailPage() {
                       {cameraEvents.events.map((ev, i) => (
                         <div
                           key={i}
-                          className={`flex items-center gap-3 px-3 py-1.5 text-[11px] ${
-                            ev.qualified
+                          className={`flex items-center gap-3 px-3 py-1.5 text-[11px] ${ev.qualified
                               ? "bg-emerald-950/30"
                               : "bg-[#0d1a2f]"
-                          }`}
+                            }`}
                         >
                           <span className={`h-1.5 w-1.5 flex-shrink-0 rounded-full ${ev.qualified ? "bg-emerald-400" : "bg-gray-600"}`} />
                           <span className="w-32 flex-shrink-0 font-mono text-gray-200">{ev.eventType || "—"}</span>
@@ -571,7 +588,7 @@ export default function GateDetailPage() {
                     <div className="text-xs text-amber-400/80 py-1">No cameras detected. Enter index manually:</div>
                     <input
                       type="text"
-                      value={customIndex || "0"}
+                      value={customIndex}
                       onChange={(e) => { setCustomIndex(e.target.value); setUseCustom(true); }}
                       placeholder="Camera index (0, 1, 2, …)"
                       className="w-full px-3 py-2 rounded text-xs bg-[#0d1a2f] border border-[#1a2640] text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-500"
@@ -635,6 +652,72 @@ export default function GateDetailPage() {
                   className="w-24 px-3 py-2 rounded text-xs bg-[#0d1a2f] border border-[#1a2640] text-gray-200 focus:outline-none focus:border-blue-500 disabled:opacity-50"
                 />
                 <span className="text-xs text-gray-400">{processingFpsLoaded ? `${processingFps} fps (1–30)` : "Loading…"}</span>
+              </div>
+            </div>
+
+            <Separator className="bg-gv-border" />
+
+            {/* Recognition confidence */}
+            <div>
+              <h3 className="mb-1 text-xs font-semibold text-gray-300">Recognition Confidence</h3>
+              <p className="mb-3 text-[11px] text-gv-muted">
+                Tune how strict identification is. Restart applies face-detection thresholds to the Python agent.
+              </p>
+              <div className="space-y-4">
+                {([
+                  {
+                    id: "identify-threshold",
+                    label: "Identify threshold",
+                    hint: "Match score required to mark a person as identified (not needs review).",
+                    value: identifyThreshold,
+                    set: setIdentifyThreshold,
+                  },
+                  {
+                    id: "min-match",
+                    label: "Min vector match",
+                    hint: "Lowest Qdrant similarity before a face is treated as unknown.",
+                    value: minMatchScore,
+                    set: setMinMatchScore,
+                  },
+                  {
+                    id: "auto-validate",
+                    label: "Auto-validate",
+                    hint: "High-confidence events skip manual review in the access log.",
+                    value: autoValidateConfidence,
+                    set: setAutoValidateConfidence,
+                  },
+                  {
+                    id: "min-face",
+                    label: "Min face detection",
+                    hint: "Python agent ignores faces below this detector confidence.",
+                    value: minFaceConfidence,
+                    set: setMinFaceConfidence,
+                  },
+                ] as const).map((row) => (
+                  <div key={row.id}>
+                    <div className="mb-1 flex items-center justify-between gap-2">
+                      <label htmlFor={row.id} className="text-xs text-gray-300">{row.label}</label>
+                      <span className="text-xs tabular-nums text-gray-400">
+                        {recognitionLoaded ? `${Math.round(row.value * 100)}%` : "…"}
+                      </span>
+                    </div>
+                    <input
+                      id={row.id}
+                      type="range"
+                      min={1}
+                      max={99}
+                      step={1}
+                      disabled={!recognitionLoaded}
+                      value={Math.round(row.value * 100)}
+                      onChange={(e) => {
+                        const pct = parseInt(e.target.value, 10);
+                        if (!isNaN(pct)) row.set(Math.min(0.99, Math.max(0.01, pct / 100)));
+                      }}
+                      className="w-full accent-emerald-500 disabled:opacity-50"
+                    />
+                    <p className="mt-1 text-[10px] text-gv-muted">{row.hint}</p>
+                  </div>
+                ))}
               </div>
             </div>
 

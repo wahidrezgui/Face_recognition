@@ -29,8 +29,8 @@ export function buildEventStreamUrl(token: string | null, gateId?: string): stri
   if (token) params.set("token", token);
   const qs = params.toString();
   return qs
-    ? `${API_BASE}/api/events/stream?${qs}`
-    : `${API_BASE}/api/events/stream`;
+    ? `${API_BASE}/api/v1/events/stream?${qs}`
+    : `${API_BASE}/api/v1/events/stream`;
 }
 
 export type GateEventStreamOptions = {

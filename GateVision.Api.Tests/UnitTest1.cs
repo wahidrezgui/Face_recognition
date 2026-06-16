@@ -1,5 +1,6 @@
-﻿using GateVision.Api.Domain;
-using GateVision.Api.Services;
+﻿using GateVision.Api.Features.AccessEvents.Application;
+using GateVision.Api.Features.AccessEvents.Infrastructure;
+using GateVision.Api.Shared.Kernel;
 
 namespace GateVision.Api.Tests;
 
@@ -53,5 +54,24 @@ public class WelcomeDedupServiceTests
         var allowedExit = svc.ShouldPublish("gate-a", personId, Direction.Exit, capturedAt.AddSeconds(2));
 
         Assert.True(allowedExit);
+    }
+}
+
+public class IdentifyPersonHandlerTests
+{
+    [Fact]
+    public async Task Rejects_Invalid_Embedding_Size()
+    {
+        var handler = new IdentifyPersonHandler(
+            null!, null!, null!, null!, null!, null!, null!);
+
+        var result = await handler.HandleAsync(new IdentifyPersonCommand
+        {
+            Embedding = new float[128],
+            CapturedAt = DateTime.UtcNow.ToString("O"),
+        }, CancellationToken.None);
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("512", result.Error);
     }
 }

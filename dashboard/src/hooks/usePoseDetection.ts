@@ -11,7 +11,7 @@ interface EnrollResult {
   rejected: { attempt: number; reason: string }[];
 }
 
-export function usePoseDetection(personId: string, onComplete?: () => void) {
+export function usePoseDetection(personId: string, gateId: string, onComplete?: () => void) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -58,7 +58,7 @@ export function usePoseDetection(personId: string, onComplete?: () => void) {
     setPhase("processing");
     stopAll();
     try {
-      const result = await enrollWithWebcam(personId, frames);
+      const result = await enrollWithWebcam(gateId, personId, frames);
       setEnrollResult(result);
       setPhase("done");
       onComplete?.();
@@ -66,7 +66,7 @@ export function usePoseDetection(personId: string, onComplete?: () => void) {
       setError(e instanceof Error ? e.message : "Enrollment failed");
       setPhase("error");
     }
-  }, [personId, stopAll, onComplete]);
+  }, [personId, gateId, stopAll, onComplete]);
 
   const reset = useCallback(() => {
     stopAll();
@@ -131,7 +131,7 @@ export function usePoseDetection(personId: string, onComplete?: () => void) {
       if (!frame) return;
       pendingPose.current = true;
       try {
-        const pose = await detectPose(frame);
+        const pose = await detectPose(gateId, frame);
         if (!pose.detected) {
           inZoneRef.current = false;
           setInZone(false);
@@ -183,7 +183,7 @@ export function usePoseDetection(personId: string, onComplete?: () => void) {
     setPhase("processing");
     setError(null);
     try {
-      const result = await enrollFromSystemCamera(personId);
+      const result = await enrollFromSystemCamera(gateId, personId);
       setEnrollResult({ accepted: result.accepted, rejected: result.rejected });
       setPhase("done");
       onComplete?.();
@@ -191,7 +191,7 @@ export function usePoseDetection(personId: string, onComplete?: () => void) {
       setError(e instanceof Error ? e.message : "System camera enrollment failed");
       setPhase("error");
     }
-  }, [personId, onComplete]);
+  }, [personId, gateId, onComplete]);
 
   useEffect(() => () => stopAll(), [stopAll]);
 

@@ -20,6 +20,7 @@ const NAV_ITEMS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/persons", label: "Persons" },
   { href: "/events", label: "Events" },
+  { href: "/access-log", label: "Access Log" },
   { href: "/training-events", label: "Training" },
   { href: "/gates", label: "Gates" },
 ];
@@ -62,6 +63,7 @@ export default function NavBar() {
         const active = pathname.startsWith(href);
         const showTrainingBadge = href === "/gates" && training?.enabled;
         const showReviewBadge = href === "/training-events";
+        const showAccessLogBadge = href === "/access-log";
 
         return (
           <Link
@@ -75,6 +77,14 @@ export default function NavBar() {
             )}
           >
             {label}
+            {showAccessLogBadge && (
+              <Badge
+                variant="outline"
+                className="h-4 border-emerald-700/40 bg-emerald-950/50 px-1 text-[9px] text-emerald-400"
+              >
+                Verified
+              </Badge>
+            )}
             {showReviewBadge && (
               <Badge
                 variant="outline"

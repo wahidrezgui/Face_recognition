@@ -1,0 +1,23 @@
+namespace GateVision.Api.Features.GateOperations.Domain;
+
+public record GateConfigUpdate(
+    string? CameraSource = null,
+    string? Direction = null,
+    int? ProcessingFps = null,
+    string? ModelProfile = null,
+    int? DetectorInputWidth = null,
+    int? DetectorInputHeight = null,
+    bool? ClearDetectorInputSize = null,
+    double? MotionThreshold = null,
+    int? MotionPixelThreshold = null,
+    int? DetectMaxWidth = null,
+    string? HikvisionUrl = null,
+    string? HikvisionUser = null,
+    string? HikvisionPassword = null,
+    int? HikvisionEventTtlMs = null,
+    string? HikvisionEventTypes = null,
+    string? HikvisionDetectionTarget = null,
+    double? MinMatchScore = null,
+    double? IdentifyConfidenceThreshold = null,
+    double? AutoValidateConfidence = null,
+    double? MinFaceConfidence = null);

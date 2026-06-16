@@ -1,12 +1,13 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  fetchPersons,
+  fetchPersonsPaged,
   createPerson,
   reviewEvent,
   deleteEvent,
+  validateGateEvent,
   enrollWithFrames,
   enrollFromEventFace,
   type GateEvent,
@@ -16,6 +17,7 @@ import { statusColor } from "@/components/events/EventCard";
 import { QuickCapture } from "@/components/events/QuickCapture";
 
 type Tab = "link" | "create" | "delete";
+type LinkMode = "link" | "enroll" | "capture" | "validate";
 type CapturePhase = "idle" | "capturing" | "enrolling" | "done";
 
 export default function ReviewEventModal({
@@ -36,14 +38,17 @@ export default function ReviewEventModal({
   const [newName, setNewName] = useState("");
   const [newDept, setNewDept] = useState("");
 
-  const { data: persons = [] } = useQuery({
-    queryKey: ["persons"],
-    queryFn: fetchPersons,
-  });
+  const [debouncedSearch, setDebouncedSearch] = useState(search);
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
-  const filtered = persons.filter((p: Person) =>
-    !search || p.fullName.toLowerCase().includes(search.toLowerCase())
-  );
+  const { data: personsPage } = useQuery({
+    queryKey: ["persons-search", debouncedSearch],
+    queryFn: () => fetchPersonsPaged({ search: debouncedSearch || undefined, pageSize: 50 }),
+  });
+  const filtered = personsPage?.items ?? [];
 
   const faceSrc = event.faceImageBase64
     ? `data:image/jpeg;base64,${event.faceImageBase64}`
@@ -53,7 +58,14 @@ export default function ReviewEventModal({
 
   function invalidateAll() {
     queryClient.invalidateQueries({ queryKey: ["events"] });
-    queryClient.invalidateQueries({ queryKey: ["persons"] });
+    queryClient.invalidateQueries({ queryKey: ["persons-search"] });
+    queryClient.invalidateQueries({ queryKey: ["validated-events"] });
+    queryClient.invalidateQueries({ queryKey: ["validated-events-stats"] });
+  }
+
+  // After linking a person, optionally promote to Access Log
+  async function promoteToAccessLog(personId: string) {
+    try { await validateGateEvent(event.eventId, personId); } catch { /* already validated or no-op */ }
   }
 
   const [busy, setBusy] = useState(false);
@@ -63,15 +75,14 @@ export default function ReviewEventModal({
   const [enrolledPoses, setEnrolledPoses] = useState<string[] | null>(null);
 
   // ── Link tab actions ──────────────────────────────────────────────────────
-  async function handleLink(mode: "link" | "enroll" | "capture") {
+  async function handleLink(mode: LinkMode) {
     if (!selectedPersonId) return;
     setBusy(true);
     setStatusMsg(null);
     try {
       if (mode === "enroll" && hasFace) {
-        // Enroll first — if the face service is down the event stays NeedsReview
         setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(selectedPersonId, event.faceImageBase64!);
+        const result = await enrollFromEventFace(event.gateId ?? "", selectedPersonId, event.faceImageBase64!);
         await reviewEvent(event.eventId, selectedPersonId);
         setEnrolledPoses(result.poses ?? []);
         setLinkedPersonId(selectedPersonId);
@@ -82,13 +93,19 @@ export default function ReviewEventModal({
 
       await reviewEvent(event.eventId, selectedPersonId);
 
+      if (mode === "validate") {
+        await promoteToAccessLog(selectedPersonId);
+        invalidateAll();
+        onDone();
+        return;
+      }
+
       if (mode === "capture") {
         setLinkedPersonId(selectedPersonId);
         setCapturePhase("capturing");
         return;
       }
 
-      // "link" — just link, no enrollment
       invalidateAll();
       onDone();
     } catch (e) {
@@ -110,7 +127,7 @@ export default function ReviewEventModal({
       if (mode === "enroll" && hasFace) {
         // Enroll first — if the face service is down the event stays NeedsReview
         setCapturePhase("enrolling");
-        const result = await enrollFromEventFace(person.id, event.faceImageBase64!);
+        const result = await enrollFromEventFace(event.gateId ?? "", person.id, event.faceImageBase64!);
         await reviewEvent(event.eventId, person.id);
         setEnrolledPoses(result.poses ?? []);
         setLinkedPersonId(person.id);
@@ -144,7 +161,7 @@ export default function ReviewEventModal({
     setStatusMsg(null);
     try {
       // replace=true: wipe gate-camera embedding and store fresh webcam embeddings
-      const result = await enrollWithFrames(linkedPersonId, frames, true);
+      const result = await enrollWithFrames(event.gateId ?? "", linkedPersonId, frames, true);
       setEnrolledPoses(result.poses ?? []);
       setCapturePhase("done");
     } catch (e) {
@@ -381,7 +398,22 @@ export default function ReviewEventModal({
                 )}
               </div>
 
-              {/* Row 2: Link & Replace via Webcam */}
+              {/* Row 2: Link & Approve → Access Log */}
+              <button
+                onClick={() => handleLink("validate")}
+                disabled={busy || !selectedPersonId}
+                className="w-full px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
+                style={{
+                  background: "rgba(34,211,165,0.07)",
+                  color: "#22d3a5",
+                  border: "1px solid rgba(34,211,165,0.22)",
+                  fontFamily: "'Oxanium', monospace",
+                }}
+              >
+                {busy ? "…" : "🛡 Link & Add to Access Log"}
+              </button>
+
+              {/* Row 3: Link & Replace via Webcam */}
               <button
                 onClick={() => handleLink("capture")}
                 disabled={busy || !selectedPersonId}

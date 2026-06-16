@@ -6,6 +6,7 @@ import {
   fetchEvents,
   fetchEventActivity,
   activityRangeBounds,
+  deleteEvent,
   type GateEvent,
   type EventActivityRange,
 } from "@/lib/api";
@@ -18,6 +19,7 @@ import { EventCard } from "@/components/events/EventCard";
 import EventDetailModal from "@/components/events/EventDetailModal";
 import { EventActivityStatsPanel } from "@/components/events/EventActivityStats";
 import { EventActivityChart } from "@/components/events/EventActivityChart";
+import ReviewEventModal from "./ReviewEventModal";
 
 const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
   { value: "today", label: "Today", hint: "Midnight UTC → now" },
@@ -45,7 +47,9 @@ export default function EventsPage() {
     const id = setTimeout(() => setName(nameInput), 300);
     return () => clearTimeout(id);
   }, [nameInput]);
+
   const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
+  const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
@@ -55,8 +59,10 @@ export default function EventsPage() {
     refetchInterval: 30_000,
   });
 
+  const eventsQueryKey = ["events", period, page, name, statusTab, bounds.from, bounds.to] as const;
+
   const { data, isLoading } = useQuery({
-    queryKey: ["events", period, page, name, statusTab, bounds.from, bounds.to],
+    queryKey: eventsQueryKey,
     queryFn: () =>
       fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to),
     refetchInterval: 30_000,
@@ -72,7 +78,7 @@ export default function EventsPage() {
       if (ts < fromMs || ts >= toMs) return;
 
       queryClient.setQueryData(
-        ["events", period, page, name, statusTab, bounds.from, bounds.to],
+        eventsQueryKey,
         (old: { items?: GateEvent[]; total?: number } | undefined) => {
           if (!old?.items) return old;
           const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
@@ -87,12 +93,44 @@ export default function EventsPage() {
     },
   });
 
+  const invalidateEvents = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["events"] });
+    queryClient.invalidateQueries({ queryKey: ["events-activity"] });
+    queryClient.invalidateQueries({ queryKey: ["validated-events"] });
+  }, [queryClient]);
+
   const handleViewDetails = useCallback((event: GateEvent) => {
     setSelectedEvent(event);
   }, []);
 
-  const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
+  const handleReview = useCallback((event: GateEvent) => {
+    setReviewEvent(event);
+  }, []);
 
+  const handleDelete = useCallback(async (eventId: string) => {
+    try {
+      await deleteEvent(eventId);
+      // Optimistically remove from list
+      queryClient.setQueryData(
+        eventsQueryKey,
+        (old: { items?: GateEvent[]; total?: number } | undefined) => {
+          if (!old?.items) return old;
+          return {
+            ...old,
+            items: old.items.filter((i) => i.eventId !== eventId),
+            total: Math.max(0, (old.total ?? 1) - 1),
+          };
+        },
+      );
+      queryClient.invalidateQueries({ queryKey: ["events-activity"] });
+    } catch {
+      // Silently refetch on error
+      queryClient.invalidateQueries({ queryKey: ["events"] });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, period, page, name, statusTab, bounds.from, bounds.to]);
+
+  const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
   const periodLabel = PERIOD_TABS.find((p) => p.value === period)?.label ?? period;
 
   return (
@@ -116,10 +154,7 @@ export default function EventsPage() {
                 <button
                   key={t.value}
                   type="button"
-                  onClick={() => {
-                    setPeriod(t.value);
-                    setPage(1);
-                  }}
+                  onClick={() => { setPeriod(t.value); setPage(1); }}
                   className={cn(
                     "rounded-lg border px-4 py-2 text-left transition-colors",
                     active
@@ -127,12 +162,7 @@ export default function EventsPage() {
                       : "border-transparent bg-transparent hover:bg-white/5",
                   )}
                 >
-                  <span
-                    className={cn(
-                      "block text-xs font-semibold",
-                      active ? "text-blue-300" : "text-gray-400",
-                    )}
-                  >
+                  <span className={cn("block text-xs font-semibold", active ? "text-blue-300" : "text-gray-400")}>
                     {t.label}
                   </span>
                   <span className="block text-[10px] text-gv-muted">{t.hint}</span>
@@ -147,7 +177,7 @@ export default function EventsPage() {
             <EventActivityStatsPanel stats={activity} isLoading={activityLoading} />
             <EventActivityChart stats={activity} range={period} isLoading={activityLoading} />
 
-            {/* Event list section */}
+            {/* Event list */}
             <div className="rounded-xl border border-gv-border bg-gv-panel">
               <div className="flex flex-wrap items-center gap-3 border-b border-gv-border-subtle px-4 py-3">
                 <span className="font-display text-xs font-semibold uppercase tracking-widest text-gray-300">
@@ -160,10 +190,7 @@ export default function EventsPage() {
                       <button
                         key={t.value}
                         type="button"
-                        onClick={() => {
-                          setStatusTab(t.value);
-                          setPage(1);
-                        }}
+                        onClick={() => { setStatusTab(t.value); setPage(1); }}
                         className="rounded px-2.5 py-1 text-[11px] font-semibold transition-all"
                         style={{
                           color: active ? t.col : "#475569",
@@ -180,35 +207,22 @@ export default function EventsPage() {
                   <Input
                     placeholder="Search name…"
                     value={nameInput}
-                    onChange={(e) => {
-                      setNameInput(e.target.value);
-                      setPage(1);
-                    }}
+                    onChange={(e) => { setNameInput(e.target.value); setPage(1); }}
                     className="h-8 border-gv-border bg-gv-bg pl-8 text-xs"
                   />
                   <svg
                     className="pointer-events-none absolute left-2.5 top-1/2 size-3 -translate-y-1/2 text-gv-muted"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
+                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
                   >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                    />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                      d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
                   </svg>
                 </div>
               </div>
 
               <div
                 className="grid px-4 py-2 text-[10px] font-semibold uppercase tracking-widest text-gv-muted"
-                style={{
-                  gridTemplateColumns: "58px 1fr auto auto auto",
-                  gap: "1rem",
-                  alignItems: "center",
-                }}
+                style={{ gridTemplateColumns: "58px 1fr auto auto auto", gap: "1rem", alignItems: "center" }}
               >
                 <span>Face</span>
                 <span>Identity</span>
@@ -229,15 +243,15 @@ export default function EventsPage() {
                       key={event.eventId}
                       event={event}
                       onViewDetails={handleViewDetails}
+                      onReview={handleReview}
+                      onDelete={handleDelete}
                     />
                   ))}
 
                 {!isLoading && data?.items.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <p className="text-sm text-gv-muted">No events in this period</p>
-                    <p className="mt-1 text-xs text-gv-muted/80">
-                      Try another tab or clear filters
-                    </p>
+                    <p className="mt-1 text-xs text-gv-muted/80">Try another tab or clear filters</p>
                   </div>
                 )}
               </div>
@@ -257,9 +271,7 @@ export default function EventsPage() {
                     >
                       ← Prev
                     </button>
-                    <span className="px-2 font-mono text-xs text-gv-muted">
-                      {page} / {totalPages}
-                    </span>
+                    <span className="px-2 font-mono text-xs text-gv-muted">{page} / {totalPages}</span>
                     <button
                       type="button"
                       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
@@ -278,6 +290,14 @@ export default function EventsPage() {
 
       {selectedEvent && (
         <EventDetailModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
+      )}
+
+      {reviewEvent && (
+        <ReviewEventModal
+          event={reviewEvent}
+          onClose={() => setReviewEvent(null)}
+          onDone={() => { setReviewEvent(null); invalidateEvents(); }}
+        />
       )}
     </>
   );

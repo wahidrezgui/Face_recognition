@@ -1,0 +1,13 @@
+{
+  "sourceType": "github",
+  "source": "github",
+  "url": "https://github.com/alirezarezvani/claude-skills",
+  "repo": "alirezarezvani/claude-skills",
+  "ref": null,
+  "subpath": "engineering-team/skills/aws-solution-architect",
+  "installSource": "alirezarezvani/claude-skills/engineering-team/skills/aws-solution-architect",
+  "skillName": "aws-solution-architect",
+  "scope": "legacy",
+  "installedAt": "2026-06-15T09:17:09.292Z",
+  "updatedAt": "2026-06-15T09:17:09.292Z"
+}

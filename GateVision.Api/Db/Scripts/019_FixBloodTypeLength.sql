@@ -1,0 +1,2 @@
+ALTER TABLE persons
+  ALTER COLUMN "BloodType" TYPE VARCHAR(50);

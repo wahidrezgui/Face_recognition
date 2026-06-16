@@ -1,0 +1,13 @@
+{
+  "sourceType": "github",
+  "source": "github",
+  "url": "https://github.com/alirezarezvani/claude-skills",
+  "repo": "alirezarezvani/claude-skills",
+  "ref": null,
+  "subpath": "engineering-team/skills/senior-computer-vision",
+  "installSource": "alirezarezvani/claude-skills/engineering-team/skills/senior-computer-vision",
+  "skillName": "senior-computer-vision",
+  "scope": "legacy",
+  "installedAt": "2026-06-15T09:17:09.645Z",
+  "updatedAt": "2026-06-15T09:17:09.645Z"
+}
