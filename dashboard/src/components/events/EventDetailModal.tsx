@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { type GateEvent } from "@/lib/api";
+import { formatLocalDateLong, formatLocalTime } from "@/lib/datetime";
 import { statusColor } from "@/components/events/EventCard";
 
 export default function EventDetailModal({
@@ -15,8 +16,6 @@ export default function EventDetailModal({
   const faceSrc = event.faceImageBase64
     ? `data:image/jpeg;base64,${event.faceImageBase64}`
     : event.faceImageUrl ?? null;
-  const time = new Date(event.timestamp);
-
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center"
@@ -82,13 +81,13 @@ export default function EventDetailModal({
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gv-muted">Date</p>
               <p className="text-sm text-white mt-0.5">
-                {time.toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" })}
+                {formatLocalDateLong(event.timestamp)}
               </p>
             </div>
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gv-muted">Time</p>
               <p className="text-sm font-mono text-white mt-0.5">
-                {time.toLocaleTimeString("en-US", { hour12: false })}
+                {formatLocalTime(event.timestamp)}
               </p>
             </div>
             {event.department && (

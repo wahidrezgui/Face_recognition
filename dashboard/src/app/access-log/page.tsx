@@ -10,13 +10,14 @@ import {
   type ValidatedEvent,
   type EventActivityRange,
 } from "@/lib/api";
+import { formatLocalDate, formatLocalTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 
 const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
-  { value: "today", label: "Today", hint: "Midnight UTC → now" },
+  { value: "today", label: "Today", hint: "Local midnight → now" },
   { value: "week", label: "This week", hint: "Last 7 days" },
   { value: "month", label: "This month", hint: "Calendar month" },
 ];
@@ -90,7 +91,6 @@ function ValidatedRow({
   onDelete: (id: string) => void;
 }) {
   const isManual = event.validatedBy === "manual";
-  const capturedTime = new Date(event.timestamp);
   const confPct = Math.round(event.confidence * 100);
 
   return (
@@ -131,10 +131,10 @@ function ValidatedRow({
       {/* Time */}
       <div className="text-right shrink-0 hidden sm:block">
         <p className="text-xs font-mono text-gray-400">
-          {capturedTime.toLocaleTimeString("en-US", { hour12: false })}
+          {formatLocalTime(event.timestamp)}
         </p>
         <p className="text-[10px] text-gray-700 mt-0.5">
-          {capturedTime.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {formatLocalDate(event.timestamp)}
         </p>
       </div>
 
@@ -161,10 +161,22 @@ function ValidatedRow({
 }
 
 // ── Stats strip ────────────────────────────────────────────────────────────────
-function StatsStrip({ stats }: { stats?: { todayTotal: number; autoCount: number; manualCount: number; entries: number; exits: number } | null }) {
+const PERIOD_TOTAL_LABEL: Record<EventActivityRange, string> = {
+  today: "Today",
+  week: "This week",
+  month: "This month",
+};
+
+function StatsStrip({
+  stats,
+  period,
+}: {
+  stats?: { total: number; autoCount: number; manualCount: number; entries: number; exits: number } | null;
+  period: EventActivityRange;
+}) {
   if (!stats) return null;
   const cards = [
-    { label: "Today", value: stats.todayTotal, col: "#e2e8f0" },
+    { label: PERIOD_TOTAL_LABEL[period], value: stats.total, col: "#e2e8f0" },
     { label: "Auto (>85%)", value: stats.autoCount, col: "#22d3a5" },
     { label: "Manual", value: stats.manualCount, col: "#818cf8" },
     { label: "Entries", value: stats.entries, col: "#38bdf8" },
@@ -201,8 +213,8 @@ export default function AccessLogPage() {
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
   const { data: stats } = useQuery({
-    queryKey: ["validated-events-stats"],
-    queryFn: fetchValidatedEventStats,
+    queryKey: ["validated-events-stats", period, bounds.from, bounds.to],
+    queryFn: () => fetchValidatedEventStats(bounds.from, bounds.to),
     refetchInterval: 30_000,
   });
 
@@ -227,7 +239,7 @@ export default function AccessLogPage() {
     } catch {
       queryClient.invalidateQueries({ queryKey: ["validated-events"] });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, period, page, name, dirTab, bounds.from, bounds.to]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
@@ -272,7 +284,7 @@ export default function AccessLogPage() {
       <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-6xl space-y-5">
 
-          <StatsStrip stats={stats} />
+          <StatsStrip stats={stats} period={period} />
 
           {/* Legend */}
           <div className="flex flex-wrap gap-4 text-[11px]" style={{ color: "#475569" }}>

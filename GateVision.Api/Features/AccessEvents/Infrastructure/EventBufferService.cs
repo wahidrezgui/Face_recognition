@@ -135,15 +135,19 @@ public class EventBufferService
             gateEvent.PersonName = match.PersonName;
             gateEvent.WelcomeMessage = match.WelcomeMessage;
             gateEvent.Department = match.Department;
-            db.GateEvents.Add(gateEvent);
 
-            if (match.PersonId.HasValue && match.Confidence > match.AutoValidateThreshold)
+            var autoValidate = match.PersonId.HasValue && match.Confidence > match.AutoValidateThreshold;
+            if (autoValidate)
             {
                 db.ValidatedEvents.Add(ValidatedEvent.FromBuffer(
                     match.Id, match.GateId, match.PersonId, match.Confidence,
                     match.Direction, match.CapturedAt,
                     match.FaceImageBase64, match.Emotion, match.Age, match.Gender,
                     ValidationSource.Auto));
+            }
+            else
+            {
+                db.GateEvents.Add(gateEvent);
             }
 
             await db.SaveChangesAsync();
@@ -181,16 +185,19 @@ public class EventBufferService
                 gateEvent.PersonName = track.PersonName;
                 gateEvent.WelcomeMessage = track.WelcomeMessage;
                 gateEvent.Department = track.Department;
-                db.GateEvents.Add(gateEvent);
 
-                // Auto-promote: high-confidence identified events go straight to validated_events
-                if (track.PersonId.HasValue && track.Confidence > track.AutoValidateThreshold)
+                var autoValidate = track.PersonId.HasValue && track.Confidence > track.AutoValidateThreshold;
+                if (autoValidate)
                 {
                     db.ValidatedEvents.Add(ValidatedEvent.FromBuffer(
                         track.Id, track.GateId, track.PersonId, track.Confidence,
                         track.Direction, track.CapturedAt,
                         track.FaceImageBase64, track.Emotion, track.Age, track.Gender,
                         ValidationSource.Auto));
+                }
+                else
+                {
+                    db.GateEvents.Add(gateEvent);
                 }
             }
             persisted++;

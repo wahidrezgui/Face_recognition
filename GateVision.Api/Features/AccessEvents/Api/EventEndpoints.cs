@@ -109,10 +109,19 @@ public static class EventEndpoints
             return Results.Ok(new { todayEntries, pendingReview });
         });
 
-        app.MapGet("/api/v1/events/activity", async (AppDbContext db, CancellationToken ct, string range = "today") =>
+        app.MapGet("/api/v1/events/activity", async (
+            AppDbContext db, CancellationToken ct,
+            string range = "today",
+            DateTime? from = null,
+            DateTime? to = null,
+            int? tzOffset = null) =>
         {
-            var (from, to, normalized) = ResolveActivityRange(range);
-            var query = db.GateEvents.Where(e => e.CapturedAt >= from && e.CapturedAt < to);
+            var offset = tzOffset ?? 0;
+            var (rangeFrom, rangeTo, normalized) = from.HasValue && to.HasValue
+                ? (from.Value, to.Value, NormalizeActivityRange(range))
+                : ResolveActivityRange(range);
+
+            var query = db.GateEvents.Where(e => e.CapturedAt >= rangeFrom && e.CapturedAt < rangeTo);
 
             var total = await query.CountAsync(ct);
             var identified = await query.CountAsync(e => e.Status == EventStatus.Identified, ct);
@@ -133,24 +142,23 @@ public static class EventEndpoints
 
             if (normalized == "today")
             {
-                var hourly = await query
-                    .GroupBy(e => e.CapturedAt.Hour)
-                    .Select(g => new { hour = g.Key, total = g.Count() })
-                    .ToListAsync(ct);
+                var capturedAts = await query.Select(e => e.CapturedAt).ToListAsync(ct);
+                var hourly = capturedAts
+                    .GroupBy(t => ToLocalHour(t, offset))
+                    .ToDictionary(g => g.Key, g => g.Count());
                 byHour = Enumerable.Range(0, 24)
-                    .Select(h => new
-                    {
-                        hour = h,
-                        total = hourly.FirstOrDefault(x => x.hour == h)?.total ?? 0,
-                    })
+                    .Select(h => new { hour = h, total = hourly.GetValueOrDefault(h, 0) })
                     .ToList();
-                var dayKey = from.ToString("yyyy-MM-dd");
+                var dayKey = ToLocalDateKey(rangeFrom, offset);
                 byDay = [new { date = dayKey, total, identified }];
             }
             else
             {
-                var daily = await query
-                    .GroupBy(e => e.CapturedAt.Date)
+                var capturedAts = await query
+                    .Select(e => new { e.CapturedAt, e.Status })
+                    .ToListAsync(ct);
+                var daily = capturedAts
+                    .GroupBy(e => ToLocalDateKey(e.CapturedAt, offset))
                     .Select(g => new
                     {
                         date = g.Key,
@@ -158,10 +166,10 @@ public static class EventEndpoints
                         identified = g.Count(e => e.Status == EventStatus.Identified),
                     })
                     .OrderBy(x => x.date)
-                    .ToListAsync(ct);
+                    .ToList();
 
-                byDay = FillDailySeries(from, to, daily.Select(d => (
-                    d.date.ToString("yyyy-MM-dd"),
+                byDay = FillDailySeriesLocal(rangeFrom, rangeTo, offset, daily.Select(d => (
+                    d.date,
                     d.total,
                     d.identified)));
             }
@@ -169,8 +177,8 @@ public static class EventEndpoints
             return Results.Ok(new
             {
                 range = normalized,
-                from = from.ToString("O"),
-                to = to.ToString("O"),
+                from = rangeFrom.ToString("O"),
+                to = rangeTo.ToString("O"),
                 total,
                 identified,
                 needsReview,
@@ -539,6 +547,23 @@ public static class EventEndpoints
         return gates.Any(g => string.Equals(g.Id.ToString(), requestedGateId, StringComparison.OrdinalIgnoreCase));
     }
 
+    static DateTime AsUtc(DateTime dt) =>
+        dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
+
+    static int ToLocalHour(DateTime dt, int tzOffsetMinutes) =>
+        AsUtc(dt).AddMinutes(-tzOffsetMinutes).Hour;
+
+    static string ToLocalDateKey(DateTime dt, int tzOffsetMinutes) =>
+        AsUtc(dt).AddMinutes(-tzOffsetMinutes).ToString("yyyy-MM-dd");
+
+    static string NormalizeActivityRange(string range) =>
+        range.Trim().ToLowerInvariant() switch
+        {
+            "week" => "week",
+            "month" => "month",
+            _ => "today",
+        };
+
     static (DateTime from, DateTime to, string range) ResolveActivityRange(string range)
     {
         var todayStart = DateTime.UtcNow.Date;
@@ -549,6 +574,27 @@ public static class EventEndpoints
             "month" => (new DateTime(todayStart.Year, todayStart.Month, 1, 0, 0, 0, DateTimeKind.Utc), tomorrow, "month"),
             _ => (todayStart, tomorrow, "today"),
         };
+    }
+
+    static List<object> FillDailySeriesLocal(
+        DateTime fromUtc,
+        DateTime toUtc,
+        int tzOffsetMinutes,
+        IEnumerable<(string date, int total, int identified)> rows)
+    {
+        var map = rows.ToDictionary(r => r.date, r => r);
+        var list = new List<object>();
+        var localFrom = AsUtc(fromUtc).AddMinutes(-tzOffsetMinutes).Date;
+        var localTo = AsUtc(toUtc).AddMinutes(-tzOffsetMinutes).Date;
+        for (var d = localFrom; d < localTo; d = d.AddDays(1))
+        {
+            var key = d.ToString("yyyy-MM-dd");
+            if (map.TryGetValue(key, out var row))
+                list.Add(new { date = key, total = row.total, identified = row.identified });
+            else
+                list.Add(new { date = key, total = 0, identified = 0 });
+        }
+        return list;
     }
 
     static List<object> FillDailySeries(DateTime from, DateTime to, IEnumerable<(string date, int total, int identified)> rows)

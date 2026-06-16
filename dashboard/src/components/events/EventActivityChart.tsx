@@ -1,11 +1,12 @@
 "use client";
 
 import type { EventActivityStats, EventActivityRange } from "@/lib/api";
+import { localTimezoneLabel } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 
 function formatDayLabel(date: string) {
-  const d = new Date(date + "T12:00:00Z");
+  const d = new Date(`${date}T12:00:00`);
   return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
 }
 
@@ -43,7 +44,7 @@ export function EventActivityChart({
     <div className="rounded-xl border border-gv-border bg-gv-panel p-4">
       <div className="mb-4 flex items-center justify-between gap-2">
         <h3 className="font-display text-xs font-semibold uppercase tracking-widest text-gray-300">
-          {isToday ? "Activity by hour (UTC)" : "Activity by day"}
+          {isToday ? `Activity by hour (${localTimezoneLabel()})` : "Activity by day"}
         </h3>
         <div className="flex items-center gap-3 text-[10px] text-gv-muted">
           <span className="flex items-center gap-1">

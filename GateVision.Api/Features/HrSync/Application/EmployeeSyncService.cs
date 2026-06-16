@@ -72,6 +72,10 @@ public class EmployeeSyncService(
             total = Convert.ToInt32(result);
         }
 
+        var alreadyImportedTotal = await db.Persons
+            .AsNoTracking()
+            .CountAsync(p => p.ExternalSourceId != null && p.ExternalSourceId.StartsWith("mysql:"), ct);
+
         var rows = new List<EmployeeRow>();
         const string sql = """
             SELECT id, qrcode, military_number, phone_number, fullname_en, fullname_ar,
@@ -102,13 +106,11 @@ public class EmployeeSyncService(
             .Where(x => x.ExternalSourceId != null)
             .ToDictionary(x => x.ExternalSourceId!, x => x.Id);
 
-        int alreadyImported = 0;
         var items = new List<EmployeePreviewItem>();
         foreach (var row in rows)
         {
             var extId = $"mysql:{row.Id}";
             var isImported = importedMap.TryGetValue(extId, out var personId);
-            if (isImported) alreadyImported++;
             if (skipImported && isImported) continue;
 
             var displayName = !string.IsNullOrWhiteSpace(row.FullNameEn)
@@ -126,7 +128,7 @@ public class EmployeeSyncService(
                 PersonId:          personId));
         }
 
-        return new EmployeePreviewResult(total, alreadyImported, items);
+        return new EmployeePreviewResult(total, alreadyImportedTotal, items);
     }
 
     public async Task<ImportResult> ImportEmployeesAsync(

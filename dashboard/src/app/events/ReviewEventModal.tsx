@@ -13,6 +13,7 @@ import {
   type GateEvent,
   type Person,
 } from "@/lib/api";
+import { formatLocalTime } from "@/lib/datetime";
 import { statusColor } from "@/components/events/EventCard";
 import { QuickCapture } from "@/components/events/QuickCapture";
 
@@ -53,7 +54,6 @@ export default function ReviewEventModal({
   const faceSrc = event.faceImageBase64
     ? `data:image/jpeg;base64,${event.faceImageBase64}`
     : event.faceImageUrl ?? null;
-  const time = new Date(event.timestamp);
   const hasFace = !!event.faceImageBase64;
 
   function invalidateAll() {
@@ -288,7 +288,7 @@ export default function ReviewEventModal({
             <div className="flex items-center gap-3 mt-1 text-[10px] font-mono" style={{ color: "#64748b" }}>
               <span>{Math.round(event.confidence * 100)}% confidence</span>
               <span className="capitalize">{event.direction}</span>
-              <span>{time.toLocaleTimeString("en-US", { hour12: false })}</span>
+              <span>{formatLocalTime(event.timestamp)}</span>
             </div>
           </div>
         </div>

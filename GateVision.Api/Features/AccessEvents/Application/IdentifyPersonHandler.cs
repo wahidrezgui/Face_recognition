@@ -51,10 +51,15 @@ public class IdentifyPersonHandler(
             !string.Equals(cmd.AuthenticatedGateId, effectiveGateId, StringComparison.OrdinalIgnoreCase))
             return Result<IdentifyPersonResult>.Fail("Gate mismatch", 403);
 
-        if (!DateTime.TryParse(cmd.CapturedAt, out var capturedAt))
+        if (!DateTime.TryParse(cmd.CapturedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var capturedAt))
             return Result<IdentifyPersonResult>.Fail($"Invalid CapturedAt format: '{cmd.CapturedAt}'");
 
-        capturedAt = capturedAt.ToUniversalTime();
+        capturedAt = capturedAt.Kind switch
+        {
+            DateTimeKind.Utc => capturedAt,
+            DateTimeKind.Local => capturedAt.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(capturedAt, DateTimeKind.Utc),
+        };
         var recognition = await gateService.GetRecognitionSettingsAsync(effectiveGateId, ct);
         var result = await identification.Identify(cmd.Embedding, cmd.FrameQuality, capturedAt, recognition);
 

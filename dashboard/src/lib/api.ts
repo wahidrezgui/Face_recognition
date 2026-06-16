@@ -160,27 +160,35 @@ export interface EventActivityStats {
   byHour?: EventHourBucket[] | null;
 }
 
-/** UTC range bounds aligned with GET /api/events/activity. */
+/** Local calendar range bounds (converted to ISO UTC instants for API filters). */
 export function activityRangeBounds(range: EventActivityRange): { from: string; to: string } {
   const now = new Date();
-  const todayStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const tomorrow = new Date(todayStart);
-  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  tomorrow.setDate(tomorrow.getDate() + 1);
 
   if (range === "week") {
     const from = new Date(todayStart);
-    from.setUTCDate(from.getUTCDate() - 6);
+    from.setDate(from.getDate() - 6);
     return { from: from.toISOString(), to: tomorrow.toISOString() };
   }
   if (range === "month") {
-    const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const from = new Date(now.getFullYear(), now.getMonth(), 1);
     return { from: from.toISOString(), to: tomorrow.toISOString() };
   }
   return { from: todayStart.toISOString(), to: tomorrow.toISOString() };
 }
 
-export async function fetchEventActivity(range: EventActivityRange): Promise<EventActivityStats> {
-  const res = await apiFetch(`${API_BASE}/api/v1/events/activity?range=${range}`, {
+export async function fetchEventActivity(
+  range: EventActivityRange,
+  from?: string,
+  to?: string,
+): Promise<EventActivityStats> {
+  const params = new URLSearchParams({ range });
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  params.set("tzOffset", String(new Date().getTimezoneOffset()));
+  const res = await apiFetch(`${API_BASE}/api/v1/events/activity?${params}`, {
     headers: authHeaders(),
   });
   if (!res.ok) throw new Error("Failed to fetch event activity");
@@ -969,14 +977,24 @@ export async function deleteValidatedEvent(id: string): Promise<void> {
   if (!res.ok && res.status !== 404) throw new Error("Failed to delete validated event");
 }
 
-export async function fetchValidatedEventStats(): Promise<{
-  todayTotal: number;
+export async function fetchValidatedEventStats(
+  from?: string,
+  to?: string,
+): Promise<{
+  total: number;
   autoCount: number;
   manualCount: number;
   entries: number;
   exits: number;
 }> {
-  const res = await apiFetch(`${API_BASE}/api/v1/validated-events/stats`, { headers: authHeaders() });
+  const params = new URLSearchParams();
+  if (from) params.set("from", from);
+  if (to) params.set("to", to);
+  const qs = params.toString();
+  const res = await apiFetch(
+    `${API_BASE}/api/v1/validated-events/stats${qs ? `?${qs}` : ""}`,
+    { headers: authHeaders() },
+  );
   if (!res.ok) throw new Error("Failed to fetch validated event stats");
   return res.json();
 }

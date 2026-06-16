@@ -22,7 +22,7 @@ import { EventActivityChart } from "@/components/events/EventActivityChart";
 import ReviewEventModal from "./ReviewEventModal";
 
 const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
-  { value: "today", label: "Today", hint: "Midnight UTC → now" },
+  { value: "today", label: "Today", hint: "Local midnight → now" },
   { value: "week", label: "This week", hint: "Last 7 days" },
   { value: "month", label: "This month", hint: "Calendar month" },
 ];
@@ -54,8 +54,8 @@ export default function EventsPage() {
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
   const { data: activity, isLoading: activityLoading } = useQuery({
-    queryKey: ["events-activity", period],
-    queryFn: () => fetchEventActivity(period),
+    queryKey: ["events-activity", period, bounds.from, bounds.to],
+    queryFn: () => fetchEventActivity(period, bounds.from, bounds.to),
     refetchInterval: 30_000,
   });
 
@@ -127,7 +127,7 @@ export default function EventsPage() {
       // Silently refetch on error
       queryClient.invalidateQueries({ queryKey: ["events"] });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, period, page, name, statusTab, bounds.from, bounds.to]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;

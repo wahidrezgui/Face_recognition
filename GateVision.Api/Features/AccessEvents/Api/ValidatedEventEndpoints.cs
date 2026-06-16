@@ -121,14 +121,21 @@ public static class ValidatedEventEndpoints
             var alreadyExists = await db.ValidatedEvents
                 .AnyAsync(v => v.GateEventId == id, ct);
             if (alreadyExists)
+            {
+                db.GateEvents.Remove(gateEvt);
+                await db.SaveChangesAsync(ct);
                 return Results.Conflict(new { error = "This event has already been validated." });
+            }
 
-            // 4. Insert validated_events row
-            var validated = ValidatedEvent.FromGateEvent(gateEvt, ValidationSource.Manual);
-            db.ValidatedEvents.Add(validated);
+            // 4. Promote to validated_events and remove from gate_events
+            db.ValidatedEvents.Add(ValidatedEvent.FromGateEvent(gateEvt, ValidationSource.Manual));
+            db.GateEvents.Remove(gateEvt);
             await db.SaveChangesAsync(ct);
 
-            logger.LogInformation("Event {EventId} manually validated → validated_events {ValidatedId}", id, validated.Id);
+            logger.LogInformation("Event {EventId} manually validated → validated_events (removed from gate_events)", id);
+
+            var validated = await db.ValidatedEvents
+                .FirstAsync(v => v.GateEventId == id, ct);
 
             var person2 = await db.Persons.FindAsync([gateEvt.PersonId!.Value], ct);
             return Results.Ok(new
@@ -156,18 +163,22 @@ public static class ValidatedEventEndpoints
         }).RequireAuthorization();
 
         // ── GET /api/validated-events/stats ────────────────────────────────────
-        app.MapGet("/api/v1/validated-events/stats", async (AppDbContext db, CancellationToken ct) =>
+        app.MapGet("/api/v1/validated-events/stats", async (
+            AppDbContext db, CancellationToken ct,
+            DateTime? from = null,
+            DateTime? to = null) =>
         {
-            var todayStart = DateTime.UtcNow.Date;
-            var todayEnd   = todayStart.AddDays(1);
+            var query = db.ValidatedEvents.AsQueryable();
+            if (from.HasValue) query = query.Where(e => e.CapturedAt >= from.Value);
+            if (to.HasValue)   query = query.Where(e => e.CapturedAt < to.Value);
 
-            var todayTotal  = await db.ValidatedEvents.CountAsync(e => e.CapturedAt >= todayStart && e.CapturedAt < todayEnd, ct);
-            var autoCount   = await db.ValidatedEvents.CountAsync(e => e.ValidatedBy == ValidationSource.Auto,   ct);
-            var manualCount = await db.ValidatedEvents.CountAsync(e => e.ValidatedBy == ValidationSource.Manual, ct);
-            var entries     = await db.ValidatedEvents.CountAsync(e => e.Direction == Direction.Entry, ct);
-            var exits       = await db.ValidatedEvents.CountAsync(e => e.Direction == Direction.Exit,  ct);
+            var total       = await query.CountAsync(ct);
+            var autoCount   = await query.Where(e => e.ValidatedBy == ValidationSource.Auto).CountAsync(ct);
+            var manualCount = await query.Where(e => e.ValidatedBy == ValidationSource.Manual).CountAsync(ct);
+            var entries     = await query.Where(e => e.Direction == Direction.Entry).CountAsync(ct);
+            var exits       = await query.Where(e => e.Direction == Direction.Exit).CountAsync(ct);
 
-            return Results.Ok(new { todayTotal, autoCount, manualCount, entries, exits });
+            return Results.Ok(new { total, autoCount, manualCount, entries, exits });
         });
     }
 }

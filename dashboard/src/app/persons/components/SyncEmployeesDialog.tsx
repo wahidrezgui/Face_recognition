@@ -51,17 +51,25 @@ export function SyncEmployeesDialog({
     imported: number; skipped: number; failed: number; enrolledFaces: number;
   } | null>(null);
 
-  const loadPreview = useCallback(async (nextOffset = 0) => {
+  const loadPreview = useCallback(async (nextOffset = 0, append = false) => {
     setState("previewing");
     try {
-      const data = await fetchEmployeePreview(PAGE_SIZE, nextOffset, true);
+      let offset = nextOffset;
+      let data = await fetchEmployeePreview(PAGE_SIZE, offset, true);
+
+      // skipImported can return an empty page when every row in the slice is already imported
+      while (data.employees.length === 0 && offset + PAGE_SIZE < data.total) {
+        offset += PAGE_SIZE;
+        data = await fetchEmployeePreview(PAGE_SIZE, offset, true);
+      }
+
       setTotal(data.total);
       setAlreadyImported(data.alreadyImported);
-      setOffset(nextOffset);
-      if (nextOffset === 0) {
-        setEmployees(data.employees);
-      } else {
+      setOffset(offset);
+      if (append) {
         setEmployees(prev => [...prev, ...data.employees]);
+      } else {
+        setEmployees(data.employees);
       }
       setState("ready");
     } catch (err) {
@@ -95,10 +103,10 @@ export function SyncEmployeesDialog({
       const batch = ids.slice(i, i + BATCH);
       try {
         const result = await importEmployees(batch, enrollPhotos);
-        totalImported  += result.imported;
-        totalSkipped   += result.skipped;
-        totalFailed    += result.failed;
-        totalEnrolled  += result.enrolledFaces;
+        totalImported += result.imported;
+        totalSkipped += result.skipped;
+        totalFailed += result.failed;
+        totalEnrolled += result.enrolledFaces;
 
         setResultMap(prev => {
           const next = { ...prev };
@@ -269,10 +277,10 @@ export function SyncEmployeesDialog({
             </div>
 
             {/* Load more */}
-            {state === "ready" && employees.length < allNewCount && (
+            {state === "ready" && offset + PAGE_SIZE < total && (
               <button
                 type="button"
-                onClick={() => loadPreview(offset + PAGE_SIZE)}
+                onClick={() => loadPreview(offset + PAGE_SIZE, true)}
                 className="mt-2 w-full py-2 text-xs text-gv-muted hover:text-gray-300"
               >
                 Load more…
@@ -281,8 +289,8 @@ export function SyncEmployeesDialog({
           </div>
         )}
 
-        {/* Empty state */}
-        {state === "ready" && employees.length === 0 && (
+        {/* Empty state — only when there is genuinely nothing left to import */}
+        {state === "ready" && employees.length === 0 && allNewCount === 0 && (
           <p className="py-10 text-center text-sm text-gv-muted">
             All employees have already been imported.
           </p>

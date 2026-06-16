@@ -2,16 +2,17 @@
 
 import { memo, useState } from "react";
 import { type GateEvent } from "@/lib/api";
+import { formatLocalDate, formatLocalTime } from "@/lib/datetime";
 
 // ── Event helpers ──────────────────────────────────────────────
 export function statusColor(s?: string) {
-  if (s === "Identified")  return "#22d3a5";
+  if (s === "Identified") return "#22d3a5";
   if (s === "NeedsReview") return "#f59e0b";
   return "#f87171";
 }
 
 function statusLabel(s?: string) {
-  if (s === "Identified")  return "Identified";
+  if (s === "Identified") return "Identified";
   if (s === "NeedsReview") return "Review";
   return "Unknown";
 }
@@ -28,8 +29,8 @@ function FaceRing({ event }: { event: GateEvent }) {
       ? event.personName.split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2)
       : "?";
 
-  const col  = statusColor(event.status);
-  const r    = 22;
+  const col = statusColor(event.status);
+  const r = 22;
   const circ = 2 * Math.PI * r;
   const fill = circ * Math.max(0, Math.min(1, event.confidence));
 
@@ -127,9 +128,8 @@ export const EventCard = memo(function EventCard({
   onReview?: (event: GateEvent) => void;
   onDelete?: (eventId: string) => void;
 }) {
-  const col      = statusColor(event.status);
+  const col = statusColor(event.status);
   const isReview = event.status === "NeedsReview";
-  const time     = new Date(event.timestamp);
 
   return (
     <div
@@ -173,10 +173,10 @@ export const EventCard = memo(function EventCard({
       {/* Timestamp */}
       <div className="text-right shrink-0 hidden sm:block">
         <p className="text-xs font-mono text-gray-400">
-          {time.toLocaleTimeString("en-US", { hour12: false })}
+          {formatLocalTime(event.timestamp)}
         </p>
         <p className="text-[10px] text-gray-700 mt-0.5">
-          {time.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          {formatLocalDate(event.timestamp)}
         </p>
       </div>
 
