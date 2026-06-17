@@ -147,8 +147,21 @@ class CameraCapture:
                     self._latest_frame = frame
                 self._frame_ready.set()
             except Exception as e:
-                logger.error("Grab loop: unexpected error: %s", e, exc_info=True)
-                time.sleep(1.0)
+                # C++ exceptions from DSHOW (filter graph crash, driver error) land here.
+                # The cap is dead — treat it identically to ret=False and reconnect.
+                logger.warning("Grab loop: capture exception (%s), reconnecting in %ds...", e, self._backoff)
+                time.sleep(self._backoff)
+                self._backoff = min(self._backoff * 2, 30)
+                try:
+                    self.cap.release()
+                except Exception:
+                    pass
+                if self._stopped:
+                    break
+                try:
+                    self.cap = self._open()
+                except Exception:
+                    logger.error("Grab loop: reconnect failed after exception, will retry")
 
     def read_frame(self) -> np.ndarray | None:
         """Return the latest available frame, blocking up to 2s if none yet."""

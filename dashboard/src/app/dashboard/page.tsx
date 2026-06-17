@@ -196,12 +196,6 @@ export default function DashboardPage() {
           <span>AI Service</span>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs text-gray-400 ml-4">
-          <span className="text-gray-600">{selectedGate ? gates.find(g => g.id === selectedGate)?.name ?? selectedGate : "All Gates"}</span>
-          <IconDot online={!streamError} />
-          <span>{streamError ? "Offline" : "Live"}</span>
-        </div>
-
         <div className="ml-auto flex items-center gap-3 text-xs text-gray-500 font-mono">
           <LiveClock mode="date" options={{ weekday: "short", year: "numeric", month: "short", day: "numeric" }} />
           <LiveClock mode="time" options={{ hour12: false }} className="text-blue-300 text-sm font-bold" />

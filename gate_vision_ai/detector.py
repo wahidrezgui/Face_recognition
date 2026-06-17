@@ -1,7 +1,9 @@
 import logging
+import threading
 import cv2
 import numpy as np
 from concurrent.futures import ProcessPoolExecutor
+from multiprocessing.shared_memory import SharedMemory
 from insightface.app import FaceAnalysis
 from .config import settings
 
@@ -27,6 +29,8 @@ _PROVIDER_LABELS = {
     "OpenVINOExecutionProvider": "CPU/iGPU (OpenVINO)",
     "CPUExecutionProvider":      "CPU",
 }
+
+_SHM_MAX_BYTES: int = 1920 * 1080 * 3  # sufficient for a full 1080p BGR frame
 
 
 def _build_provider_list() -> list[str]:
@@ -75,28 +79,29 @@ def _resolve_profile(providers: list[str]) -> tuple[str, tuple[int, int], str]:
 
 _worker_app = None
 _worker_thresh = 0.5
+_worker_shm: "SharedMemory | None" = None
 
 
 def _worker_init(model_pkg: str, det_size_w: int, det_size_h: int,
-                 provider_chain: list, det_thresh: float) -> None:
-    """Called once when the worker process starts. Loads InsightFace into _worker_app."""
-    global _worker_app, _worker_thresh
+                 provider_chain: list, det_thresh: float, shm_name: str = "") -> None:
+    """Called once when the worker process starts. Loads InsightFace and attaches shared memory."""
+    # On Windows, ProcessPoolExecutor uses spawn — fresh interpreter with no logging handlers.
+    # Configure a minimal handler so worker warnings reach the parent's console.
+    logging.basicConfig(level=logging.WARNING, format="%(asctime)s [worker] %(levelname)s: %(message)s")
+    global _worker_app, _worker_thresh, _worker_shm
     _worker_app = FaceAnalysis(name=model_pkg, providers=provider_chain)
     _worker_app.prepare(ctx_id=0, det_size=(det_size_w, det_size_h))
     _worker_thresh = det_thresh
+    if shm_name:
+        try:
+            _worker_shm = SharedMemory(name=shm_name, create=False)
+        except Exception as e:
+            logger.warning("Worker: could not attach shared memory '%s': %s", shm_name, e)
+            _worker_shm = None
 
 
-def _worker_detect(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list:
-    """Deserialise a frame, run InsightFace, return picklable results.
-
-    Embeddings are returned as plain lists (not numpy arrays) so they cross the
-    process boundary without special pickling. DetectorPool.detect() converts them
-    back to float32 arrays after receiving them.
-    """
-    # np.frombuffer returns a read-only view; .copy() makes it writable so
-    # InsightFace preprocessing steps can modify it in-place without raising.
-    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape).copy()
-    faces = _worker_app.get(frame)
+def _faces_to_results(faces: list) -> list:
+    """Convert InsightFace face objects to picklable dicts."""
     results = []
     for face in faces:
         det_score = float(
@@ -121,6 +126,20 @@ def _worker_detect(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list:
                 entry["gender_probability"] = float(face.gender_probability)
         results.append(entry)
     return results
+
+
+def _worker_detect(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list:
+    """Fallback: deserialise frame from bytes, run InsightFace, return picklable results."""
+    frame = np.frombuffer(frame_bytes, dtype=np.dtype(dtype_str)).reshape(shape).copy()
+    return _faces_to_results(_worker_app.get(frame))
+
+
+def _worker_detect_shm(shape: tuple, dtype_str: str) -> list:
+    """Zero-copy path: read frame from shared memory, run InsightFace."""
+    if _worker_shm is None:
+        return []
+    frame = np.ndarray(shape, dtype=np.dtype(dtype_str), buffer=_worker_shm.buf).copy()
+    return _faces_to_results(_worker_app.get(frame))
 
 
 def _worker_embed_crop(frame_bytes: bytes, shape: tuple, dtype_str: str) -> list | None:
@@ -199,6 +218,18 @@ class DetectorPool:
         self.resolved_profile = resolved
         self.active_provider = _PROVIDER_LABELS.get(self.provider_chain[0], self.provider_chain[0])
 
+        # Try to allocate shared memory to avoid serialize/deserialize per frame
+        self._shm: SharedMemory | None = None
+        self._shm_lock = threading.Lock()
+        shm_name = ""
+        try:
+            self._shm = SharedMemory(create=True, size=_SHM_MAX_BYTES)
+            shm_name = self._shm.name
+            logger.info("Shared memory allocated: name=%s size=%dMB",
+                        shm_name, _SHM_MAX_BYTES // (1024 * 1024))
+        except Exception as e:
+            logger.warning("Shared memory unavailable (%s) — using copy-based IPC", e)
+
         logger.info(
             "Starting detection worker (model=%s det_size=%s provider=%s)...",
             model_pkg, det_size, self.active_provider,
@@ -210,29 +241,37 @@ class DetectorPool:
                 model_pkg, det_size[0], det_size[1],
                 self.provider_chain,
                 settings.detector_confidence,
+                shm_name,
             ),
         )
-        # Submit a dummy frame to force the worker to start and load the model now.
-        # Without this, model loading (~5–10s) would hit the first real detection call.
+        # Warm up: force model load now so first real detection isn't delayed ~5-10s
         _dummy = np.zeros((64, 64, 3), dtype=np.uint8)
-        self._executor.submit(
-            _worker_detect, _dummy.tobytes(), _dummy.shape, _dummy.dtype.str
-        ).result()
+        if self._shm is not None:
+            np.copyto(np.ndarray(_dummy.shape, dtype=_dummy.dtype, buffer=self._shm.buf), _dummy)
+            self._executor.submit(_worker_detect_shm, _dummy.shape, _dummy.dtype.str).result()
+        else:
+            self._executor.submit(_worker_detect, _dummy.tobytes(), _dummy.shape, _dummy.dtype.str).result()
 
         logger.info(
-            "InsightFace ready (subprocess) — model=%s det_size=%s profile=%s(%s) provider=%s",
+            "InsightFace ready (subprocess) — model=%s det_size=%s profile=%s(%s) provider=%s shm=%s",
             model_pkg, det_size, settings.model_profile, resolved, self.active_provider,
+            "enabled" if self._shm else "disabled",
         )
 
     def detect(self, frame: np.ndarray) -> list:
         """Submit frame to the worker and block until results arrive.
 
-        Blocking is intentional — callers in async contexts must wrap this with
-        asyncio.to_thread() so the wait happens in a thread, not the event loop.
+        Uses shared memory when available (zero-copy), falls back to tobytes() IPC.
+        Blocking is intentional — callers in async contexts must wrap with asyncio.to_thread().
         """
-        raw = self._executor.submit(
-            _worker_detect, frame.tobytes(), frame.shape, frame.dtype.str
-        ).result()
+        if self._shm is not None and frame.nbytes <= _SHM_MAX_BYTES:
+            with self._shm_lock:
+                np.copyto(np.ndarray(frame.shape, dtype=frame.dtype, buffer=self._shm.buf), frame)
+                raw = self._executor.submit(_worker_detect_shm, frame.shape, frame.dtype.str).result()
+        else:
+            raw = self._executor.submit(
+                _worker_detect, frame.tobytes(), frame.shape, frame.dtype.str
+            ).result()
         for r in raw:
             if "embedding" in r:
                 r["embedding"] = np.array(r["embedding"], dtype=np.float32)
@@ -259,3 +298,9 @@ class DetectorPool:
 
     def shutdown(self) -> None:
         self._executor.shutdown(wait=False, cancel_futures=True)
+        if self._shm is not None:
+            try:
+                self._shm.close()
+                self._shm.unlink()
+            except Exception:
+                pass

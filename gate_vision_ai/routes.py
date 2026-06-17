@@ -150,7 +150,7 @@ def register_routes(app, state: dict):
         rejected = []
         for i, frame_data in enumerate(req.frames):
             frame = np.array(frame_data, dtype=np.uint8)
-            faces = det.detect(frame)
+            faces = await asyncio.to_thread(det.detect, frame)
             if not faces:
                 rejected.append({"frame": i, "reason": "no_face"})
                 continue
@@ -788,11 +788,11 @@ async def _run_enrollment_from_camera(person_id: str, capture, detector, backend
     max_attempts = 100
     while len(accepted) < frames_needed and attempts < max_attempts:
         attempts += 1
-        frame = capture.read_frame()
+        frame = await asyncio.to_thread(capture.read_frame)
         if frame is None:
             await asyncio.sleep(0.1)
             continue
-        faces = detector.detect(frame)
+        faces = await asyncio.to_thread(detector.detect, frame)
         if not faces:
             rejected.append({"attempt": attempts, "reason": "no_face"})
             continue
