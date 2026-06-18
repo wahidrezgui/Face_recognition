@@ -38,7 +38,7 @@ public class GateEventCleanupService(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        var timer = new PeriodicTimer(TimeSpan.FromHours(1));
+        var timer = new PeriodicTimer(TimeSpan.FromHours(24));
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
             try

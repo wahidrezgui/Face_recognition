@@ -97,7 +97,7 @@ class _KalmanTrack:
         self._P = (np.eye(8) - K @ self._H) @ self._P
         self.hits += 1
         self.last_seen = now
-        if self.hits >= 2:
+        if self.hits >= 1:
             self.confirmed = True
 
 

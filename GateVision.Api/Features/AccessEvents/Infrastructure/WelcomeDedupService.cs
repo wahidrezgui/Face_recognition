@@ -11,7 +11,7 @@ public class WelcomeDedupService
     private readonly ConcurrentDictionary<WelcomeKey, DateTime> _lastPublishedAt = new();
     private readonly TimeSpan _cooldown;
 
-    public WelcomeDedupService() : this(TimeSpan.FromSeconds(12))
+    public WelcomeDedupService() : this(TimeSpan.FromSeconds(5))
     {
     }
 
