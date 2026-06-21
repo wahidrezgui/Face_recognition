@@ -1,8 +1,4 @@
 using System.Collections.Concurrent;
-using GateVision.Api.Shared.Kernel;
-using GateVision.Api.Features.Identity.Domain;
-using GateVision.Api.Features.AccessEvents.Domain;
-using GateVision.Api.Features.GateOperations.Domain;
 
 namespace GateVision.Api.Features.AccessEvents.Infrastructure;
 
@@ -11,7 +7,7 @@ public class WelcomeDedupService
     private readonly ConcurrentDictionary<WelcomeKey, DateTime> _lastPublishedAt = new();
     private readonly TimeSpan _cooldown;
 
-    public WelcomeDedupService() : this(TimeSpan.FromSeconds(5))
+    public WelcomeDedupService() : this(TimeSpan.FromSeconds(7))
     {
     }
 
@@ -20,12 +16,12 @@ public class WelcomeDedupService
         _cooldown = cooldown;
     }
 
-    public bool ShouldPublish(string gateId, Guid? personId, Direction direction, DateTime capturedAt)
+    public bool ShouldPublish(string gateId, Guid? personId, DateTime capturedAt)
     {
         if (!personId.HasValue) return true;
 
         var normalizedGateId = string.IsNullOrWhiteSpace(gateId) ? "default" : gateId.Trim().ToLowerInvariant();
-        var key = new WelcomeKey(normalizedGateId, personId.Value, direction);
+        var key = new WelcomeKey(normalizedGateId, personId.Value);
         var now = capturedAt.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(capturedAt, DateTimeKind.Utc) : capturedAt.ToUniversalTime();
 
         while (true)
@@ -42,5 +38,5 @@ public class WelcomeDedupService
         }
     }
 
-    private readonly record struct WelcomeKey(string GateId, Guid PersonId, Direction Direction);
+    private readonly record struct WelcomeKey(string GateId, Guid PersonId);
 }

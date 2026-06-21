@@ -10,7 +10,6 @@ public class Gate
     public DateTime CreatedAt { get; private set; }
 
     public string CameraSource { get; private set; } = "0";
-    public string Direction { get; private set; } = "entry";
     public int ProcessingFps { get; private set; } = 3;
     public string ModelProfile { get; private set; } = "auto";
     public int? DetectorInputWidth { get; private set; }
@@ -29,6 +28,11 @@ public class Gate
     public double IdentifyConfidenceThreshold { get; private set; } = 0.80;
     public double AutoValidateConfidence { get; private set; } = 0.85;
     public double MinFaceConfidence { get; private set; } = 0.50;
+
+    public double TrackerMaxLostS { get; private set; } = 3.0;
+
+    public bool LogUnknown { get; private set; } = false;
+    public bool TrainingMode { get; private set; } = false;
 
     private Gate() { }
 
@@ -73,7 +77,6 @@ public class Gate
     public void UpdateConfig(GateConfigUpdate dto)
     {
         if (dto.CameraSource is not null) CameraSource = dto.CameraSource;
-        if (dto.Direction is not null) Direction = dto.Direction;
         if (dto.ProcessingFps.HasValue) ProcessingFps = dto.ProcessingFps.Value;
         if (dto.ModelProfile is not null) ModelProfile = dto.ModelProfile;
         if (dto.DetectorInputWidth.HasValue) DetectorInputWidth = dto.DetectorInputWidth;
@@ -92,6 +95,9 @@ public class Gate
         if (dto.IdentifyConfidenceThreshold.HasValue) IdentifyConfidenceThreshold = Clamp01(dto.IdentifyConfidenceThreshold.Value);
         if (dto.AutoValidateConfidence.HasValue) AutoValidateConfidence = Clamp01(dto.AutoValidateConfidence.Value);
         if (dto.MinFaceConfidence.HasValue) MinFaceConfidence = Clamp01(dto.MinFaceConfidence.Value);
+        if (dto.TrackerMaxLostS.HasValue) TrackerMaxLostS = Math.Max(0.5, dto.TrackerMaxLostS.Value);
+        if (dto.LogUnknown.HasValue) LogUnknown = dto.LogUnknown.Value;
+        if (dto.TrainingMode.HasValue) TrainingMode = dto.TrainingMode.Value;
     }
 
     static double Clamp01(double v) => Math.Clamp(v, 0.01, 0.99);

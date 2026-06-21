@@ -102,7 +102,6 @@ const PersonAvatar = memo(function PersonAvatar({
 export default function PersonsPage() {
   const queryClient = useQueryClient();
   const [name, setName] = useState("");
-  const [dept, setDept] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("All");
@@ -186,7 +185,6 @@ export default function PersonsPage() {
 
   function resetModal() {
     setName("");
-    setDept("");
     setImageFile(null);
     setImagePreview(null);
   }
@@ -202,7 +200,7 @@ export default function PersonsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const person = await createPerson(name, dept);
+      const person = await createPerson(name);
       if (!imageFile) return { hadImage: false, enrollError: null };
 
       const b64 = await fileToBase64Jpeg(imageFile);
@@ -280,7 +278,7 @@ export default function PersonsPage() {
         </div>
 
         <Input
-          placeholder="Search by name…"
+          placeholder="Search by name or mil #…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           className="mb-4 border-gv-border bg-gv-panel"
@@ -358,9 +356,11 @@ export default function PersonsPage() {
                       <p className="truncate font-medium text-gray-100">
                         {person.fullName}
                       </p>
-                      <p className="truncate text-sm text-gv-muted">
-                        {person.department}
-                      </p>
+                      {person.militaryNumber != null && (
+                        <p className="truncate text-sm text-gv-muted">
+                          Mil #{person.militaryNumber}
+                        </p>
+                      )}
                     </div>
                     {person.faceCount > 0 && (
                       <Badge
@@ -534,18 +534,6 @@ export default function PersonsPage() {
                 onChange={(e) => setName(e.target.value)}
                 required
                 autoFocus
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="add-person-dept">Department</Label>
-              <Input
-                id="add-person-dept"
-                className="border-gv-border bg-gv-panel"
-                placeholder="e.g. Engineering"
-                value={dept}
-                onChange={(e) => setDept(e.target.value)}
-                required
               />
             </div>
           </form>

@@ -111,7 +111,6 @@ class IdentityScheduler:
     async def schedule(
         self,
         snapshot: InteractionSnapshot,
-        direction: str,
         backend,
     ) -> list[IdentityResult]:
         candidates = snapshot.persons[: self._max_requests]
@@ -119,7 +118,7 @@ class IdentityScheduler:
 
         for i, person in enumerate(candidates):
             result = await process_single_face(
-                person.face, person.frame, person.timestamp, direction, backend,
+                person.face, person.frame, person.timestamp, backend,
                 track_id=person.track_id,
             )
             results.append(IdentityResult(track_id=person.track_id, rank=person.rank, result=result))

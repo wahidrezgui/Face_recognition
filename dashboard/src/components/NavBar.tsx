@@ -137,9 +137,7 @@ export default function NavBar() {
                   <span>
                     <span className="block text-xs font-medium">Desk — {gate.name}</span>
                     <span className="block text-[10px] text-muted-foreground capitalize">
-                      {gate.online && gate.status?.camera_open
-                        ? `${gate.status.direction} · live`
-                        : "offline"}
+                      {gate.online && gate.status?.camera_open ? "live" : "offline"}
                     </span>
                   </span>
                   <ExternalLink className="size-3 shrink-0 opacity-50" />

@@ -1,4 +1,3 @@
-using GateVision.Api.Features.AccessEvents.Application;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.AccessEvents.Infrastructure;
 using GateVision.Api.Features.Identity.Domain;
@@ -12,12 +11,11 @@ public static class ValidatedEventEndpoints
 {
     public static void MapValidatedEventEndpoints(this WebApplication app)
     {
-        // ── GET /api/validated-events ───────────────────────────────────────────
         app.MapGet("/api/v1/validated-events", async (
             AppDbContext db, CancellationToken ct,
             int page = 1, int limit = 50,
             string? name = null,
-            string? direction = null,
+            string? gateId = null,
             DateTime? from = null,
             DateTime? to = null) =>
         {
@@ -27,17 +25,23 @@ public static class ValidatedEventEndpoints
             var query = db.ValidatedEvents.AsQueryable();
 
             if (from.HasValue) query = query.Where(e => e.CapturedAt >= from.Value);
-            if (to.HasValue)   query = query.Where(e => e.CapturedAt < to.Value);
+            if (to.HasValue) query = query.Where(e => e.CapturedAt < to.Value);
 
-            if (!string.IsNullOrWhiteSpace(direction) &&
-                Enum.TryParse<Direction>(direction, true, out var dir))
-                query = query.Where(e => e.Direction == dir);
+            if (!string.IsNullOrWhiteSpace(gateId))
+            {
+                var normalizedGateId = gateId.Trim().ToLowerInvariant();
+                query = query.Where(e => e.GateId.ToLower() == normalizedGateId);
+            }
 
             if (!string.IsNullOrWhiteSpace(name))
             {
-                var pattern = $"%{name}%";
+                var trimmed = name.Trim();
+                var pattern = $"%{trimmed}%";
                 var matchingIds = await db.Persons
-                    .Where(p => EF.Functions.ILike(p.FullName, pattern))
+                    .Where(p =>
+                        EF.Functions.ILike(p.FullName, pattern) ||
+                        (p.MilitaryNumber != null &&
+                         EF.Functions.Like(p.MilitaryNumber.ToString(), $"%{trimmed}%")))
                     .Select(p => p.Id)
                     .ToListAsync(ct);
                 query = query.Where(e => e.PersonId.HasValue && matchingIds.Contains(e.PersonId!.Value));
@@ -46,7 +50,8 @@ public static class ValidatedEventEndpoints
             var total = await query.CountAsync(ct);
 
             var rawEvents = await query
-                .OrderByDescending(e => e.CapturedAt)
+                .OrderByDescending(e => e.ValidatedAt)
+                .ThenByDescending(e => e.Id)
                 .Skip((page - 1) * limit)
                 .Take(limit)
                 .ToListAsync(ct);
@@ -65,35 +70,30 @@ public static class ValidatedEventEndpoints
                 var person = e.PersonId.HasValue ? persons.GetValueOrDefault(e.PersonId.Value) : null;
                 return new
                 {
-                    eventId      = e.Id,
-                    gateEventId  = e.GateEventId,
-                    gateId       = e.GateId,
-                    personId     = e.PersonId?.ToString(),
-                    personName   = person?.FullName ?? "UNKNOWN",
-                    department   = person?.Department,
-                    confidence   = e.Confidence,
-                    timestamp    = e.CapturedAt.ToString("O"),
-                    direction    = e.Direction.ToString().ToLower(),
-                    validatedBy  = e.ValidatedBy.ToString().ToLower(),
-                    validatedAt  = e.ValidatedAt.ToString("O"),
+                    eventId = e.Id,
+                    gateEventId = e.GateEventId,
+                    gateId = e.GateId,
+                    personId = e.PersonId?.ToString(),
+                    personName = person?.FullName ?? "UNKNOWN",
+                    confidence = e.Confidence,
+                    timestamp = e.CapturedAt.ToString("O"),
+                    validatedBy = e.ValidatedBy.ToString().ToLower(),
+                    validatedAt = e.ValidatedAt.ToString("O"),
                     faceImageBase64 = e.FaceImageBase64,
-                    emotion      = e.Emotion,
-                    age          = e.Age,
-                    gender       = e.Gender,
+                    emotion = e.Emotion,
+                    age = e.Age,
+                    gender = e.Gender,
                 };
             });
 
             return Results.Ok(new { items, total, page, limit });
         });
 
-        // ── POST /api/events/{id}/validate ──────────────────────────────────────
-        // Manually promote a gate_event to validated_events (operator approval).
         app.MapPost("/api/v1/events/{id:guid}/validate", async (
             Guid id, ValidateEventDto dto,
             AppDbContext db, EventBufferService buffer,
             ILogger<Program> logger, CancellationToken ct) =>
         {
-            // 1. Resolve the gate event (DB first, then in-memory buffer)
             GateEvent? gateEvt = await db.GateEvents.FindAsync([id], ct);
 
             if (gateEvt is null)
@@ -105,7 +105,6 @@ public static class ValidatedEventEndpoints
             if (gateEvt is null)
                 return Results.NotFound(new { error = "Event not found" });
 
-            // 2. Optionally assign / re-assign the person
             if (dto.PersonId.HasValue)
             {
                 var person = await db.Persons.FindAsync([dto.PersonId.Value], ct);
@@ -117,7 +116,6 @@ public static class ValidatedEventEndpoints
             if (!gateEvt.PersonId.HasValue)
                 return Results.BadRequest(new { error = "Cannot validate an event with no linked person. Supply personId." });
 
-            // 3. Check for duplicate (same gate event already validated)
             var alreadyExists = await db.ValidatedEvents
                 .AnyAsync(v => v.GateEventId == id, ct);
             if (alreadyExists)
@@ -127,7 +125,6 @@ public static class ValidatedEventEndpoints
                 return Results.Conflict(new { error = "This event has already been validated." });
             }
 
-            // 4. Promote to validated_events and remove from gate_events
             db.ValidatedEvents.Add(ValidatedEvent.FromGateEvent(gateEvt, ValidationSource.Manual));
             db.GateEvents.Remove(gateEvt);
             await db.SaveChangesAsync(ct);
@@ -141,15 +138,14 @@ public static class ValidatedEventEndpoints
             return Results.Ok(new
             {
                 validatedEventId = validated.Id,
-                gateEventId      = id,
-                personId         = gateEvt.PersonId?.ToString(),
-                personName       = person2?.FullName ?? "UNKNOWN",
-                validatedBy      = "manual",
-                validatedAt      = validated.ValidatedAt.ToString("O"),
+                gateEventId = id,
+                personId = gateEvt.PersonId?.ToString(),
+                personName = person2?.FullName ?? "UNKNOWN",
+                validatedBy = "manual",
+                validatedAt = validated.ValidatedAt.ToString("O"),
             });
         }).RequireAuthorization();
 
-        // ── DELETE /api/validated-events/{id} ──────────────────────────────────
         app.MapDelete("/api/v1/validated-events/{id:guid}", async (
             Guid id, AppDbContext db, ILogger<Program> logger, CancellationToken ct) =>
         {
@@ -162,23 +158,27 @@ public static class ValidatedEventEndpoints
             return Results.Ok(new { status = "deleted" });
         }).RequireAuthorization();
 
-        // ── GET /api/validated-events/stats ────────────────────────────────────
         app.MapGet("/api/v1/validated-events/stats", async (
             AppDbContext db, CancellationToken ct,
+            string? gateId = null,
             DateTime? from = null,
             DateTime? to = null) =>
         {
             var query = db.ValidatedEvents.AsQueryable();
             if (from.HasValue) query = query.Where(e => e.CapturedAt >= from.Value);
-            if (to.HasValue)   query = query.Where(e => e.CapturedAt < to.Value);
+            if (to.HasValue) query = query.Where(e => e.CapturedAt < to.Value);
 
-            var total       = await query.CountAsync(ct);
-            var autoCount   = await query.Where(e => e.ValidatedBy == ValidationSource.Auto).CountAsync(ct);
+            if (!string.IsNullOrWhiteSpace(gateId))
+            {
+                var normalizedGateId = gateId.Trim().ToLowerInvariant();
+                query = query.Where(e => e.GateId.ToLower() == normalizedGateId);
+            }
+
+            var total = await query.CountAsync(ct);
+            var autoCount = await query.Where(e => e.ValidatedBy == ValidationSource.Auto).CountAsync(ct);
             var manualCount = await query.Where(e => e.ValidatedBy == ValidationSource.Manual).CountAsync(ct);
-            var entries     = await query.Where(e => e.Direction == Direction.Entry).CountAsync(ct);
-            var exits       = await query.Where(e => e.Direction == Direction.Exit).CountAsync(ct);
 
-            return Results.Ok(new { total, autoCount, manualCount, entries, exits });
+            return Results.Ok(new { total, autoCount, manualCount });
         });
     }
 }

@@ -56,8 +56,6 @@ function GateCard({ gate }: { gate: GateStatus }) {
 
       {gate.online && gate.status && (
         <div className="mb-3 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px]">
-          <span className="text-gray-500">Direction</span>
-          <span className="capitalize text-gray-300">{gate.status.direction}</span>
           <span className="text-gray-500">FPS</span>
           <span className="text-gray-300">{gate.status.processing_fps}</span>
           {gate.status.camera_source && (

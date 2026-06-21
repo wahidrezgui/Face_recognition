@@ -1,9 +1,9 @@
-using GateVision.Api.Shared.Kernel;
-using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.GateOperations.Domain;
+using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Shared.Infrastructure.Persistence;
 using GateVision.Api.Shared.Infrastructure.Redis;
+using GateVision.Api.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace GateVision.Api.Features.AccessEvents.Application;
@@ -55,12 +55,10 @@ public class IdentificationService
 
         string personName;
         string? welcomeMessage;
-        string? department;
 
         if (cached is not null)
         {
             personName = cached.Name;
-            department = cached.Department;
             welcomeMessage = cached.WelcomeMessage;
         }
         else
@@ -82,8 +80,7 @@ public class IdentificationService
 
             personName = person.FullName;
             welcomeMessage = person.WelcomeMessage;
-            department = person.Department;
-            await _cache.SetPersonAsync(match.PersonId, personName, department, welcomeMessage);
+            await _cache.SetPersonAsync(match.PersonId, personName, welcomeMessage);
         }
 
         var status = confidence >= settings.IdentifyConfidenceThreshold
@@ -97,7 +94,6 @@ public class IdentificationService
             Confidence = confidence,
             Status = status,
             WelcomeMessage = string.IsNullOrEmpty(welcomeMessage) ? null : welcomeMessage,
-            Department = string.IsNullOrEmpty(department) ? null : department,
         };
     }
 }
@@ -109,5 +105,4 @@ public class IdentifyResponse
     public float Confidence { get; set; }
     public EventStatus Status { get; set; }
     public string? WelcomeMessage { get; set; }
-    public string? Department { get; set; }
 }

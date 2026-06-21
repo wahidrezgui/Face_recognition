@@ -1,6 +1,6 @@
+using System.Text.Json;
 using GateVision.Api.Features.Identity.Domain;
 using StackExchange.Redis;
-using System.Text.Json;
 
 namespace GateVision.Api.Shared.Infrastructure.Redis;
 
@@ -37,8 +37,8 @@ public class CacheService
     public async Task<PersonCacheData?> GetPersonAsync(Guid personId)
         => await GetAsync<PersonCacheData>($"person:{personId}");
 
-    public async Task SetPersonAsync(Guid personId, string name, string? department, string? welcomeMessage)
-        => await SetAsync($"person:{personId}", new PersonCacheData(name, department, welcomeMessage));
+    public async Task SetPersonAsync(Guid personId, string name, string? welcomeMessage)
+        => await SetAsync($"person:{personId}", new PersonCacheData(name, welcomeMessage));
 
     public async Task RemovePersonAsync(Guid personId)
         => await RemoveAsync($"person:{personId}");

@@ -67,10 +67,10 @@ class NetBackendClient:
         self._local_buffer = LocalEventBuffer(settings.local_buffer_path)
         logger.info("Local event buffer initialised at %s", settings.local_buffer_path)
 
-    async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> dict | None:
+    async def identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> dict | None:
         if not self.circuit_breaker.allow_request():
             logger.warning("Circuit breaker OPEN — buffering identify request locally")
-            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
+            self._buffer_identify(embedding, frame_quality, captured_at, face_crop_b64, track_id, age, gender, emotion)
             return {"circuit_open": True}
 
         body = {
@@ -78,7 +78,6 @@ class NetBackendClient:
             "embedding": embedding.tolist(),
             "frame_quality": frame_quality,
             "captured_at": captured_at,
-            "direction": direction,
             "face_crop": face_crop_b64,
             "track_id": track_id,
             "age": int(age) if age is not None else None,
@@ -96,27 +95,26 @@ class NetBackendClient:
                 return None
             self.circuit_breaker.on_failure()
             logger.error("Identify request failed (%d): %s — buffering locally", e.response.status_code, e)
-            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
+            self._buffer_identify(embedding, frame_quality, captured_at, face_crop_b64, track_id, age, gender, emotion)
             return None
         except (httpx.ConnectError, httpx.TimeoutException) as e:
             self.circuit_breaker.on_failure()
             logger.error("Backend unreachable (%s) at %s — buffering locally",
                          repr(e), settings.net_backend_url)
-            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
+            self._buffer_identify(embedding, frame_quality, captured_at, face_crop_b64, track_id, age, gender, emotion)
             return {"backend_down": True}
         except Exception as e:
             self.circuit_breaker.on_failure()
             logger.error("Identify request error: %s — buffering locally", e)
-            self._buffer_identify(embedding, frame_quality, captured_at, direction, face_crop_b64, track_id, age, gender, emotion)
+            self._buffer_identify(embedding, frame_quality, captured_at, face_crop_b64, track_id, age, gender, emotion)
             return None
 
-    def _buffer_identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, direction: str = "entry", face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> None:
+    def _buffer_identify(self, embedding: np.ndarray, frame_quality: float, captured_at: str, face_crop_b64: str | None = None, track_id: int = 0, age: int | None = None, gender: str | None = None, emotion: str | None = None) -> None:
         payload = {
             "gate_id": self.gate_id,
             "embedding": embedding.tolist(),
             "frame_quality": frame_quality,
             "captured_at": captured_at,
-            "direction": direction,
             "face_crop": face_crop_b64,
             "track_id": track_id,
             "age": int(age) if age is not None else None,

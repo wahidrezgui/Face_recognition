@@ -51,27 +51,12 @@ public static class PersonEndpoints
             {
                 person.Id,
                 person.FullName,
-                person.Department,
                 enrollmentStatus = person.EnrollmentStatus.ToString(),
-                person.CreatedAt,
                 faceCount = CountEnrolledFaces(id),
                 hasProfileImage = HasProfileImage(id),
                 person.WelcomeMessage,
                 person.ExternalSourceId,
-                person.QrCode,
                 person.MilitaryNumber,
-                person.PhoneNumber,
-                person.FullNameEn,
-                person.FullNameAr,
-                person.DepartmentId,
-                person.RankId,
-                person.NationalityId,
-                person.IsEmployee,
-                person.Qid,
-                person.DefaultBase,
-                person.Remarks,
-                person.BloodType,
-                person.JobArabic,
             });
         });
 
@@ -192,11 +177,11 @@ public static class PersonEndpoints
 
             if (!string.IsNullOrWhiteSpace(search))
             {
-                var s = search.ToLower();
+                var s = search.Trim();
+                var sLower = s.ToLower();
                 query = query.Where(p =>
-                    p.FullName.ToLower().Contains(s) ||
-                    (p.FullNameEn != null && p.FullNameEn.ToLower().Contains(s)) ||
-                    (p.FullNameAr != null && p.FullNameAr.ToLower().Contains(s)));
+                    p.FullName.ToLower().Contains(sLower) ||
+                    (p.MilitaryNumber != null && p.MilitaryNumber.ToString().Contains(s)));
             }
 
             if (!string.IsNullOrWhiteSpace(status) &&
@@ -216,27 +201,12 @@ public static class PersonEndpoints
                 {
                     p.Id,
                     p.FullName,
-                    p.Department,
                     enrollmentStatus = p.EnrollmentStatus.ToString(),
-                    p.CreatedAt,
                     faceCount = CountEnrolledFaces(p.Id),
                     hasProfileImage = HasProfileImage(p.Id),
                     welcomeMessage = p.WelcomeMessage,
                     p.ExternalSourceId,
-                    p.QrCode,
                     p.MilitaryNumber,
-                    p.PhoneNumber,
-                    p.FullNameEn,
-                    p.FullNameAr,
-                    p.DepartmentId,
-                    p.RankId,
-                    p.NationalityId,
-                    p.IsEmployee,
-                    p.Qid,
-                    p.DefaultBase,
-                    p.Remarks,
-                    p.BloodType,
-                    p.JobArabic,
                 }),
                 total,
                 page,
@@ -247,12 +217,11 @@ public static class PersonEndpoints
 
         app.MapPost("/api/v1/persons", async (CreatePersonDto dto, EnrollmentService svc, CancellationToken ct) =>
         {
-            var person = await svc.CreatePerson(dto.FullName, dto.Department, dto.WelcomeMessage, ct);
+            var person = await svc.CreatePerson(dto.FullName, dto.WelcomeMessage, ct);
             return Results.Created($"/api/v1/persons/{person.Id}", new
             {
                 person.Id,
                 person.FullName,
-                person.Department,
                 enrollmentStatus = person.EnrollmentStatus.ToString(),
                 person.WelcomeMessage,
             });
@@ -284,9 +253,9 @@ public static class PersonEndpoints
 
             switch (status)
             {
-                case EnrollmentStatus.Active:    person.Activate();        break;
-                case EnrollmentStatus.Suspended: person.Suspend();         break;
-                case EnrollmentStatus.Pending:   person.ResetToPending();  break;
+                case EnrollmentStatus.Active: person.Activate(); break;
+                case EnrollmentStatus.Suspended: person.Suspend(); break;
+                case EnrollmentStatus.Pending: person.ResetToPending(); break;
             }
             await db.SaveChangesAsync(ct);
             return Results.Ok(new
@@ -466,7 +435,7 @@ public static class PersonEndpoints
             var person = await db.Persons.FindAsync([id], ct);
             if (person is null) return Results.NotFound();
 
-            person.UpdateProfile(dto.FullName, dto.Department);
+            person.UpdateProfile(dto.FullName);
             await db.SaveChangesAsync(ct);
             await cache.RemovePersonAsync(id);
 
@@ -474,7 +443,6 @@ public static class PersonEndpoints
             {
                 person.Id,
                 person.FullName,
-                person.Department,
                 enrollmentStatus = person.EnrollmentStatus.ToString(),
                 person.WelcomeMessage,
             });
@@ -489,7 +457,7 @@ public static class PersonEndpoints
             await db.SaveChangesAsync(ct);
             await cache.RemovePersonAsync(id);
             if (person.WelcomeMessage is not null)
-                await cache.SetPersonAsync(id, person.FullName, person.Department, person.WelcomeMessage);
+                await cache.SetPersonAsync(id, person.FullName, person.WelcomeMessage);
 
             return Results.Ok(new { person.Id, person.WelcomeMessage });
         });
@@ -499,7 +467,6 @@ public static class PersonEndpoints
 public class CreatePersonDto
 {
     public string FullName { get; set; } = "";
-    public string Department { get; set; } = "";
     public string? WelcomeMessage { get; set; }
 }
 
@@ -523,7 +490,6 @@ public class EnrollDto
 public class UpdatePersonDto
 {
     public string? FullName { get; set; }
-    public string? Department { get; set; }
 }
 
 public class UpdateStatusDto

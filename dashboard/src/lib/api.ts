@@ -24,7 +24,6 @@ export interface GateEvent {
   personName: string;
   confidence: number;
   timestamp: string;
-  direction: "entry" | "exit";
   status?: "Identified" | "NeedsReview";
   faceImageBase64?: string | null;
   faceImageUrl?: string | null;
@@ -38,28 +37,12 @@ export interface GateEvent {
 export interface Person {
   id: string;
   fullName: string;
-  department: string;
   enrollmentStatus: "Pending" | "Active" | "Suspended";
-  createdAt: string;
   faceCount: number;
   hasProfileImage?: boolean;
   welcomeMessage?: string | null;
-  // HR system fields
   externalSourceId?: string | null;
-  qrCode?: string | null;
   militaryNumber?: number | null;
-  phoneNumber?: string | null;
-  fullNameEn?: string | null;
-  fullNameAr?: string | null;
-  departmentId?: number | null;
-  rankId?: number | null;
-  nationalityId?: number | null;
-  isEmployee?: boolean;
-  qid?: string | null;
-  defaultBase?: number | null;
-  remarks?: string | null;
-  bloodType?: string | null;
-  jobArabic?: string | null;
 }
 
 export interface EmployeePreviewItem {
@@ -152,8 +135,6 @@ export interface EventActivityStats {
   total: number;
   identified: number;
   needsReview: number;
-  entries: number;
-  exits: number;
   uniquePersons: number;
   avgConfidence: number;
   byDay: EventDayBucket[];
@@ -183,10 +164,12 @@ export async function fetchEventActivity(
   range: EventActivityRange,
   from?: string,
   to?: string,
+  gateId?: string,
 ): Promise<EventActivityStats> {
   const params = new URLSearchParams({ range });
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (gateId) params.set("gateId", gateId);
   params.set("tzOffset", String(new Date().getTimezoneOffset()));
   const res = await apiFetch(`${API_BASE}/api/v1/events/activity?${params}`, {
     headers: authHeaders(),
@@ -202,12 +185,14 @@ export async function fetchEvents(
   status?: string,
   from?: string,
   to?: string,
+  gateId?: string,
 ): Promise<{ items: GateEvent[]; total: number; page: number; limit: number }> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (name) params.set("name", name);
   if (status) params.set("status", status);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (gateId) params.set("gateId", gateId);
   const res = await apiFetch(`${API_BASE}/api/v1/events?${params}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Failed to fetch events");
   return res.json();
@@ -255,11 +240,11 @@ export async function fetchPerson(id: string): Promise<Person> {
   return res.json();
 }
 
-export async function createPerson(fullName: string, department: string) {
+export async function createPerson(fullName: string, welcomeMessage?: string | null) {
   const res = await apiFetch(`${API_BASE}/api/v1/persons`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ fullName, department }),
+    body: JSON.stringify({ fullName, welcomeMessage }),
   });
   if (!res.ok) throw new Error("Failed to create person");
   return res.json();
@@ -275,7 +260,7 @@ export async function updateWelcomeMessage(id: string, welcomeMessage: string | 
   return res.json();
 }
 
-export async function updatePerson(id: string, data: { fullName?: string; department?: string }) {
+export async function updatePerson(id: string, data: { fullName?: string }) {
   const res = await apiFetch(`${API_BASE}/api/v1/persons/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json", ...authHeaders() },
@@ -477,7 +462,6 @@ export async function fetchTrainingEvents(
 export async function updateTrainingEvent(eventId: string, data: {
   personId?: string | null;
   confidence: number;
-  direction: "entry" | "exit";
   status: "NeedsReview" | "Identified";
   capturedAt: string;
   emotion?: string | null;
@@ -588,11 +572,11 @@ export interface StreamStatus {
   detector_loaded: boolean;
 }
 
-export async function setVideoSource(cameraSource: string, direction?: string): Promise<{ status: string; message?: string; camera_source: string; direction?: string }> {
+export async function setVideoSource(cameraSource: string): Promise<{ status: string; message?: string; camera_source: string }> {
   const res = await apiFetch(`${API_BASE}/api/v1/config/video-source`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ cameraSource, direction }),
+    body: JSON.stringify({ cameraSource }),
   });
   if (!res.ok) {
     let detail = "Failed to set video source";
@@ -648,7 +632,6 @@ export interface GateStreamStatus {
   camera_open: boolean;
   detector_loaded: boolean;
   camera_source: string;
-  direction: string;
   processing_fps: number;
   stats: GateStats;
 }
@@ -720,6 +703,8 @@ export interface GateRecognitionConfig {
   identify_confidence_threshold: number;
   auto_validate_confidence: number;
   min_face_confidence: number;
+  log_unknown?: boolean;
+  training_mode?: boolean;
 }
 
 export async function setGateRecognitionConfig(
@@ -735,6 +720,8 @@ export async function setGateRecognitionConfig(
       minMatchScore: config.min_match_score,
       autoValidateConfidence: config.auto_validate_confidence,
       minFaceConfidence: config.min_face_confidence,
+      logUnknown: config.log_unknown,
+      trainingMode: config.training_mode,
     }),
   });
   if (!res.ok) throw new Error("Failed to set recognition thresholds");
@@ -785,7 +772,6 @@ export async function fetchGateStatus(gateId: string): Promise<GateStreamStatus 
 export interface GateDbConfig {
   gate_id: string;
   camera_source: string;
-  direction: string;
   processing_fps: number;
   model_profile: string;
   detector_input_size: number[] | null;
@@ -802,6 +788,9 @@ export interface GateDbConfig {
   identify_confidence_threshold: number;
   auto_validate_confidence: number;
   min_face_confidence: number;
+  tracker_max_lost_s?: number;
+  log_unknown?: boolean;
+  training_mode?: boolean;
 }
 
 export async function fetchGateDbConfig(gateId: string): Promise<GateDbConfig | null> {
@@ -931,7 +920,6 @@ export interface ValidatedEvent {
   department: string | null;
   confidence: number;
   timestamp: string;
-  direction: "entry" | "exit";
   validatedBy: "auto" | "manual";
   validatedAt: string;
   faceImageBase64?: string | null;
@@ -944,15 +932,15 @@ export async function fetchValidatedEvents(
   page = 1,
   limit = 50,
   name?: string,
-  direction?: string,
   from?: string,
   to?: string,
+  gateId?: string,
 ): Promise<{ items: ValidatedEvent[]; total: number; page: number; limit: number }> {
   const params = new URLSearchParams({ page: String(page), limit: String(limit) });
   if (name) params.set("name", name);
-  if (direction) params.set("direction", direction);
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (gateId) params.set("gateId", gateId);
   const res = await apiFetch(`${API_BASE}/api/v1/validated-events?${params}`, { headers: authHeaders() });
   if (!res.ok) throw new Error("Failed to fetch validated events");
   return res.json();
@@ -986,16 +974,16 @@ export async function deleteValidatedEvent(id: string): Promise<void> {
 export async function fetchValidatedEventStats(
   from?: string,
   to?: string,
+  gateId?: string,
 ): Promise<{
   total: number;
   autoCount: number;
   manualCount: number;
-  entries: number;
-  exits: number;
 }> {
   const params = new URLSearchParams();
   if (from) params.set("from", from);
   if (to) params.set("to", to);
+  if (gateId) params.set("gateId", gateId);
   const qs = params.toString();
   const res = await apiFetch(
     `${API_BASE}/api/v1/validated-events/stats${qs ? `?${qs}` : ""}`,
@@ -1008,12 +996,11 @@ export async function fetchValidatedEventStats(
 export async function setGateVideoSource(
   gateId: string,
   cameraSource: string,
-  direction: string
-): Promise<{ status: string; gate_id: string; camera_source: string; direction: string; message?: string }> {
+): Promise<{ status: string; gate_id: string; camera_source: string; message?: string }> {
   const res = await apiFetch(`${API_BASE}/api/v1/config/gates/${gateId}/video-source`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeaders() },
-    body: JSON.stringify({ cameraSource, direction }),
+    body: JSON.stringify({ cameraSource }),
   });
   if (!res.ok) {
     let detail = "Failed to set video source";

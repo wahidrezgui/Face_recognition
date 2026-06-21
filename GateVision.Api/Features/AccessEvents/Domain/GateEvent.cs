@@ -9,7 +9,6 @@ public class GateEvent
     public Guid? PersonId { get; private set; }
     public float Confidence { get; private set; }
     public EventStatus Status { get; private set; }
-    public Direction Direction { get; private set; }
     public DateTime CapturedAt { get; private set; }
     public string? FaceImageBase64 { get; private set; }
     public string? Emotion { get; private set; }
@@ -27,7 +26,7 @@ public class GateEvent
 
     public static GateEvent Record(
         string gateId, Guid? personId, float confidence,
-        EventStatus status, Direction direction, DateTime capturedAt,
+        EventStatus status, DateTime capturedAt,
         string? faceImageBase64 = null, string? emotion = null,
         int? age = null, string? gender = null)
     {
@@ -38,7 +37,6 @@ public class GateEvent
             PersonId = personId,
             Confidence = confidence,
             Status = status,
-            Direction = direction,
             CapturedAt = capturedAt,
             FaceImageBase64 = faceImageBase64,
             Emotion = emotion,
@@ -49,7 +47,7 @@ public class GateEvent
 
     public static GateEvent Reconstitute(
         Guid id, string gateId, Guid? personId, float confidence,
-        EventStatus status, Direction direction, DateTime capturedAt,
+        EventStatus status, DateTime capturedAt,
         string? faceImageBase64 = null, string? emotion = null,
         int? age = null, string? gender = null)
     {
@@ -60,7 +58,6 @@ public class GateEvent
             PersonId = personId,
             Confidence = confidence,
             Status = status,
-            Direction = direction,
             CapturedAt = capturedAt,
             FaceImageBase64 = faceImageBase64,
             Emotion = emotion,

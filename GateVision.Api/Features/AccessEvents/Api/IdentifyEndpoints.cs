@@ -20,7 +20,6 @@ public static class IdentifyEndpoints
                 Embedding = dto.Embedding,
                 FrameQuality = dto.FrameQuality,
                 CapturedAt = dto.CapturedAt,
-                Direction = dto.Direction,
                 FaceCrop = dto.FaceCrop,
                 TrackId = dto.TrackId,
                 GateId = dto.GateId,
@@ -43,7 +42,6 @@ public static class IdentifyEndpoints
                 personName = result.Value.PersonName,
                 confidence = result.Value.Confidence,
                 timestamp = result.Value.Timestamp,
-                direction = result.Value.Direction,
                 gateId = result.Value.GateId,
             });
         }).RequireRateLimiting("IdentifyPolicy");
@@ -59,9 +57,6 @@ public class IdentifyRequestDto
 
     [JsonPropertyName("captured_at")]
     public string CapturedAt { get; set; } = "";
-
-    [JsonPropertyName("direction")]
-    public string? Direction { get; set; }
 
     [JsonPropertyName("face_crop")]
     public string? FaceCrop { get; set; }

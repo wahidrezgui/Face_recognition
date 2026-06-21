@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchEvents,
   fetchEventActivity,
+  fetchAdminGates,
   activityRangeBounds,
   deleteEvent,
   type GateEvent,
@@ -19,6 +20,7 @@ import { EventCard } from "@/components/events/EventCard";
 import EventDetailModal from "@/components/events/EventDetailModal";
 import { EventActivityStatsPanel } from "@/components/events/EventActivityStats";
 import { EventActivityChart } from "@/components/events/EventActivityChart";
+import { GateFilterCombobox } from "@/components/events/GateFilterCombobox";
 import ReviewEventModal from "./ReviewEventModal";
 
 const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
@@ -38,6 +40,7 @@ const LIMIT = 50;
 export default function EventsPage() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<EventActivityRange>("today");
+  const [gateTab, setGateTab] = useState("");
   const [statusTab, setStatusTab] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
@@ -53,24 +56,37 @@ export default function EventsPage() {
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
+  const { data: gates = [] } = useQuery({
+    queryKey: ["admin-gates"],
+    queryFn: fetchAdminGates,
+    staleTime: 60_000,
+  });
+
+  const gateOptions = useMemo(
+    () => [...gates].sort((a, b) => a.name.localeCompare(b.name)),
+    [gates],
+  );
+
   const { data: activity, isLoading: activityLoading } = useQuery({
-    queryKey: ["events-activity", period, bounds.from, bounds.to],
-    queryFn: () => fetchEventActivity(period, bounds.from, bounds.to),
+    queryKey: ["events-activity", period, bounds.from, bounds.to, gateTab],
+    queryFn: () => fetchEventActivity(period, bounds.from, bounds.to, gateTab || undefined),
     refetchInterval: 30_000,
   });
 
-  const eventsQueryKey = ["events", period, page, name, statusTab, bounds.from, bounds.to] as const;
+  const eventsQueryKey = ["events", period, page, name, statusTab, gateTab, bounds.from, bounds.to] as const;
 
   const { data, isLoading } = useQuery({
     queryKey: eventsQueryKey,
     queryFn: () =>
-      fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to),
+      fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to, gateTab || undefined),
     refetchInterval: 30_000,
   });
 
   useGateEventStream({
+    gateId: gateTab || undefined,
     onEvent: (evt) => {
       if (statusTab && evt.status !== statusTab) return;
+      if (gateTab && evt.gateId?.toLowerCase() !== gateTab) return;
 
       const ts = new Date(evt.timestamp).getTime();
       const fromMs = new Date(bounds.from).getTime();
@@ -128,7 +144,7 @@ export default function EventsPage() {
       queryClient.invalidateQueries({ queryKey: ["events"] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, period, page, name, statusTab, bounds.from, bounds.to]);
+  }, [queryClient, period, page, name, statusTab, gateTab, bounds.from, bounds.to]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
   const periodLabel = PERIOD_TABS.find((p) => p.value === period)?.label ?? period;
@@ -183,6 +199,11 @@ export default function EventsPage() {
                 <span className="font-display text-xs font-semibold uppercase tracking-widest text-gray-300">
                   Event log
                 </span>
+                <GateFilterCombobox
+                  gates={gateOptions}
+                  value={gateTab}
+                  onChange={(id) => { setGateTab(id); setPage(1); }}
+                />
                 <div className="flex flex-wrap gap-0.5">
                   {STATUS_TABS.map((t) => {
                     const active = statusTab === t.value;

@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchValidatedEvents,
   fetchValidatedEventStats,
+  fetchAdminGates,
   deleteValidatedEvent,
   activityRangeBounds,
   type ValidatedEvent,
@@ -22,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { GateFilterCombobox } from "@/components/events/GateFilterCombobox";
 
 const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
   { value: "today", label: "Today", hint: "Local midnight → now" },
@@ -29,13 +31,13 @@ const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] 
   { value: "month", label: "This month", hint: "Calendar month" },
 ];
 
-const DIR_TABS = [
-  { value: "", label: "All" },
-  { value: "entry", label: "Entry" },
-  { value: "exit", label: "Exit" },
-];
-
 const LIMIT = 50;
+
+function sortValidatedBySaveOrder(items: ValidatedEvent[]): ValidatedEvent[] {
+  return [...items].sort(
+    (a, b) => new Date(b.validatedAt).getTime() - new Date(a.validatedAt).getTime(),
+  );
+}
 
 // ── Face thumbnail ────────────────────────────────────────────────────────────
 function FaceThumbnail({ event }: { event: ValidatedEvent }) {
@@ -128,7 +130,6 @@ function ValidatedRow({
           <span className="text-[11px] font-mono" style={{ color: confPct >= 90 ? "#22d3a5" : "#64748b" }}>
             {confPct}% conf
           </span>
-          <span className="text-[10px] capitalize text-gray-700">{event.direction}</span>
           {event.emotion && (
             <span className="text-[10px] text-gray-800">{event.emotion}</span>
           )}
@@ -178,7 +179,7 @@ function StatsStrip({
   stats,
   period,
 }: {
-  stats?: { total: number; autoCount: number; manualCount: number; entries: number; exits: number } | null;
+  stats?: { total: number; autoCount: number; manualCount: number } | null;
   period: EventActivityRange;
 }) {
   if (!stats) return null;
@@ -186,11 +187,9 @@ function StatsStrip({
     { label: PERIOD_TOTAL_LABEL[period], value: stats.total, col: "#e2e8f0" },
     { label: "Auto-validated", value: stats.autoCount, col: "#22d3a5" },
     { label: "Manual", value: stats.manualCount, col: "#818cf8" },
-    { label: "Entries", value: stats.entries, col: "#38bdf8" },
-    { label: "Exits", value: stats.exits, col: "#f59e0b" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {cards.map((c) => (
         <div key={c.label} className="rounded-xl border border-gv-border bg-gv-panel px-4 py-3">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-gv-muted">{c.label}</p>
@@ -207,7 +206,7 @@ function StatsStrip({
 export default function AccessLogPage() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<EventActivityRange>("today");
-  const [dirTab, setDirTab] = useState("");
+  const [gateTab, setGateTab] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
   const [page, setPage] = useState(1);
@@ -218,13 +217,25 @@ export default function AccessLogPage() {
   }, [nameInput]);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
+  const isMilSearch = /^\d+$/.test(name);
+
+  const { data: gates = [] } = useQuery({
+    queryKey: ["admin-gates"],
+    queryFn: fetchAdminGates,
+    staleTime: 60_000,
+  });
+
+  const gateOptions = useMemo(
+    () => [...gates].sort((a, b) => a.name.localeCompare(b.name)),
+    [gates],
+  );
 
   const validatedQueryKey = [
     "validated-events",
     period,
     page,
     name,
-    dirTab,
+    gateTab,
     bounds.from,
     bounds.to,
   ] as const;
@@ -236,22 +247,24 @@ export default function AccessLogPage() {
   });
 
   const { data: stats } = useQuery({
-    queryKey: ["validated-events-stats", period, bounds.from, bounds.to],
-    queryFn: () => fetchValidatedEventStats(bounds.from, bounds.to),
+    queryKey: ["validated-events-stats", period, bounds.from, bounds.to, gateTab],
+    queryFn: () => fetchValidatedEventStats(bounds.from, bounds.to, gateTab || undefined),
     refetchInterval: 30_000,
   });
 
   const { data, isLoading } = useQuery({
     queryKey: validatedQueryKey,
     queryFn: () =>
-      fetchValidatedEvents(page, LIMIT, name || undefined, dirTab || undefined, bounds.from, bounds.to),
+      fetchValidatedEvents(page, LIMIT, name || undefined, bounds.from, bounds.to, gateTab || undefined),
     refetchInterval: 30_000,
   });
 
   useGateEventStream({
     enabled: !!gateThresholds,
+    gateId: gateTab || undefined,
     onEvent: (evt) => {
       if (!gateThresholds) return;
+      if (gateTab && evt.gateId?.toLowerCase() !== gateTab) return;
 
       const threshold = resolveAutoValidateThreshold(
         evt.gateId,
@@ -264,8 +277,7 @@ export default function AccessLogPage() {
       const fromMs = new Date(bounds.from).getTime();
       const toMs = new Date(bounds.to).getTime();
       if (ts < fromMs || ts >= toMs) return;
-      if (dirTab && evt.direction !== dirTab) return;
-      if (name && !evt.personName.toLowerCase().includes(name.toLowerCase())) return;
+      if (name && !isMilSearch && !evt.personName.toLowerCase().includes(name.toLowerCase())) return;
 
       const preview = gateEventToValidatedPreview(evt);
       queryClient.setQueryData(
@@ -278,13 +290,13 @@ export default function AccessLogPage() {
           const isNew = filtered.length === old.items.length;
           return {
             ...old,
-            items: [preview, ...filtered].slice(0, LIMIT),
+            items: sortValidatedBySaveOrder([preview, ...filtered]).slice(0, LIMIT),
             total: old.total! + (isNew ? 1 : 0),
           };
         },
       );
       queryClient.invalidateQueries({
-        queryKey: ["validated-events-stats", period, bounds.from, bounds.to],
+        queryKey: ["validated-events-stats", period, bounds.from, bounds.to, gateTab],
       });
     },
   });
@@ -293,7 +305,7 @@ export default function AccessLogPage() {
     try {
       await deleteValidatedEvent(eventId);
       queryClient.setQueryData(
-        ["validated-events", period, page, name, dirTab, bounds.from, bounds.to],
+        ["validated-events", period, page, name, gateTab, bounds.from, bounds.to],
         (old: { items?: ValidatedEvent[]; total?: number } | undefined) => {
           if (!old?.items) return old;
           return { ...old, items: old.items.filter((i) => i.eventId !== eventId), total: Math.max(0, (old.total ?? 1) - 1) };
@@ -304,7 +316,7 @@ export default function AccessLogPage() {
       queryClient.invalidateQueries({ queryKey: ["validated-events"] });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, period, page, name, dirTab, bounds.from, bounds.to]);
+  }, [queryClient, period, page, name, gateTab, bounds.from, bounds.to]);
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / LIMIT)) : 1;
   const periodLabel = PERIOD_TABS.find((t) => t.value === period)?.label ?? period;
@@ -369,31 +381,15 @@ export default function AccessLogPage() {
                 Validated records
               </span>
 
-              {/* Direction filter */}
-              <div className="flex gap-0.5">
-                {DIR_TABS.map((t) => {
-                  const active = dirTab === t.value;
-                  return (
-                    <button
-                      key={t.value}
-                      type="button"
-                      onClick={() => { setDirTab(t.value); setPage(1); }}
-                      className="rounded px-2.5 py-1 text-[11px] font-semibold transition-all"
-                      style={{
-                        color: active ? "#38bdf8" : "#475569",
-                        background: active ? "rgba(56,189,248,0.12)" : "transparent",
-                        border: active ? "1px solid rgba(56,189,248,0.28)" : "1px solid transparent",
-                      }}
-                    >
-                      {t.label}
-                    </button>
-                  );
-                })}
-              </div>
+              <GateFilterCombobox
+                gates={gateOptions}
+                value={gateTab}
+                onChange={(id) => { setGateTab(id); setPage(1); }}
+              />
 
               <div className="relative ml-auto min-w-[160px] flex-1 sm:max-w-[200px]">
                 <Input
-                  placeholder="Search name…"
+                  placeholder="Search name or mil #…"
                   value={nameInput}
                   onChange={(e) => { setNameInput(e.target.value); setPage(1); }}
                   className="h-8 border-gv-border bg-gv-bg pl-8 text-xs"

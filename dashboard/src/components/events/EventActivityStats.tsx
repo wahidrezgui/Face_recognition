@@ -32,8 +32,8 @@ export function EventActivityStatsPanel({
 }) {
   if (isLoading) {
     return (
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        {Array.from({ length: 6 }).map((_, i) => (
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton key={i} className="h-[72px] rounded-xl bg-gv-panel" />
         ))}
       </div>
@@ -64,11 +64,6 @@ export function EventActivityStatsPanel({
       color: "text-blue-400",
     },
     {
-      label: "Entries / exits",
-      value: `${stats.entries} / ${stats.exits}`,
-      sub: "Gate direction",
-    },
-    {
       label: "Avg confidence",
       value: `${Math.round(stats.avgConfidence * 100)}%`,
       color: "text-cyan-400",
@@ -76,7 +71,7 @@ export function EventActivityStatsPanel({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
       {items.map((item) => (
         <StatTile key={item.label} {...item} />
       ))}

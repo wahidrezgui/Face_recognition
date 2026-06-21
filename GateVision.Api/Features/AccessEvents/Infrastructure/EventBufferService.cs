@@ -1,9 +1,9 @@
 using System.Collections.Concurrent;
-using GateVision.Api.Shared.Kernel;
-using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.GateOperations.Domain;
+using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Shared.Infrastructure.Persistence;
+using GateVision.Api.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace GateVision.Api.Features.AccessEvents.Infrastructure;
@@ -17,7 +17,6 @@ public class BufferedTrack
     public string PersonName { get; set; } = "UNKNOWN";
     public float Confidence { get; set; }
     public EventStatus Status { get; set; }
-    public Direction Direction { get; set; }
     public DateTime CapturedAt { get; set; }
     public string? FaceImageBase64 { get; set; }
     public string? WelcomeMessage { get; set; }
@@ -43,19 +42,10 @@ public class EventBufferService
     private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
     private static readonly TimeSpan PersonDedup = TimeSpan.FromSeconds(2);
 
-    /// <summary>
-    /// Adds or updates a track in the buffer.
-    /// Returns the stable event Guid and whether this frame is the new confidence best.
-    /// Callers should publish to SSE only when IsNewBest is true.
-    /// If the same identified person was seen within the dedup window on the same gate,
-    /// this frame is merged into the existing track instead of creating a new event.
-    /// </summary>
     public (Guid EventId, bool IsNewBest) BufferOrUpdate(BufferedTrack track)
     {
         var key = new TrackKey(track.GateId, track.TrackId);
 
-        // Merge into an existing track if the same identified person was seen within 2 seconds
-        // on the same gate (handles camera tracking resets that produce new TrackIds).
         if (track.PersonId.HasValue)
         {
             var personKey = new PersonKey(track.GateId, track.PersonId.Value);
@@ -81,7 +71,6 @@ public class EventBufferService
             },
             (_, existing) =>
             {
-                // Preserve the original ID so the SSE event ID never changes for this track.
                 track.Id = existing.Id;
                 var statusUpgraded = track.Status == EventStatus.Identified &&
                     existing.Status != EventStatus.Identified;
@@ -105,7 +94,6 @@ public class EventBufferService
         return (result.Id, isNewBest);
     }
 
-    /// <summary>Find a buffered track by event Id and flush it to the DB immediately.</summary>
     public async Task<FlushResult?> FindAndFlushAsync(AppDbContext db, Guid eventId)
     {
         var match = _tracks.Values.FirstOrDefault(t => t.Id == eventId);
@@ -120,7 +108,7 @@ public class EventBufferService
         {
             var trainingEvt = TrainingEvent.Reconstitute(
                 match.Id, match.GateId, match.PersonId, match.Confidence,
-                match.Status, match.Direction, match.CapturedAt,
+                match.Status, match.CapturedAt,
                 match.FaceImageBase64, match.Emotion, match.Age, match.Gender);
             db.TrainingEvents.Add(trainingEvt);
             await db.SaveChangesAsync();
@@ -130,7 +118,7 @@ public class EventBufferService
         {
             var gateEvent = GateEvent.Reconstitute(
                 match.Id, match.GateId, match.PersonId, match.Confidence,
-                match.Status, match.Direction, match.CapturedAt,
+                match.Status, match.CapturedAt,
                 match.FaceImageBase64, match.Emotion, match.Age, match.Gender);
             gateEvent.PersonName = match.PersonName;
             gateEvent.WelcomeMessage = match.WelcomeMessage;
@@ -141,7 +129,7 @@ public class EventBufferService
             {
                 db.ValidatedEvents.Add(ValidatedEvent.FromBuffer(
                     match.Id, match.GateId, match.PersonId, match.Confidence,
-                    match.Direction, match.CapturedAt,
+                    match.CapturedAt,
                     match.FaceImageBase64, match.Emotion, match.Age, match.Gender,
                     ValidationSource.Auto));
             }
@@ -173,14 +161,14 @@ public class EventBufferService
             {
                 db.TrainingEvents.Add(TrainingEvent.Reconstitute(
                     track.Id, track.GateId, track.PersonId, track.Confidence,
-                    track.Status, track.Direction, track.CapturedAt,
+                    track.Status, track.CapturedAt,
                     track.FaceImageBase64, track.Emotion, track.Age, track.Gender));
             }
             else
             {
                 var gateEvent = GateEvent.Reconstitute(
                     track.Id, track.GateId, track.PersonId, track.Confidence,
-                    track.Status, track.Direction, track.CapturedAt,
+                    track.Status, track.CapturedAt,
                     track.FaceImageBase64, track.Emotion, track.Age, track.Gender);
                 gateEvent.PersonName = track.PersonName;
                 gateEvent.WelcomeMessage = track.WelcomeMessage;
@@ -191,7 +179,7 @@ public class EventBufferService
                 {
                     db.ValidatedEvents.Add(ValidatedEvent.FromBuffer(
                         track.Id, track.GateId, track.PersonId, track.Confidence,
-                        track.Direction, track.CapturedAt,
+                        track.CapturedAt,
                         track.FaceImageBase64, track.Emotion, track.Age, track.Gender,
                         ValidationSource.Auto));
                 }

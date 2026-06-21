@@ -127,7 +127,6 @@ export default function PersonDetailPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [editOpen, setEditOpen] = useState(false);
   const [editName, setEditName] = useState("");
-  const [editDept, setEditDept] = useState("");
 
   const { data: person, isLoading } = useQuery<Person>({
     queryKey: ["person", id],
@@ -179,7 +178,7 @@ export default function PersonDetailPage() {
   });
 
   const editMutation = useMutation({
-    mutationFn: (data: { fullName?: string; department?: string }) => updatePerson(id, data),
+    mutationFn: (data: { fullName?: string }) => updatePerson(id, data),
     onSuccess: () => {
       setEditOpen(false);
       queryClient.invalidateQueries({ queryKey: ["persons"] });
@@ -325,7 +324,7 @@ export default function PersonDetailPage() {
           uploading={uploading}
           onUploadClick={() => fileInputRef.current?.click()}
           comp={comp}
-          onEditClick={() => { setEditName(person.fullName); setEditDept(person.department); setEditOpen(true); }}
+          onEditClick={() => { setEditName(person.fullName); setEditOpen(true); }}
         />
         <input
           ref={fileInputRef}
@@ -336,7 +335,7 @@ export default function PersonDetailPage() {
         />
 
         {/* Stats */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {[
             { label: "Status", value: person.enrollmentStatus },
             {
@@ -344,14 +343,6 @@ export default function PersonDetailPage() {
               value: String(person.faceCount),
               highlight: person.faceCount === 0 ? "text-amber-400" : "text-emerald-400",
               hint: person.faceCount === 0 ? "Enroll needed" : undefined,
-            },
-            {
-              label: "Added",
-              value: new Date(person.createdAt).toLocaleDateString(undefined, {
-                year: "numeric",
-                month: "short",
-                day: "numeric",
-              }),
             },
           ].map((stat) => (
             <div
@@ -668,7 +659,7 @@ export default function PersonDetailPage() {
           <DialogHeader>
             <DialogTitle className="font-display">Edit person</DialogTitle>
             <DialogDescription className="text-gv-muted">
-              Update name and department details.
+              Update the person&apos;s display name.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -681,22 +672,13 @@ export default function PersonDetailPage() {
                 className="border-gv-border bg-gv-bg text-sm"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-dept" className="text-xs text-gv-muted">Department</Label>
-              <Input
-                id="edit-dept"
-                value={editDept}
-                onChange={(e) => setEditDept(e.target.value)}
-                className="border-gv-border bg-gv-bg text-sm"
-              />
-            </div>
           </div>
           <DialogFooter className="gap-2 sm:gap-0">
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editMutation.isPending}>
               Cancel
             </Button>
             <Button
-              onClick={() => editMutation.mutate({ fullName: editName, department: editDept })}
+              onClick={() => editMutation.mutate({ fullName: editName })}
               disabled={editMutation.isPending || !editName.trim()}
               className="gap-1.5"
             >

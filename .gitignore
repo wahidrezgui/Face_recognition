@@ -8,6 +8,7 @@ venv/
 # .NET
 bin/
 obj/
+.build/
 *.csproj.lscache
 
 # Node

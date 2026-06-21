@@ -34,8 +34,6 @@ def _apply_cfg(cfg: dict) -> None:
         settings.gate_id = str(cfg["gate_id"])
     if "camera_source" in cfg and "GV_CAMERA_SOURCE" not in env:
         settings.camera_source = str(cfg["camera_source"])
-    if "direction" in cfg and "GV_DIRECTION" not in env:
-        settings.direction = str(cfg["direction"])
     if "processing_fps" in cfg and "GV_PROCESSING_FPS" not in env:
         settings.processing_fps = int(cfg["processing_fps"])
     if "model_profile" in cfg and "GV_MODEL_PROFILE" not in env:
@@ -67,6 +65,12 @@ def _apply_cfg(cfg: dict) -> None:
         settings.auto_improve_max_conf = float(cfg["identify_confidence_threshold"])
     if "min_match_score" in cfg and "GV_MIN_MATCH_SCORE" not in env:
         settings.auto_improve_min_conf = max(0.55, float(cfg["min_match_score"]) + 0.05)
+    if "tracker_max_lost_s" in cfg and "GV_TRACKER_MAX_LOST_S" not in env:
+        settings.tracker_max_lost_s = float(cfg["tracker_max_lost_s"])
+    if "log_unknown" in cfg and "GV_LOG_UNKNOWN" not in env:
+        settings.log_unknown = bool(cfg["log_unknown"])
+    if "training_mode" in cfg and "GV_TRAINING_MODE" not in env:
+        settings.training_mode = bool(cfg["training_mode"])
 
 
 def load_gate_config_from_api() -> bool:
@@ -115,11 +119,13 @@ def load_gate_config_from_api() -> bool:
 
     _apply_cfg(cfg)
     logger.info(
-        "Gate config applied — gate=%s  camera=%s  fps=%d  direction=%s  "
+        "Gate config applied — gate=%s  camera=%s  fps=%d  "
         "hikvision=%s  motion_threshold=%.3f  detect_max_width=%d  "
-        "min_face_conf=%.2f  identify_threshold=%.2f",
-        settings.gate_id, settings.camera_source, settings.processing_fps, settings.direction,
+        "min_face_conf=%.2f  identify_threshold=%.2f  "
+        "log_unknown=%s  training_mode=%s",
+        settings.gate_id, settings.camera_source, settings.processing_fps,
         settings.hikvision_url or "(none)", settings.motion_threshold, settings.detect_max_width,
         settings.min_face_confidence, settings.auto_improve_max_conf,
+        settings.log_unknown, settings.training_mode,
     )
     return True

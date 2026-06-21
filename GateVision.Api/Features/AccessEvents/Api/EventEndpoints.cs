@@ -22,7 +22,7 @@ public static class EventEndpoints
     {
         app.MapGet("/api/v1/events", async (AppDbContext db, CancellationToken ct,
             int page = 1, int limit = 50,
-            string? name = null, string? status = null,
+            string? name = null, string? status = null, string? gateId = null,
             DateTime? from = null, DateTime? to = null) =>
         {
             limit = Math.Min(limit, 200);
@@ -32,6 +32,12 @@ public static class EventEndpoints
                 query = query.Where(e => e.CapturedAt >= from.Value);
             if (to.HasValue)
                 query = query.Where(e => e.CapturedAt < to.Value);
+
+            if (!string.IsNullOrWhiteSpace(gateId))
+            {
+                var normalizedGateId = gateId.Trim().ToLowerInvariant();
+                query = query.Where(e => e.GateId.ToLower() == normalizedGateId);
+            }
 
             if (!string.IsNullOrWhiteSpace(name))
             {
@@ -83,7 +89,6 @@ public static class EventEndpoints
                     personName = person?.FullName ?? "UNKNOWN",
                     confidence = e.Confidence,
                     timestamp = e.CapturedAt.ToString("O"),
-                    direction = e.Direction.ToString().ToLower(),
                     status = e.Status.ToString(),
                     faceImageBase64 = e.FaceImageBase64,
                     emotion = e.Emotion,
@@ -112,6 +117,7 @@ public static class EventEndpoints
         app.MapGet("/api/v1/events/activity", async (
             AppDbContext db, CancellationToken ct,
             string range = "today",
+            string? gateId = null,
             DateTime? from = null,
             DateTime? to = null,
             int? tzOffset = null) =>
@@ -123,11 +129,15 @@ public static class EventEndpoints
 
             var query = db.GateEvents.Where(e => e.CapturedAt >= rangeFrom && e.CapturedAt < rangeTo);
 
+            if (!string.IsNullOrWhiteSpace(gateId))
+            {
+                var normalizedGateId = gateId.Trim().ToLowerInvariant();
+                query = query.Where(e => e.GateId.ToLower() == normalizedGateId);
+            }
+
             var total = await query.CountAsync(ct);
             var identified = await query.CountAsync(e => e.Status == EventStatus.Identified, ct);
             var needsReview = await query.CountAsync(e => e.Status == EventStatus.NeedsReview, ct);
-            var entries = await query.CountAsync(e => e.Direction == Direction.Entry, ct);
-            var exits = await query.CountAsync(e => e.Direction == Direction.Exit, ct);
             var uniquePersons = await query
                 .Where(e => e.PersonId.HasValue)
                 .Select(e => e.PersonId!.Value)
@@ -182,8 +192,6 @@ public static class EventEndpoints
                 total,
                 identified,
                 needsReview,
-                entries,
-                exits,
                 uniquePersons,
                 avgConfidence = Math.Round(avgConfidence, 3),
                 byDay,
@@ -238,7 +246,6 @@ public static class EventEndpoints
                 personId = dto.PersonId.ToString(),
                 personName = person.FullName,
                 status = EventStatus.Identified.ToString(),
-                department = person.Department,
                 welcomeMessage = person.WelcomeMessage,
             });
         }).RequireAuthorization();
@@ -323,7 +330,6 @@ public static class EventEndpoints
                     personName = person?.FullName ?? "UNKNOWN",
                     confidence = e.Confidence,
                     timestamp = e.CapturedAt.ToString("O"),
-                    direction = e.Direction.ToString().ToLower(),
                     status = e.Status.ToString(),
                     faceImageBase64 = e.FaceImageBase64,
                     emotion = e.Emotion,
@@ -341,9 +347,6 @@ public static class EventEndpoints
             if (evt is null)
                 return Results.NotFound(new { error = "Training event not found" });
 
-            if (!Enum.TryParse<Direction>(dto.Direction, true, out var direction))
-                return Results.BadRequest(new { error = $"Invalid direction: {dto.Direction}" });
-
             if (!Enum.TryParse<EventStatus>(dto.Status, true, out var status))
                 return Results.BadRequest(new { error = $"Invalid status: {dto.Status}" });
 
@@ -360,7 +363,7 @@ public static class EventEndpoints
                 ? await db.Persons.FindAsync([personId.Value], ct)
                 : null;
 
-            evt.Update(personId, dto.Confidence, direction, status, dto.CapturedAt, dto.Emotion, dto.Age, dto.Gender);
+            evt.Update(personId, dto.Confidence, status, dto.CapturedAt, dto.Emotion, dto.Age, dto.Gender);
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Training event {EventId} updated", id);
 
@@ -372,7 +375,6 @@ public static class EventEndpoints
                 personName = person?.FullName ?? "UNKNOWN",
                 confidence = evt.Confidence,
                 timestamp = evt.CapturedAt.ToString("O"),
-                direction = evt.Direction.ToString().ToLower(),
                 status = evt.Status.ToString(),
                 emotion = evt.Emotion,
                 age = evt.Age,
@@ -479,7 +481,6 @@ public static class EventEndpoints
             {
                 evt.PersonName = p.FullName;
                 evt.WelcomeMessage = p.WelcomeMessage;
-                evt.Department = p.Department;
             }
             if (evt.CapturedAt > lastTimestamp)
                 lastTimestamp = evt.CapturedAt;
@@ -622,7 +623,6 @@ public static class EventEndpoints
             personName = evt.PersonName,
             confidence = evt.Confidence,
             timestamp = evt.CapturedAt.ToString("O"),
-            direction = evt.Direction.ToString().ToLower(),
             status = evt.Status.ToString(),
             faceImageBase64 = evt.FaceImageBase64,
             welcomeMessage = evt.WelcomeMessage,
@@ -644,7 +644,6 @@ public class UpdateTrainingEventDto
 {
     public Guid? PersonId { get; set; }
     public float Confidence { get; set; }
-    public string Direction { get; set; } = "entry";
     public string Status { get; set; } = "NeedsReview";
     public DateTime CapturedAt { get; set; }
     public string? Emotion { get; set; }

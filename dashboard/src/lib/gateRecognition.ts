@@ -64,7 +64,6 @@ export function gateEventToValidatedPreview(evt: GateEvent): ValidatedEvent {
     department: evt.department ?? null,
     confidence: evt.confidence,
     timestamp: evt.timestamp,
-    direction: evt.direction,
     validatedBy: "auto",
     validatedAt: now,
     faceImageBase64: evt.faceImageBase64,

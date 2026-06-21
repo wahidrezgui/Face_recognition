@@ -114,7 +114,7 @@ public static class GateEndpoints
         }).RequireAuthorization();
 
         // ── POST /api/config/gates/{gateId}/video-source ───────────────────────
-        // Persists camera_source + direction to DB, then signals Python to restart.
+        // Persists camera_source to DB, then signals Python to restart.
         app.MapPost("/api/v1/config/gates/{gateId:guid}/video-source",
             async (Guid gateId, VideoSourceRequest req,
                    GateService gateService, AppDbContext db,
@@ -127,12 +127,10 @@ public static class GateEndpoints
             if (gate is null)
                 return Results.NotFound($"Gate '{gateId}' not configured.");
 
-            var direction = string.Equals(req.Direction, "exit", StringComparison.OrdinalIgnoreCase) ? "exit" : "entry";
-
-            gate.UpdateConfig(new GateConfigUpdate { CameraSource = req.CameraSource, Direction = direction });
+            gate.UpdateConfig(new GateConfigUpdate { CameraSource = req.CameraSource });
             await db.SaveChangesAsync(ct);
             gateService.InvalidateCache();
-            logger.LogInformation("Gate {GateId} video source saved: {Source}, direction: {Direction}", gateId, req.CameraSource, direction);
+            logger.LogInformation("Gate {GateId} video source saved: {Source}", gateId, req.CameraSource);
 
             var client = http.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(10);
@@ -141,7 +139,7 @@ public static class GateEndpoints
 
             try
             {
-                var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource, direction, gateId.ToString()), _jsonOpts);
+                var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource, gateId.ToString()), _jsonOpts);
                 var restart = await client.PostAsync($"{gate.PythonUrl}/restart",
                     new StringContent(body, Encoding.UTF8, "application/json"), ct);
 
@@ -152,7 +150,6 @@ public static class GateEndpoints
                         message = $"Config saved but gate restart failed (HTTP {(int)restart.StatusCode})",
                         gate_id = gateId,
                         camera_source = req.CameraSource,
-                        direction
                     });
             }
             catch
@@ -163,7 +160,6 @@ public static class GateEndpoints
                     message = "Config saved but gate AI service is unreachable.",
                     gate_id = gateId,
                     camera_source = req.CameraSource,
-                    direction
                 });
             }
 
@@ -183,7 +179,6 @@ public static class GateEndpoints
                 status = "ok",
                 gate_id = gateId,
                 camera_source = req.CameraSource,
-                direction
             });
         }).RequireAuthorization();
 
@@ -424,6 +419,8 @@ public static class GateEndpoints
                 IdentifyConfidenceThreshold = req.IdentifyConfidenceThreshold,
                 AutoValidateConfidence = req.AutoValidateConfidence,
                 MinFaceConfidence = req.MinFaceConfidence,
+                LogUnknown = req.LogUnknown,
+                TrainingMode = req.TrainingMode,
             });
             await db.SaveChangesAsync(ct);
             gateService.InvalidateCache();
@@ -439,6 +436,8 @@ public static class GateEndpoints
                 identify_confidence_threshold = gate.IdentifyConfidenceThreshold,
                 auto_validate_confidence = gate.AutoValidateConfidence,
                 min_face_confidence = gate.MinFaceConfidence,
+                log_unknown = gate.LogUnknown,
+                training_mode = gate.TrainingMode,
                 note = "Restart the gate AI service to apply face-detection thresholds.",
             });
         }).RequireAuthorization();
@@ -600,7 +599,6 @@ public static class GateEndpoints
             if (string.IsNullOrWhiteSpace(req.CameraSource))
                 return Results.BadRequest("camera_source is required");
 
-            var direction = string.Equals(req.Direction, "exit", StringComparison.OrdinalIgnoreCase) ? "exit" : "entry";
             var gate = (await gateService.GetAllAsync(ct)).FirstOrDefault();
             var pythonUrl = gate?.PythonUrl ?? "http://localhost:8000";
 
@@ -609,14 +607,14 @@ public static class GateEndpoints
                 var tracked = await db.Gates.FindAsync([gate.Id], ct);
                 if (tracked is not null)
                 {
-                    tracked.UpdateConfig(new GateConfigUpdate { CameraSource = req.CameraSource, Direction = direction });
+                    tracked.UpdateConfig(new GateConfigUpdate { CameraSource = req.CameraSource });
                     await db.SaveChangesAsync(ct);
                     gateService.InvalidateCache();
                 }
             }
-            logger.LogInformation("Video source config saved: {Source}, direction: {Direction}", req.CameraSource, direction);
+            logger.LogInformation("Video source config saved: {Source}", req.CameraSource);
 
-            var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource, direction, null), _jsonOpts);
+            var body = JsonSerializer.Serialize(new RestartRequestBody(req.CameraSource, null), _jsonOpts);
             var content = new StringContent(body, Encoding.UTF8, "application/json");
             var client = http.CreateClient();
             client.Timeout = TimeSpan.FromSeconds(10);
@@ -641,14 +639,13 @@ public static class GateEndpoints
                 }
 
                 if (cameraReady)
-                    return Results.Ok(new { status = "ok", camera_source = req.CameraSource, direction });
+                    return Results.Ok(new { status = "ok", camera_source = req.CameraSource });
 
                 return Results.Ok(new
                 {
                     status = "warning",
                     message = "Config saved and restart signal sent, but camera not yet ready.",
                     camera_source = req.CameraSource,
-                    direction
                 });
             }
             catch (Exception ex)
@@ -659,7 +656,6 @@ public static class GateEndpoints
                     status = "warning",
                     message = "Config saved but AI service is not running. Start the AI service and the new source will be picked up automatically.",
                     camera_source = req.CameraSource,
-                    direction
                 });
             }
         });
@@ -756,7 +752,6 @@ public static class GateEndpoints
                 g.StartCommand,
                 g.CreatedAt,
                 g.CameraSource,
-                g.Direction,
                 g.ProcessingFps,
                 g.ModelProfile,
                 detectorInputSize = (g.DetectorInputWidth.HasValue && g.DetectorInputHeight.HasValue)
@@ -774,6 +769,9 @@ public static class GateEndpoints
                 g.IdentifyConfidenceThreshold,
                 g.AutoValidateConfidence,
                 g.MinFaceConfidence,
+                g.TrackerMaxLostS,
+                g.LogUnknown,
+                g.TrainingMode,
             }));
         }).RequireAuthorization();
 
@@ -809,7 +807,6 @@ public static class GateEndpoints
             gate.UpdateConfig(new GateConfigUpdate
             {
                 CameraSource = req.CameraSource,
-                Direction = req.Direction,
                 ProcessingFps = req.ProcessingFps,
                 ModelProfile = req.ModelProfile,
                 DetectorInputWidth = req.DetectorInputWidth,
@@ -828,6 +825,9 @@ public static class GateEndpoints
                 IdentifyConfidenceThreshold = req.IdentifyConfidenceThreshold,
                 AutoValidateConfidence = req.AutoValidateConfidence,
                 MinFaceConfidence = req.MinFaceConfidence,
+                TrackerMaxLostS = req.TrackerMaxLostS,
+                LogUnknown = req.LogUnknown,
+                TrainingMode = req.TrainingMode,
             });
 
             await db.SaveChangesAsync(ct);
@@ -880,7 +880,6 @@ public static class GateEndpoints
         {
             gate_id = gate.Id,
             camera_source = gate.CameraSource,
-            direction = gate.Direction,
             processing_fps = gate.ProcessingFps,
             model_profile = gate.ModelProfile,
             detector_input_size = detSize,
@@ -897,6 +896,9 @@ public static class GateEndpoints
             identify_confidence_threshold = gate.IdentifyConfidenceThreshold,
             auto_validate_confidence = gate.AutoValidateConfidence,
             min_face_confidence = gate.MinFaceConfidence,
+            tracker_max_lost_s = gate.TrackerMaxLostS,
+            log_unknown = gate.LogUnknown,
+            training_mode = gate.TrainingMode,
         };
     }
 
@@ -921,11 +923,8 @@ public static class GateEndpoints
             if (string.IsNullOrWhiteSpace(gate.CameraSource))
                 return;
 
-            var direction = string.Equals(gate.Direction, "exit", StringComparison.OrdinalIgnoreCase)
-                ? "exit"
-                : "entry";
             var body = JsonSerializer.Serialize(
-                new RestartRequestBody(gate.CameraSource, direction, gate.Id.ToString()), _jsonOpts);
+                new RestartRequestBody(gate.CameraSource, gate.Id.ToString()), _jsonOpts);
             var restart = await client.PostAsync($"{gate.PythonUrl}/restart",
                 new StringContent(body, Encoding.UTF8, "application/json"), ct);
             if (!restart.IsSuccessStatusCode)
@@ -971,7 +970,6 @@ public class LogUnknownRequest
 public class VideoSourceRequest
 {
     public string CameraSource { get; set; } = "";
-    public string? Direction { get; set; }
 }
 
 public class CreateGateRequest
@@ -991,7 +989,6 @@ public class UpdateGateRequest
     public string? StartCommand { get; set; }
     // Processing config — all optional; null = don't change
     public string? CameraSource { get; set; }
-    public string? Direction { get; set; }
     public int? ProcessingFps { get; set; }
     public string? ModelProfile { get; set; }
     public int? DetectorInputWidth { get; set; }
@@ -1010,9 +1007,12 @@ public class UpdateGateRequest
     public double? IdentifyConfidenceThreshold { get; set; }
     public double? AutoValidateConfidence { get; set; }
     public double? MinFaceConfidence { get; set; }
+    public double? TrackerMaxLostS { get; set; }
+    public bool? LogUnknown { get; set; }
+    public bool? TrainingMode { get; set; }
 }
 
-internal record RestartRequestBody(string Source, string? Direction = null, string? GateId = null);
+internal record RestartRequestBody(string Source, string? GateId = null);
 
 internal record HealthResponse(string Status, bool Camera);
 
@@ -1024,6 +1024,8 @@ public class RecognitionConfigRequest
     public double? IdentifyConfidenceThreshold { get; set; }
     public double? AutoValidateConfidence { get; set; }
     public double? MinFaceConfidence { get; set; }
+    public bool? LogUnknown { get; set; }
+    public bool? TrainingMode { get; set; }
 }
 
 public class KioskSettingsRequest

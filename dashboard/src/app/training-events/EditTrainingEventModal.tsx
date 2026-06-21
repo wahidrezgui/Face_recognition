@@ -38,7 +38,6 @@ export default function EditTrainingEventModal({
   const [status, setStatus] = useState<"NeedsReview" | "Identified">(
     (event.status as "NeedsReview" | "Identified") ?? "NeedsReview"
   );
-  const [direction, setDirection] = useState<"entry" | "exit">(event.direction);
   const [confidence, setConfidence] = useState(event.confidence);
   const [capturedAt, setCapturedAt] = useState(toDatetimeLocal(event.timestamp));
   const [emotion, setEmotion] = useState(event.emotion ?? "");
@@ -62,7 +61,6 @@ export default function EditTrainingEventModal({
       const updated = await updateTrainingEvent(event.eventId, {
         personId: personId ?? null,
         confidence,
-        direction,
         status,
         capturedAt: new Date(capturedAt).toISOString(),
         emotion: emotion || null,
@@ -127,32 +125,18 @@ export default function EditTrainingEventModal({
 
         {/* Form */}
         <div className="px-5 py-4 space-y-3 max-h-[420px] overflow-y-auto">
-          {/* Status + Direction row */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wider" style={labelStyle}>Status</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value as "NeedsReview" | "Identified")}
-                className="px-2.5 py-1.5 rounded text-xs"
-                style={inputStyle}
-              >
-                <option value="NeedsReview">NeedsReview</option>
-                <option value="Identified">Identified</option>
-              </select>
-            </div>
-            <div className="flex flex-col gap-1">
-              <label className="text-[10px] font-semibold uppercase tracking-wider" style={labelStyle}>Direction</label>
-              <select
-                value={direction}
-                onChange={(e) => setDirection(e.target.value as "entry" | "exit")}
-                className="px-2.5 py-1.5 rounded text-xs"
-                style={inputStyle}
-              >
-                <option value="entry">Entry</option>
-                <option value="exit">Exit</option>
-              </select>
-            </div>
+          {/* Status */}
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-semibold uppercase tracking-wider" style={labelStyle}>Status</label>
+            <select
+              value={status}
+              onChange={(e) => setStatus(e.target.value as "NeedsReview" | "Identified")}
+              className="px-2.5 py-1.5 rounded text-xs"
+              style={inputStyle}
+            >
+              <option value="NeedsReview">NeedsReview</option>
+              <option value="Identified">Identified</option>
+            </select>
           </div>
 
           {/* Person */}
@@ -193,7 +177,9 @@ export default function EditTrainingEventModal({
                     }}
                   >
                     <span className="flex-1 truncate">{p.fullName}</span>
-                    <span className="text-[9px] shrink-0" style={{ color: "#374151" }}>{p.department}</span>
+                    {p.militaryNumber != null && (
+                      <span className="text-[9px] shrink-0" style={{ color: "#374151" }}>#{p.militaryNumber}</span>
+                    )}
                   </button>
                 ))}
                 {filteredPersons.length === 0 && (

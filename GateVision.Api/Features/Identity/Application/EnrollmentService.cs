@@ -1,9 +1,9 @@
-using GateVision.Api.Shared.Kernel;
-using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.GateOperations.Domain;
+using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Shared.Infrastructure.Persistence;
 using GateVision.Api.Shared.Infrastructure.Redis;
+using GateVision.Api.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 
 namespace GateVision.Api.Features.Identity.Application;
@@ -31,12 +31,12 @@ public class EnrollmentService
         Directory.CreateDirectory(_faceImagesDir);
     }
 
-    public async Task<Person> CreatePerson(string fullName, string department, string? welcomeMessage = null, CancellationToken ct = default)
+    public async Task<Person> CreatePerson(string fullName, string? welcomeMessage = null, CancellationToken ct = default)
     {
-        var person = Person.Create(fullName, department, welcomeMessage);
+        var person = Person.Create(fullName, welcomeMessage);
         _db.Persons.Add(person);
         await _db.SaveChangesAsync(ct);
-        await _cache.SetPersonAsync(person.Id, person.FullName, person.Department, person.WelcomeMessage);
+        await _cache.SetPersonAsync(person.Id, person.FullName, person.WelcomeMessage);
         return person;
     }
 
@@ -110,7 +110,7 @@ public class EnrollmentService
             embeddings.Count, personId, poses is not null && poses.Count == embeddings.Count, replace);
 
         await _cache.RemovePersonAsync(personId);
-        await _cache.SetPersonAsync(personId, person.FullName, person.Department, person.WelcomeMessage);
+        await _cache.SetPersonAsync(personId, person.FullName, person.WelcomeMessage);
     }
 
     private async Task<string?> SaveFaceImageAsync(Guid personId, Guid embeddingId, string base64Jpeg, CancellationToken ct)

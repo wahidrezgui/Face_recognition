@@ -7,8 +7,6 @@ import { toast } from "sonner";
 import {
   fetchGates, setGateVideoSource,
   fetchGateCameras, setGateProcessingFps,
-  fetchTrainingMode, setTrainingMode,
-  fetchLogUnknown, setLogUnknown,
   fetchAdminGates, updateGate, deleteGate,
   stopGate, startGate,
   fetchGateKioskSettings, setGateKioskSettings,
@@ -57,7 +55,6 @@ export default function GateDetailPage() {
   const [customIndex, setCustomIndex] = useState("");
   const [useCustom, setUseCustom] = useState(false);
   const [rtspUrl, setRtspUrl] = useState("");
-  const [direction, setDirection] = useState<"entry" | "exit">("entry");
   const [configSaving, setConfigSaving] = useState(false);
 
   // Kiosk display settings (persisted server-side so the /desk machine picks them up)
@@ -137,30 +134,21 @@ export default function GateDetailPage() {
             setRtspUrl(src);
           }
         }
-        if (cfg.direction === "exit" || cfg.direction === "entry") setDirection(cfg.direction);
         if (cfg.processing_fps) setProcessingFpsState(cfg.processing_fps);
         if (cfg.identify_confidence_threshold) setIdentifyThreshold(cfg.identify_confidence_threshold);
         if (cfg.min_match_score) setMinMatchScore(cfg.min_match_score);
         if (cfg.auto_validate_confidence) setAutoValidateConfidence(cfg.auto_validate_confidence);
         if (cfg.min_face_confidence) setMinFaceConfidence(cfg.min_face_confidence);
+        if (typeof cfg.log_unknown === "boolean") setLogUnknownState(cfg.log_unknown);
+        if (typeof cfg.training_mode === "boolean") setTrainingModeState(cfg.training_mode);
       } catch { /* ignore */ } finally {
         setProcessingFpsLoaded(true);
         setRecognitionLoaded(true);
+        setLogUnknownLoaded(true);
+        setTrainingLoaded(true);
       }
     })();
   }, [gateId]);
-
-  // Toggles
-  useEffect(() => {
-    (async () => {
-      try { const { enabled } = await fetchTrainingMode(); setTrainingModeState(enabled); }
-      catch { } finally { setTrainingLoaded(true); }
-    })();
-    (async () => {
-      try { const { enabled } = await fetchLogUnknown(); setLogUnknownState(enabled); }
-      catch { } finally { setLogUnknownLoaded(true); }
-    })();
-  }, []);
 
   // Camera list
   const loadCameras = useCallback(async () => {
@@ -214,16 +202,16 @@ export default function GateDetailPage() {
   async function handleApplyRestart() {
     setConfigSaving(true);
     try {
-      await setTrainingMode(trainingMode);
-      await setLogUnknown(logUnknown);
       await setGateProcessingFps(gateId, processingFps);
       await setGateRecognitionConfig(gateId, {
         identify_confidence_threshold: identifyThreshold,
         min_match_score: minMatchScore,
         auto_validate_confidence: autoValidateConfidence,
         min_face_confidence: minFaceConfidence,
+        log_unknown: logUnknown,
+        training_mode: trainingMode,
       });
-      await setGateVideoSource(gateId, getCameraSource(), direction);
+      await setGateVideoSource(gateId, getCameraSource());
       toast.success("Configuration applied — AI service restarting");
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : "Failed to apply configuration");
@@ -361,8 +349,6 @@ export default function GateDetailPage() {
                   Differs from saved config below — click <strong>Apply &amp; Restart</strong> or restart the service to sync.
                 </p>
               )}
-              <span className="text-gray-500">Direction</span>
-              <span className="capitalize text-gray-300">{gate.status.direction}</span>
               <span className="text-gray-500">Processing FPS</span>
               <span className="text-gray-300">{gate.status.processing_fps}</span>
               {gate.status.camera_source && (
@@ -625,29 +611,6 @@ export default function GateDetailPage() {
                 />
               </div>
             )}
-
-            {/* Direction */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-400">Gate Direction</label>
-              <div className="grid grid-cols-2 gap-2">
-                {([
-                  { value: "entry" as const, label: "Entry", desc: "People entering" },
-                  { value: "exit" as const, label: "Exit", desc: "People leaving" },
-                ] as const).map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setDirection(opt.value)}
-                    className={`p-3 rounded border text-left transition-colors ${direction === opt.value
-                      ? "bg-emerald-700/30 border-emerald-600/40 text-emerald-300"
-                      : "bg-[#0d1a2f] border-[#1a2640] text-gray-400 hover:border-gray-600"}`}
-                  >
-                    <div className="text-xs font-medium">{opt.label}</div>
-                    <div className="text-[10px] mt-0.5 opacity-70">{opt.desc}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
 
             <Separator className="bg-gv-border" />
 

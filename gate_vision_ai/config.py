@@ -46,8 +46,6 @@ class Settings(BaseSettings):
     roi_width: int = 0
     roi_height: int = 0
 
-    direction: str = "entry"
-
     log_level: str = "INFO"
 
     model_package: str = "buffalo_l"
@@ -58,6 +56,13 @@ class Settings(BaseSettings):
 
     detect_max_width: int = 0  # downscale frame to this width before detection; 0 = disabled (use full res)
 
+    min_track_hits: int = 2         # consecutive detections required before a track is confirmed
+    tracker_max_lost_s: float = 3.0 # seconds a track survives without a matching detection before being dropped
+
+    cors_origins: str = "http://localhost:3000"  # comma-separated; GV_CORS_ORIGINS
+
+    enroll_dedup_threshold: float = 0.95  # drop enrollment embeddings with cosine sim >= this; >= 1.0 disables
+
     # Hikvision ISAPI event listener — leave hikvision_url empty to disable
     hikvision_url: str = ""           # camera base URL, e.g. "http://192.168.1.64"
     hikvision_user: str = "admin"
@@ -65,6 +70,9 @@ class Settings(BaseSettings):
     hikvision_event_ttl_ms: int = 5000   # keep gate open this many ms after last event
     hikvision_event_types: str = "VMD,fielddetection,linedetection"  # comma-separated; empty = all
     hikvision_detection_target: str = ""  # e.g. "human"; empty = no filter
+
+    log_unknown: bool = False
+    training_mode: bool = False
 
     class Config:
         env_prefix = "GV_"

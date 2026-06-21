@@ -45,8 +45,6 @@ const DashboardGateCard = memo(function DashboardGateCard({ gate, onFocus }: { g
 
       {gate.online && gate.status && (
         <div className="grid grid-cols-2 gap-x-3 text-[10px]">
-          <span className="text-gray-600">Direction</span>
-          <span className="capitalize text-gray-400">{gate.status.direction}</span>
           <span className="text-gray-600">FPS</span>
           <span className="text-gray-400">{gate.status.processing_fps}</span>
           {gate.status.stats && (

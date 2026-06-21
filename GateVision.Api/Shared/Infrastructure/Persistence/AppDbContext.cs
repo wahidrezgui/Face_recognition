@@ -22,7 +22,6 @@ public class AppDbContext : DbContext
             e.ToTable("persons");
             e.HasKey(p => p.Id);
             e.Property(p => p.FullName).HasMaxLength(200);
-            e.Property(p => p.Department).HasMaxLength(100);
             e.Property(p => p.EnrollmentStatus)
                 .HasConversion<string>()
                 .HasMaxLength(20);
@@ -37,9 +36,6 @@ public class AppDbContext : DbContext
             e.Property(g => g.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
-            e.Property(g => g.Direction)
-                .HasConversion<string>()
-                .HasMaxLength(10);
             e.HasIndex(g => g.GateId);
         });
 
@@ -51,9 +47,6 @@ public class AppDbContext : DbContext
             e.Property(t => t.Status)
                 .HasConversion<string>()
                 .HasMaxLength(20);
-            e.Property(t => t.Direction)
-                .HasConversion<string>()
-                .HasMaxLength(10);
             e.HasIndex(t => t.GateId);
         });
 
@@ -62,9 +55,6 @@ public class AppDbContext : DbContext
             e.ToTable("validated_events");
             e.HasKey(v => v.Id);
             e.Property(v => v.GateId).HasMaxLength(50).HasDefaultValue("default");
-            e.Property(v => v.Direction)
-                .HasConversion<string>()
-                .HasMaxLength(10);
             e.Property(v => v.ValidatedBy)
                 .HasConversion<string>()
                 .HasMaxLength(20);
@@ -82,7 +72,6 @@ public class AppDbContext : DbContext
             e.Property(g => g.ApiKey).HasMaxLength(200);
             e.Property(g => g.StartCommand).HasMaxLength(500);
             e.Property(g => g.CameraSource).HasMaxLength(1000).HasDefaultValue("0");
-            e.Property(g => g.Direction).HasMaxLength(10).HasDefaultValue("entry");
             e.Property(g => g.ProcessingFps).HasDefaultValue(3);
             e.Property(g => g.ModelProfile).HasMaxLength(20).HasDefaultValue("auto");
             e.Property(g => g.DetectorInputWidth).IsRequired(false);
@@ -100,6 +89,9 @@ public class AppDbContext : DbContext
             e.Property(g => g.IdentifyConfidenceThreshold).HasDefaultValue(0.80);
             e.Property(g => g.AutoValidateConfidence).HasDefaultValue(0.85);
             e.Property(g => g.MinFaceConfidence).HasDefaultValue(0.50);
+            e.Property(g => g.TrackerMaxLostS).HasDefaultValue(3.0);
+            e.Property(g => g.LogUnknown).HasDefaultValue(false);
+            e.Property(g => g.TrainingMode).HasDefaultValue(false);
         });
     }
 }

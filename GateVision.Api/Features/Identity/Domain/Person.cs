@@ -11,31 +11,14 @@ public class Person
 {
     public Guid Id { get; private set; }
     public string FullName { get; private set; } = string.Empty;
-    public string Department { get; private set; } = string.Empty;
     public EnrollmentStatus EnrollmentStatus { get; private set; }
-    public DateTime CreatedAt { get; private set; }
     public string? WelcomeMessage { get; private set; }
-
-    // HR system fields
     public string? ExternalSourceId { get; private set; }
-    public string? QrCode           { get; private set; }
-    public int?    MilitaryNumber   { get; private set; }
-    public string? PhoneNumber      { get; private set; }
-    public string? FullNameEn       { get; private set; }
-    public string? FullNameAr       { get; private set; }
-    public int?    DepartmentId     { get; private set; }
-    public int?    RankId           { get; private set; }
-    public int?    NationalityId    { get; private set; }
-    public bool    IsEmployee       { get; private set; } = true;
-    public string? Qid              { get; private set; }
-    public int?    DefaultBase      { get; private set; }
-    public string? Remarks          { get; private set; }
-    public string? BloodType        { get; private set; }
-    public string? JobArabic        { get; private set; }
+    public int? MilitaryNumber { get; private set; }
 
     private Person() { }
 
-    public static Person Create(string fullName, string department, string? welcomeMessage = null)
+    public static Person Create(string fullName, string? welcomeMessage = null)
     {
         if (string.IsNullOrWhiteSpace(fullName))
             throw new ArgumentException("Full name is required.", nameof(fullName));
@@ -44,23 +27,18 @@ public class Person
         {
             Id = Guid.NewGuid(),
             FullName = fullName.Trim(),
-            Department = department.Trim(),
             WelcomeMessage = string.IsNullOrWhiteSpace(welcomeMessage) ? null : welcomeMessage.Trim(),
             EnrollmentStatus = EnrollmentStatus.Pending,
-            CreatedAt = DateTime.UtcNow,
         };
     }
 
-    public void UpdateProfile(string? fullName, string? department)
+    public void UpdateProfile(string? fullName)
     {
-        if (fullName is not null)
-        {
-            if (string.IsNullOrWhiteSpace(fullName))
-                throw new ArgumentException("Full name cannot be empty.", nameof(fullName));
-            FullName = fullName.Trim();
-        }
-        if (department is not null)
-            Department = department.Trim();
+        if (fullName is null) return;
+
+        if (string.IsNullOrWhiteSpace(fullName))
+            throw new ArgumentException("Full name cannot be empty.", nameof(fullName));
+        FullName = fullName.Trim();
     }
 
     public void UpdateWelcomeMessage(string? welcomeMessage) =>
@@ -80,46 +58,22 @@ public class Person
 
         return new Person
         {
-            Id               = Guid.NewGuid(),
-            FullName         = displayName,
-            Department       = $"Dept-{e.DepId}",
+            Id = Guid.NewGuid(),
+            FullName = displayName,
             EnrollmentStatus = EnrollmentStatus.Pending,
-            CreatedAt        = DateTime.UtcNow,
-            ExternalSourceId = $"mysql:{e.Id}",
-            QrCode           = e.QrCode,
-            MilitaryNumber   = e.MilitaryNumber,
-            PhoneNumber      = e.PhoneNumber,
-            FullNameEn       = e.FullNameEn,
-            FullNameAr       = e.FullNameAr,
-            DepartmentId     = e.DepId,
-            RankId           = e.RankId,
-            NationalityId    = e.NationalityId,
-            IsEmployee       = e.IsEmployee != 0,
-            Qid              = e.Qid,
-            DefaultBase      = e.DefaultBase,
-            Remarks          = e.Remarks,
-            BloodType        = e.BloodType,
-            JobArabic        = e.JobArabic,
+            ExternalSourceId = e.Id.ToString(),
+            MilitaryNumber = e.MilitaryNumber,
         };
     }
 }
 
-public record PersonCacheData(string Name, string? Department, string? WelcomeMessage);
+public record PersonCacheData(string Name, string? WelcomeMessage);
 
 public record EmployeeRow(
     int Id,
-    string? QrCode,
     int? MilitaryNumber,
-    string? PhoneNumber,
     string? FullNameEn,
     string? FullNameAr,
+    string? Photo,
     int DepId,
-    int? RankId,
-    int? NationalityId,
-    int IsEmployee,
-    string? Qid,
-    int? DefaultBase,
-    string? Remarks,
-    string? BloodType,
-    string? JobArabic,
-    string? Photo);
+    string? QrCode);

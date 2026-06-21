@@ -31,11 +31,11 @@ public class PersonRepository(AppDbContext db) : IPersonRepository
 
         if (!string.IsNullOrWhiteSpace(search))
         {
-            var s = search.ToLower();
+            var s = search.Trim();
+            var sLower = s.ToLower();
             query = query.Where(p =>
-                p.FullName.ToLower().Contains(s) ||
-                (p.FullNameEn != null && p.FullNameEn.ToLower().Contains(s)) ||
-                (p.FullNameAr != null && p.FullNameAr.ToLower().Contains(s)));
+                p.FullName.ToLower().Contains(sLower) ||
+                (p.MilitaryNumber != null && p.MilitaryNumber.ToString().Contains(s)));
         }
 
         if (status.HasValue)

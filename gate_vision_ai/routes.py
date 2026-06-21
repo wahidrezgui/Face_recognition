@@ -16,7 +16,7 @@ from .config import settings
 from .capture import CameraCapture
 from .processing import process_single_face
 from .quality import check_quality, crop_face_b64, estimate_pose_from_kps, decode_base64_frame, classify_pose
-from .embedder import extract_embedding, average_embeddings
+from .embedder import extract_embedding, average_embeddings, deduplicate_embeddings
 
 logger = logging.getLogger("gate_vision_ai")
 
@@ -25,7 +25,6 @@ class IdentifyRequest(BaseModel):
     embedding: list[float]
     frame_quality: float
     captured_at: str
-    direction: str = "entry"
 
 
 class EnrollRequest(BaseModel):
@@ -61,7 +60,6 @@ class RoiRequest(BaseModel):
 
 class RestartRequest(BaseModel):
     source: str
-    direction: str = "entry"
     gate_id: str | None = None
 
 
@@ -139,7 +137,7 @@ def register_routes(app, state: dict):
             "landmarks": None,
             "embedding": np.array(req.embedding, dtype=np.float32),
         }
-        return await process_single_face(dummy_face, np.zeros((1, 1, 3), dtype=np.uint8), req.captured_at, req.direction, s["backend"])
+        return await process_single_face(dummy_face, np.zeros((1, 1, 3), dtype=np.uint8), req.captured_at, s["backend"])
 
     @app.post("/enroll")
     async def enroll(req: EnrollRequest, _auth: None = Depends(require_local_api_key)):
@@ -166,6 +164,10 @@ def register_routes(app, state: dict):
                 rejected.append({"frame": i, "reason": "no_embedding"})
         if len(accepted) < 3:
             raise HTTPException(400, f"Too few valid frames: {len(accepted)} accepted, need >=3")
+        before_dedup = len(accepted)
+        accepted = deduplicate_embeddings(accepted, settings.enroll_dedup_threshold)
+        if len(accepted) < before_dedup:
+            logger.info("Enroll dedup: %d → %d embeddings for %s", before_dedup, len(accepted), req.personId)
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
         result = await s["backend"].enroll(req.personId, accepted)
@@ -259,6 +261,10 @@ def register_routes(app, state: dict):
                 rejected.append({"frame": i, "reason": "no_embedding"})
         if len(accepted_embs) < 3:
             raise HTTPException(400, f"Too few valid frames: {len(accepted_embs)} accepted, need >=3")
+        before_dedup = len(accepted_embs)
+        accepted_embs = deduplicate_embeddings(accepted_embs, settings.enroll_dedup_threshold)
+        if len(accepted_embs) < before_dedup:
+            logger.info("Enroll dedup: %d → %d embeddings for %s", before_dedup, len(accepted_embs), req.personId)
         if s["backend"] is None:
             raise HTTPException(503, "backend not available")
         result = await s["backend"].enroll(req.personId, accepted_embs, face_crops if face_crops else None, poses, replace=req.replace)
@@ -432,7 +438,6 @@ def register_routes(app, state: dict):
                 "max_identity_requests_per_window": settings.max_identity_requests_per_window,
                 "greeting_delay_ms": settings.greeting_delay_ms,
                 "camera_source": settings.camera_source,
-                "direction": settings.direction,
                 "processing_fps": s.get("processing_fps", settings.processing_fps),
                 "stats": s["stats"],
                 "roi": roi,
@@ -752,11 +757,8 @@ def register_routes(app, state: dict):
         source = req.source
         if not source:
             raise HTTPException(400, "source is required")
-        direction = req.direction
-        if direction not in ("entry", "exit"):
-            raise HTTPException(400, "direction must be 'entry' or 'exit'")
         gate_id = (req.gate_id or "").strip() or settings.gate_id
-        logger.info("Restarting capture with source=%s direction=%s gate_id=%s", source, direction, gate_id)
+        logger.info("Restarting capture with source=%s gate_id=%s", source, gate_id)
 
         # Open and warm-up new capture before touching old one
         new_cap = await asyncio.to_thread(CameraCapture, source)
@@ -769,12 +771,11 @@ def register_routes(app, state: dict):
         old = s["capture"]
         s["capture"] = new_cap
         settings.camera_source = source
-        settings.direction = direction
         settings.gate_id = gate_id
         if old:
             await asyncio.to_thread(old.release)
 
-        return {"status": "ok", "camera_source": source, "direction": direction, "gate_id": gate_id}
+        return {"status": "ok", "camera_source": source, "gate_id": gate_id}
 
 
 async def _run_enrollment_from_camera(person_id: str, capture, detector, backend):
@@ -812,6 +813,10 @@ async def _run_enrollment_from_camera(person_id: str, capture, detector, backend
         await asyncio.sleep(0.2)
     if len(accepted) < frames_needed:
         raise RuntimeError(f"Only got {len(accepted)}/{frames_needed} valid frames")
+    before_dedup = len(accepted)
+    accepted = deduplicate_embeddings(accepted, settings.enroll_dedup_threshold)
+    if len(accepted) < before_dedup:
+        logger.info("Enroll dedup: %d → %d embeddings for %s", before_dedup, len(accepted), person_id)
     if backend is None:
         raise RuntimeError("Backend not available")
     result = await backend.enroll(person_id, accepted, face_crops if face_crops else None)

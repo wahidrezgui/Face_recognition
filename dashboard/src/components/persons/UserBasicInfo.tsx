@@ -80,10 +80,8 @@ export function UserBasicInfo({
           </button>
         </div>
 
-        <p className="mt-1 text-sm text-gv-muted">{person.department}</p>
-
         {person.militaryNumber != null && (
-          <p className="mt-0.5 text-xs font-mono text-gv-muted">
+          <p className="mt-1 text-xs font-mono text-gv-muted">
             Mil #{person.militaryNumber}
           </p>
         )}

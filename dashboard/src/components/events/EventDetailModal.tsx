@@ -75,10 +75,6 @@ export default function EventDetailModal({
               <p className="text-sm font-mono text-white mt-0.5">{Math.round(event.confidence * 100)}%</p>
             </div>
             <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-gv-muted">Direction</p>
-              <p className="text-sm capitalize text-white mt-0.5">{event.direction}</p>
-            </div>
-            <div>
               <p className="text-[10px] font-semibold uppercase tracking-widest text-gv-muted">Date</p>
               <p className="text-sm text-white mt-0.5">
                 {formatLocalDateLong(event.timestamp)}

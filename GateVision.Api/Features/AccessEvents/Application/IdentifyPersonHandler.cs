@@ -11,7 +11,6 @@ public class IdentifyPersonCommand
     public float[] Embedding { get; init; } = [];
     public float FrameQuality { get; init; }
     public string CapturedAt { get; init; } = "";
-    public string? Direction { get; init; }
     public string? FaceCrop { get; init; }
     public int TrackId { get; init; }
     public string? GateId { get; init; }
@@ -28,15 +27,12 @@ public class IdentifyPersonResult
     public string PersonName { get; init; } = "UNKNOWN";
     public float Confidence { get; init; }
     public string Timestamp { get; init; } = "";
-    public string Direction { get; init; } = "entry";
     public string GateId { get; init; } = "default";
 }
 
 public class IdentifyPersonHandler(
     IdentificationService identification,
     EventBufferService buffer,
-    TrainingModeService trainingMode,
-    LogUnknownService logUnknown,
     GateChannelRegistry channelRegistry,
     GateService gateService,
     WelcomeDedupService welcomeDedup)
@@ -63,14 +59,10 @@ public class IdentifyPersonHandler(
         var recognition = await gateService.GetRecognitionSettingsAsync(effectiveGateId, ct);
         var result = await identification.Identify(cmd.Embedding, cmd.FrameQuality, capturedAt, recognition);
 
-        var direction = string.Equals(cmd.Direction, "exit", StringComparison.OrdinalIgnoreCase)
-            ? Direction.Exit
-            : Direction.Entry;
-
         bool isIdentified = result.Status == EventStatus.Identified;
         bool isKnownPerson = result.PersonId.HasValue;
-        bool isTrainingEvent = !isIdentified && !isKnownPerson && !logUnknown.Enabled;
-        bool willPersist = isIdentified || isKnownPerson || logUnknown.Enabled || trainingMode.Enabled;
+        bool isTrainingEvent = !isIdentified && !isKnownPerson && !recognition.LogUnknown;
+        bool willPersist = isIdentified || isKnownPerson || recognition.LogUnknown || recognition.TrainingMode;
 
         Guid eventId;
         bool publishToSse;
@@ -85,11 +77,9 @@ public class IdentifyPersonHandler(
                 PersonName = result.PersonName,
                 Confidence = result.Confidence,
                 Status = result.Status,
-                Direction = direction,
                 CapturedAt = capturedAt,
                 FaceImageBase64 = cmd.FaceCrop,
                 WelcomeMessage = result.WelcomeMessage,
-                Department = result.Department,
                 Emotion = cmd.Emotion,
                 Age = cmd.Age,
                 Gender = cmd.Gender,
@@ -107,18 +97,17 @@ public class IdentifyPersonHandler(
 
         var suppressWelcome = false;
         if (publishToSse && !cmd.Replayed && isIdentified &&
-            !welcomeDedup.ShouldPublish(effectiveGateId, result.PersonId, direction, capturedAt))
+            !welcomeDedup.ShouldPublish(effectiveGateId, result.PersonId, capturedAt))
             suppressWelcome = true;
 
         if (publishToSse && !cmd.Replayed && !suppressWelcome)
         {
             var sseEvt = GateEvent.Reconstitute(
                 eventId, effectiveGateId, result.PersonId, result.Confidence,
-                result.Status, direction, capturedAt,
+                result.Status, capturedAt,
                 cmd.FaceCrop, cmd.Emotion, cmd.Age, cmd.Gender);
             sseEvt.PersonName = result.PersonName;
             sseEvt.WelcomeMessage = result.WelcomeMessage;
-            sseEvt.Department = result.Department;
             channelRegistry.Publish(effectiveGateId, sseEvt);
         }
 
@@ -128,7 +117,6 @@ public class IdentifyPersonHandler(
             PersonName = result.PersonName,
             Confidence = result.Confidence,
             Timestamp = capturedAt.ToString("O"),
-            Direction = direction.ToString().ToLower(),
             GateId = effectiveGateId,
         });
     }

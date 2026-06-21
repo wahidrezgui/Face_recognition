@@ -1,9 +1,9 @@
 using System.Text;
-using GateVision.Api.Shared.Kernel;
-using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.GateOperations.Domain;
+using GateVision.Api.Features.Identity.Domain;
 using GateVision.Api.Shared.Infrastructure.Persistence;
+using GateVision.Api.Shared.Kernel;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
 
@@ -72,9 +72,9 @@ public class EmployeeSyncService(
             total = Convert.ToInt32(result);
         }
 
-        var alreadyImportedTotal = await db.Persons
-            .AsNoTracking()
-            .CountAsync(p => p.ExternalSourceId != null && p.ExternalSourceId.StartsWith("mysql:"), ct);
+        var importedMap = await BuildImportedMapAsync(ct);
+        var hrIds = await FetchAllHrEmployeeIdsAsync(conn, ct);
+        var alreadyImportedTotal = hrIds.Count(importedMap.ContainsKey);
 
         var rows = new List<EmployeeRow>();
         const string sql = """
@@ -95,22 +95,10 @@ public class EmployeeSyncService(
                 rows.Add(ReadRow(reader));
         }
 
-        var externalIds = rows.Select(r => $"mysql:{r.Id}").ToList();
-        var alreadyImportedIds = await db.Persons
-            .AsNoTracking()
-            .Where(p => p.ExternalSourceId != null && externalIds.Contains(p.ExternalSourceId))
-            .Select(p => new { p.ExternalSourceId, Id = p.Id.ToString() })
-            .ToListAsync(ct);
-
-        var importedMap = alreadyImportedIds
-            .Where(x => x.ExternalSourceId != null)
-            .ToDictionary(x => x.ExternalSourceId!, x => x.Id);
-
         var items = new List<EmployeePreviewItem>();
         foreach (var row in rows)
         {
-            var extId = $"mysql:{row.Id}";
-            var isImported = importedMap.TryGetValue(extId, out var personId);
+            var isImported = importedMap.TryGetValue(row.Id, out var personId);
             if (skipImported && isImported) continue;
 
             var displayName = !string.IsNullOrWhiteSpace(row.FullNameEn)
@@ -118,14 +106,14 @@ public class EmployeeSyncService(
                 : row.FullNameAr ?? "Unknown";
 
             items.Add(new EmployeePreviewItem(
-                MysqlId:           row.Id,
-                FullName:          displayName,
-                FullNameAr:        row.FullNameAr,
-                Department:        $"Dept-{row.DepId}",
-                QrCode:            row.QrCode,
-                PhotoPath:         row.Photo,
+                MysqlId: row.Id,
+                FullName: displayName,
+                FullNameAr: row.FullNameAr,
+                Department: $"Dept-{row.DepId}",
+                QrCode: row.QrCode,
+                PhotoPath: row.Photo,
                 IsAlreadyImported: isImported,
-                PersonId:          personId));
+                PersonId: personId));
         }
 
         return new EmployeePreviewResult(total, alreadyImportedTotal, items);
@@ -140,21 +128,14 @@ public class EmployeeSyncService(
 
         var rows = await FetchRowsByIdsAsync(connStr, mysqlIds, ct);
 
-        var existingExtIds = await db.Persons
-            .AsNoTracking()
-            .Where(p => p.ExternalSourceId != null)
-            .Select(p => p.ExternalSourceId!)
-            .ToListAsync(ct);
-        var existingSet = existingExtIds.ToHashSet();
+        var importedMap = await BuildImportedMapAsync(ct);
 
         int imported = 0, skipped = 0, failed = 0, enrolledFaces = 0;
         var results = new List<ImportResultItem>();
 
         foreach (var row in rows)
         {
-            var extId = $"mysql:{row.Id}";
-
-            if (existingSet.Contains(extId))
+            if (importedMap.ContainsKey(row.Id))
             {
                 skipped++;
                 results.Add(new ImportResultItem(row.Id, "skipped", null, null));
@@ -260,16 +241,7 @@ public class EmployeeSyncService(
         if (string.IsNullOrWhiteSpace(connStr))
             throw new InvalidOperationException("Sync:MySqlConnectionString is not configured.");
 
-        var importedExtIds = await db.Persons
-            .AsNoTracking()
-            .Where(p => p.ExternalSourceId != null && p.ExternalSourceId.StartsWith("mysql:"))
-            .Select(p => p.ExternalSourceId!)
-            .ToListAsync(ct);
-
-        var importedSet = importedExtIds
-            .Select(id => int.TryParse(id.AsSpan(6), out var n) ? n : -1)
-            .Where(n => n > 0)
-            .ToHashSet();
+        var importedMap = await BuildImportedMapAsync(ct);
 
         await using var conn = new MySqlConnection(connStr);
         await conn.OpenAsync(ct);
@@ -280,12 +252,44 @@ public class EmployeeSyncService(
         while (await reader.ReadAsync(ct))
         {
             var id = reader.GetInt32(0);
-            if (!importedSet.Contains(id))
+            if (!importedMap.ContainsKey(id))
                 allIds.Add(id);
         }
 
         return [.. allIds];
     }
+
+    private async Task<Dictionary<int, string>> BuildImportedMapAsync(CancellationToken ct)
+    {
+        var linked = await db.Persons
+            .AsNoTracking()
+            .Where(p => p.ExternalSourceId != null)
+            .Select(p => new { p.ExternalSourceId, Id = p.Id.ToString() })
+            .ToListAsync(ct);
+
+        var map = new Dictionary<int, string>();
+        foreach (var person in linked)
+        {
+            if (TryParseEmployeeSourceId(person.ExternalSourceId, out var employeeId))
+                map.TryAdd(employeeId, person.Id);
+        }
+
+        return map;
+    }
+
+    private static async Task<List<int>> FetchAllHrEmployeeIdsAsync(
+        MySqlConnection conn, CancellationToken ct)
+    {
+        var ids = new List<int>();
+        await using var cmd = new MySqlCommand("SELECT id FROM employees", conn);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        while (await reader.ReadAsync(ct))
+            ids.Add(reader.GetInt32(0));
+        return ids;
+    }
+
+    private static bool TryParseEmployeeSourceId(string? externalSourceId, out int employeeId) =>
+        int.TryParse(externalSourceId, out employeeId);
 
     private static async Task<List<EmployeeRow>> FetchRowsByIdsAsync(
         string connStr, int[] ids, CancellationToken ct)
@@ -330,21 +334,12 @@ public class EmployeeSyncService(
         }
 
         return new EmployeeRow(
-            Id:            r.GetInt32("id"),
-            QrCode:        NullableStr("qrcode"),
+            Id: r.GetInt32("id"),
             MilitaryNumber: NullableInt("military_number"),
-            PhoneNumber:   NullableStr("phone_number"),
-            FullNameEn:    NullableStr("fullname_en"),
-            FullNameAr:    NullableStr("fullname_ar"),
-            DepId:         r.GetInt32("dep_id"),
-            RankId:        NullableInt("rank_id"),
-            NationalityId: NullableInt("nationality_id"),
-            IsEmployee:    r.GetInt32(r.GetOrdinal("is_employee")),
-            Qid:           NullableStr("qid"),
-            DefaultBase:   NullableInt("default_base"),
-            Remarks:       NullableStr("remarks"),
-            BloodType:     NullableStr("bloodtype"),
-            JobArabic:     NullableStr("Job_Arabic"),
-            Photo:         NullableStr("photo"));
+            FullNameEn: NullableStr("fullname_en"),
+            FullNameAr: NullableStr("fullname_ar"),
+            Photo: NullableStr("photo"),
+            DepId: r.GetInt32("dep_id"),
+            QrCode: NullableStr("qrcode"));
     }
 }

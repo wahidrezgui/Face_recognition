@@ -304,6 +304,186 @@ Every `detector.detect()` call performs `frame.tobytes()` (6MB copy) + IPC trans
 
 ---
 
+## Step 11 — Fix Kalman Track Hit-Confirmation Threshold ✅ VERIFIED
+
+**Files:** `gate_vision_ai/main.py`  
+**Risk:** Very Low — isolated to `_KalmanTrack`, no IPC or API surface change  
+**Accuracy Impact:** High — the tentative-track suppression added in Step 8 is currently a no-op
+
+**Problem:**  
+`_KalmanTrack.update()` sets `self.confirmed = True` when `self.hits >= 1`. However, `_SORTTracker._spawn()` immediately calls `t.update(bbox, now)` on the newly created track, which sets `hits = 1` — so the `hits >= 1` condition is satisfied on the very first frame. **Every new detection is instantly confirmed.** The Step 8 roadmap promised "≥2 consecutive detections to confirm", but the implementation delivers 1. False detections (posters, reflections, lens flare) go straight to the window manager without needing to survive a second frame.
+
+**What was changed:**
+- `_KalmanTrack.update()`: `if self.hits >= 1:` → `if self.hits >= settings.min_track_hits:` (reads from config, default 2).
+- `_SORTTracker._spawn()`: removed the `t.update(bbox, now)` call. `__init__` already seeds the Kalman state from bbox. `_spawn()` now sets `t.last_seen = now` and `t.hits = 1` directly — track is tentative until it matches in a subsequent frame.
+- Added `min_track_hits: int = 2` to `config.py` (env var `GV_MIN_TRACK_HITS`).
+
+**Verification checklist (for user to confirm):**
+- [ ] A face visible in exactly one frame does NOT trigger an identification event
+- [ ] A face visible across two or more frames IS confirmed and reaches the window manager
+- [ ] A static image or reflection (only detected once) is correctly suppressed
+- [ ] Multi-person tracking still assigns separate track IDs correctly
+
+---
+
+## Step 12 — Remove Duplicate Sharpness Computation ✅ VERIFIED
+
+**Files:** `gate_vision_ai/processing.py`, `gate_vision_ai/quality.py`  
+**Risk:** Zero — pure refactor, no logic change  
+**Maintenance Impact:** Low — eliminates silent divergence between two identical functions
+
+**Problem:**  
+`_face_sharpness(frame, bbox)` in `processing.py` (lines 17–25) is byte-for-byte identical to `face_sharpness_score(frame, bbox)` in `quality.py` (lines 34–42). Both compute `cv2.Laplacian(gray, cv2.CV_64F).var()` on the same face crop. If the sharpness logic ever needs tuning (e.g., switching to a Brenner gradient or a frequency-domain measure), both copies must be updated or they silently diverge.
+
+**What to change:**
+- Delete `_face_sharpness()` from `processing.py`.
+- Add `from .quality import face_sharpness_score` to `processing.py`.
+- Replace the one call site in `process_single_face`: `sharpness = _face_sharpness(frame, face["bbox"])` → `sharpness = face_sharpness_score(frame, face["bbox"])`.
+
+**Verification checklist (for user to confirm):**
+- [ ] Auto-improve sharpness gate still triggers correctly
+- [ ] No `NameError` at runtime
+- [ ] No change in identification or enrollment behavior
+
+---
+
+## Step 13 — Make CORS Origins Configurable ✅ VERIFIED
+
+**Files:** `gate_vision_ai/main.py`, `gate_vision_ai/config.py`  
+**Risk:** Very Low — additive config change, default preserves current behavior  
+**Security Impact:** Medium — hardcoded `localhost:3000` cannot be adapted to production dashboard URLs
+
+**Problem:**  
+`allow_origins=["http://localhost:3000"]` is hardcoded in the FastAPI middleware definition (`main.py:460`). A gate device deployed behind a corporate LAN, with the dashboard hosted at a different origin (e.g. `http://192.168.1.10:3000` or `https://gates.internal`), will block all dashboard CORS requests. There is no way to override this without editing source code.
+
+**What to change:**
+- Add `cors_origins: str = "http://localhost:3000"` to `config.py` (env var `GV_CORS_ORIGINS`; comma-separated for multiple origins).
+- In `main.py`, parse `settings.cors_origins.split(",")` and pass the resulting list to `CORSMiddleware`.
+- Document `GV_CORS_ORIGINS` in `.env.example`.
+
+**Verification checklist (for user to confirm):**
+- [ ] Default behavior (`localhost:3000`) unchanged when `GV_CORS_ORIGINS` is not set
+- [ ] Setting `GV_CORS_ORIGINS=http://192.168.1.10:3000` allows requests from that origin
+- [ ] Setting multiple comma-separated origins works correctly
+- [ ] Invalid or missing header still returns CORS error from a disallowed origin
+
+---
+
+## Step 14 — Persist SQLite Connection in LocalEventBuffer ✅ VERIFIED
+
+**Files:** `gate_vision_ai/local_buffer.py`  
+**Risk:** Low — internal implementation change, same public API  
+**Performance Impact:** Medium — eliminates repeated open/close overhead under burst load
+
+**Problem:**  
+`LocalEventBuffer.enqueue()`, `dequeue_batch()`, and `pending_count()` each create and destroy a `sqlite3.connect()` connection on every call. When the circuit breaker opens (e.g. backend goes down), every incoming face detection triggers `enqueue()`. At 5 FPS with 1 face per frame, this is 5 connection create/destroy cycles per second — unnecessary overhead that adds latency to the hot identification path.
+
+**What to change:**
+- Open one persistent `sqlite3.Connection` at `__init__` time with `check_same_thread=False` and `isolation_level=None` (autocommit disabled).
+- Enable WAL journal mode on first open: `conn.execute("PRAGMA journal_mode=WAL")`.
+- Replace the per-method `sqlite3.connect()`/`conn.close()` pattern with the shared `self._conn` protected by the existing `self._lock`.
+- Keep the same `threading.Lock()` — it already serializes all access correctly.
+
+**Verification checklist (for user to confirm):**
+- [ ] Events are correctly enqueued when backend is down
+- [ ] `dequeue_batch()` returns and deletes the correct rows
+- [ ] `pending_count()` reflects the true queue depth
+- [ ] No `sqlite3.ProgrammingError` under concurrent access
+
+---
+
+## Step 15 — Deduplicate Near-Identical Embeddings Before Enrollment ✅ VERIFIED
+
+**Files:** `gate_vision_ai/routes.py`, `gate_vision_ai/embedder.py`  
+**Risk:** Low — only affects enrollment, no identification path change  
+**Accuracy Impact:** Medium — forces gallery diversity; avoids storing 10 nearly identical embeddings from a static subject
+
+**Problem:**  
+`/enroll/webcam` and `_run_enrollment_from_camera` collect multiple frames and send all accepted embeddings to the backend. If the person stands still for 5 frames, all 5 embeddings have cosine similarity ≥ 0.97 — the gallery ends up with near-duplicates rather than diverse pose/lighting samples. This reduces the gallery's ability to handle variation at identification time and wastes storage.
+
+**What to change:**
+- Add `deduplicate_embeddings(embeddings: list[np.ndarray], max_sim: float = 0.95) -> list[np.ndarray]` to `embedder.py`. For each candidate, compute cosine similarity against all already-accepted embeddings; only add it if `max(similarities) < max_sim`.
+- Call `deduplicate_embeddings(accepted_embs)` at the end of both `/enroll/webcam` and `_run_enrollment_from_camera` before the backend call.
+- Add `enroll_dedup_threshold: float = 0.95` to `config.py` (0 = disabled).
+- Log the number of embeddings dropped as duplicates.
+
+**Verification checklist (for user to confirm):**
+- [ ] Enrolling with 10 frames of a still subject produces fewer than 10 embeddings sent to backend
+- [ ] Enrolling with varied poses (frontal, slight left, slight right) preserves all 3
+- [ ] No regression in `/enroll/from-image` (single-embedding path, dedup doesn't apply)
+- [ ] `accepted` count in the response reflects post-dedup count
+
+---
+
+## Step 16 — Use `INTER_AREA` for Motion Detection Downscale ✅ VERIFIED
+
+**Files:** `gate_vision_ai/main.py`  
+**Risk:** Zero — one-constant change, purely within the motion gate branch  
+**Accuracy Impact:** Low-Medium — reduces block-artifact false positives in the motion gate
+
+**Problem:**  
+The motion gate downscaled each frame to 160×120 using `cv2.INTER_NEAREST` (`main.py:336`). Nearest-neighbour at a ≥6× downscale ratio (1080p → 160×120) introduced heavy block artifacts — adjacent output pixels corresponded to very different source pixels, creating pixel-level variation in static scenes that exceeded `motion_pixel_threshold` and caused spurious motion gate triggers.
+
+**What was changed:**
+- `main.py:336`: changed `interpolation=cv2.INTER_NEAREST` → `interpolation=cv2.INTER_AREA`.  
+  Note: `INTER_AREA` (pixel-averaging box filter) was chosen over the originally planned `INTER_LINEAR` because it is the correct OpenCV method for large-ratio downscaling — it averages all source pixels within each output cell, fully eliminating aliasing rather than just reducing it.
+
+**Verification checklist (for user to confirm):**
+- [ ] Static scene (no movement) no longer triggers motion gate spuriously
+- [ ] Real motion (person walking) still triggers the motion gate
+- [ ] `motion_skipped` counter behaves correctly
+
+---
+
+## Step 17 — Add Anti-Spoofing / Liveness Detection ⬜ TODO
+
+**Files:** `gate_vision_ai/detector.py`, `gate_vision_ai/quality.py`, `gate_vision_ai/config.py`  
+**Risk:** Medium — adds a new quality rejection path; real faces should not be affected  
+**Security Impact:** Critical — currently any printed photo or on-screen replay succeeds
+
+**Problem:**  
+The identification pipeline has no liveness check. A printed photo held up to the camera, a screen displaying a video replay, or a 3D mask would currently pass all quality gates (sharpness, brightness, pose) and produce a valid embedding that could match an enrolled person. For a physical access control system, this is the most critical missing security layer.
+
+InsightFace bundles an anti-spoofing model (`miniFASNet` or similar) that outputs a real/spoof confidence score per face. It is lightweight enough to run on CPU without significant latency impact.
+
+**What to change:**
+- In `_worker_init()`: load the anti-spoofing model via `FaceAnalysis` with the `anti_spoof` model included, or load it separately as a standalone ONNX model.
+- In `_worker_detect()` / `_worker_detect_shm()`: run anti-spoof inference on each detected face; add `face["spoof_score"]` (0.0 = spoof, 1.0 = live) to the result dict.
+- In `check_quality()` (`quality.py`): add a `spoof_score` check — return `(False, "spoof:{score:.2f}")` if `face.get("spoof_score", 1.0) < settings.min_liveness_score`.
+- Add `min_liveness_score: float = 0.6` and `anti_spoof_enabled: bool = True` to `config.py`.
+
+**Verification checklist (for user to confirm):**
+- [ ] A real face held in front of the camera passes the liveness check
+- [ ] A photo of a face shown to the camera is rejected with `spoof:` reason
+- [ ] `anti_spoof_enabled=False` disables the check entirely (backward compatible)
+- [ ] `_stats["rejected"]` increments for spoof rejections
+- [ ] Performance: liveness check adds ≤50ms per frame on CPU
+
+---
+
+## Step 18 — Make SORT Max-Lost Duration Configurable ✅ VERIFIED
+
+**Files:** `gate_vision_ai/main.py`, `gate_vision_ai/config.py`  
+**Risk:** Very Low — additive config change, existing 3s behavior is the default  
+**Correctness Impact:** Low-Medium — ghost tracks that stay alive too long can delay window closure
+
+**Problem:**  
+`_SORTTracker._MAX_LOST_S = 3.0` is a hardcoded class constant. For a gate camera 1–2m from a doorway, a person who walks through takes ~0.5–1s in frame. Keeping their track alive for 3 full seconds after they leave means the window manager may still have an "active track" signal long after the face is gone, holding window state or creating stale candidates. Deployments where the camera has a wide field of view (e.g. a corridor) may want longer persistence; tight gate crops want shorter.
+
+**What was changed:**
+- Added `tracker_max_lost_s: float = 3.0` to `config.py` (env var `GV_TRACKER_MAX_LOST_S`).
+- Removed `_MAX_LOST_S` class constant from `_SORTTracker`; `__init__` now sets `self._max_lost_s = settings.tracker_max_lost_s`.
+- `update()` now references `self._max_lost_s`.
+- `GV_TRACKER_MAX_LOST_S` added (commented out, default 3.0) to both `.env` and `.env.example` with deployment guidance.
+- Full stack: `TrackerMaxLostS` column added via migration `030_AddTrackerMaxLostSToGates.sql`, property added to `Gate.cs` (min-clamped to 0.5s), field added to `GateConfigUpdate.cs`, wired into `BuildGateConfigDto` / admin list / PATCH handler in `GateEndpoints.cs`, and mapped in `config_loader.py`. Env var always takes priority over DB value.
+
+**Verification checklist (for user to confirm):**
+- [ ] Default behavior (3s) unchanged when setting is not provided
+- [ ] Setting `GV_TRACKER_MAX_LOST_S=1.0` causes tracks to expire in 1s
+- [ ] No regression in multi-person tracking
+
+---
+
 ## Progress Tracker
 
 | Step | Title | Status | Verified By | Date |
@@ -318,6 +498,14 @@ Every `detector.detect()` call performs `frame.tobytes()` (6MB copy) + IPC trans
 | 8 | Upgrade Tracker to SORT | 🟡 AWAITING VERIFICATION | — | — |
 | 9 | Optimize Frame Transfer (Shared Memory) | 🟡 AWAITING VERIFICATION | — | — |
 | 10 | Consolidate Dual Packages | ✅ COMPLETE | — | 2026-06-17 |
+| 11 | Fix Kalman Track Hit-Confirmation Threshold | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 12 | Remove Duplicate Sharpness Computation | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 13 | Make CORS Origins Configurable | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 14 | Persist SQLite Connection in LocalEventBuffer | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 15 | Deduplicate Near-Identical Embeddings Before Enrollment | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 16 | Use `INTER_AREA` for Motion Detection Downscale | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 17 | Add Anti-Spoofing / Liveness Detection | ⬜ TODO | — | — |
+| 18 | Make SORT Max-Lost Duration Configurable | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
 
 ---
 

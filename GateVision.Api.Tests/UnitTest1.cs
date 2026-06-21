@@ -12,7 +12,7 @@ public class WelcomeDedupServiceTests
         var svc = new WelcomeDedupService(TimeSpan.FromSeconds(10));
         var capturedAt = DateTime.UtcNow;
 
-        var allowed = svc.ShouldPublish("gate-a", Guid.NewGuid(), Direction.Entry, capturedAt);
+        var allowed = svc.ShouldPublish("gate-a", Guid.NewGuid(), capturedAt);
 
         Assert.True(allowed);
     }
@@ -24,8 +24,8 @@ public class WelcomeDedupServiceTests
         var personId = Guid.NewGuid();
         var capturedAt = DateTime.UtcNow;
 
-        _ = svc.ShouldPublish("gate-a", personId, Direction.Entry, capturedAt);
-        var allowedAgain = svc.ShouldPublish("gate-a", personId, Direction.Entry, capturedAt.AddSeconds(3));
+        _ = svc.ShouldPublish("gate-a", personId, capturedAt);
+        var allowedAgain = svc.ShouldPublish("gate-a", personId, capturedAt.AddSeconds(3));
 
         Assert.False(allowedAgain);
     }
@@ -37,23 +37,10 @@ public class WelcomeDedupServiceTests
         var personId = Guid.NewGuid();
         var capturedAt = DateTime.UtcNow;
 
-        _ = svc.ShouldPublish("gate-a", personId, Direction.Entry, capturedAt);
-        var allowedAfter = svc.ShouldPublish("gate-a", personId, Direction.Entry, capturedAt.AddSeconds(11));
+        _ = svc.ShouldPublish("gate-a", personId, capturedAt);
+        var allowedAfter = svc.ShouldPublish("gate-a", personId, capturedAt.AddSeconds(11));
 
         Assert.True(allowedAfter);
-    }
-
-    [Fact]
-    public void Does_Not_Suppress_Different_Direction()
-    {
-        var svc = new WelcomeDedupService(TimeSpan.FromSeconds(10));
-        var personId = Guid.NewGuid();
-        var capturedAt = DateTime.UtcNow;
-
-        _ = svc.ShouldPublish("gate-a", personId, Direction.Entry, capturedAt);
-        var allowedExit = svc.ShouldPublish("gate-a", personId, Direction.Exit, capturedAt.AddSeconds(2));
-
-        Assert.True(allowedExit);
     }
 }
 

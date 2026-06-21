@@ -34,7 +34,6 @@ export default function ReviewEventModal({
   const [search, setSearch] = useState(event.personName && event.personName !== "UNKNOWN" ? event.personName : "");
   const [selectedPersonId, setSelectedPersonId] = useState<string | null>(event.personId);
   const [newName, setNewName] = useState("");
-  const [newDept, setNewDept] = useState("");
 
   const [debouncedSearch, setDebouncedSearch] = useState(search);
   useEffect(() => {
@@ -105,11 +104,11 @@ export default function ReviewEventModal({
 
   // ── Create tab actions ────────────────────────────────────────────────────
   async function handleCreate(mode: "link" | "enroll" | "capture") {
-    if (!newName || !newDept) return;
+    if (!newName.trim()) return;
     setBusy(true);
     setStatusMsg(null);
     try {
-      const person = await createPerson(newName, newDept);
+      const person = await createPerson(newName.trim());
 
       if (mode === "enroll" && hasFace) {
         // Enroll first — if the face service fails the event stays NeedsReview
@@ -274,7 +273,6 @@ export default function ReviewEventModal({
             </div>
             <div className="flex items-center gap-3 mt-1 text-[10px] font-mono" style={{ color: "#64748b" }}>
               <span>{Math.round(event.confidence * 100)}% confidence</span>
-              <span className="capitalize">{event.direction}</span>
               <span>{time.toLocaleTimeString("en-US", { hour12: false })}</span>
             </div>
           </div>
@@ -345,7 +343,7 @@ export default function ReviewEventModal({
                     }}
                   >
                     <span className="flex-1 truncate">{p.fullName}</span>
-                    <span className="text-[9px] shrink-0" style={{ color: "#64748b" }}>{p.department}</span>
+                    <span className="text-[9px] shrink-0" style={{ color: "#64748b" }}>{p.enrollmentStatus}</span>
                   </button>
                 ))}
                 {filtered.length === 0 && (
@@ -425,19 +423,12 @@ export default function ReviewEventModal({
                 className="w-full px-3 py-2 rounded text-xs"
                 style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2640", color: "#cbd5e1", outline: "none" }}
               />
-              <input
-                placeholder="Department"
-                value={newDept}
-                onChange={(e) => setNewDept(e.target.value)}
-                className="w-full px-3 py-2 rounded text-xs"
-                style={{ background: "rgba(255,255,255,0.03)", border: "1px solid #1a2640", color: "#cbd5e1", outline: "none" }}
-              />
 
               {/* Row 1: Create & Link + Create, Link & Enroll */}
               <div className="flex gap-2 pt-1">
                 <button
                   onClick={() => handleCreate("link")}
-                  disabled={busy || !newName || !newDept}
+                  disabled={busy || !newName.trim()}
                   className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                   style={{
                     background: "transparent",
@@ -451,7 +442,7 @@ export default function ReviewEventModal({
                 {hasFace && (
                   <button
                     onClick={() => handleCreate("enroll")}
-                    disabled={busy || !newName || !newDept}
+                    disabled={busy || !newName.trim()}
                     className="flex-1 px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                     style={{
                       background: "rgba(34,211,165,0.12)",

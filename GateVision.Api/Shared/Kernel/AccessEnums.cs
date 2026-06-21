@@ -6,12 +6,6 @@ public enum EventStatus
     NeedsReview
 }
 
-public enum Direction
-{
-    Entry,
-    Exit
-}
-
 public enum ValidationSource
 {
     Auto,

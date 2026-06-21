@@ -97,7 +97,7 @@ class _KalmanTrack:
         self._P = (np.eye(8) - K @ self._H) @ self._P
         self.hits += 1
         self.last_seen = now
-        if self.hits >= 1:
+        if self.hits >= settings.min_track_hits:
             self.confirmed = True
 
 
@@ -105,18 +105,18 @@ class _SORTTracker:
     """SORT: Kalman prediction + Hungarian assignment for multi-face tracking."""
 
     _IOU_THRESHOLD: float = 0.30
-    _MAX_LOST_S: float = 3.0
 
     def __init__(self) -> None:
         self._tracks: list[_KalmanTrack] = []
         self._next_id: int = 0
+        self._max_lost_s: float = settings.tracker_max_lost_s
 
     def has_active_tracks(self) -> bool:
         return any(t.confirmed for t in self._tracks)
 
     def update(self, detections: list[list[float]], now: float) -> list[tuple[int, bool]]:
         """Return (track_id, is_confirmed) for each input detection, preserving order."""
-        self._tracks = [t for t in self._tracks if now - t.last_seen <= self._MAX_LOST_S]
+        self._tracks = [t for t in self._tracks if now - t.last_seen <= self._max_lost_s]
         n_t, n_d = len(self._tracks), len(detections)
         det_results: dict[int, tuple[int, bool]] = {}
 
@@ -147,7 +147,11 @@ class _SORTTracker:
     def _spawn(self, bbox: list[float], now: float) -> _KalmanTrack:
         self._next_id += 1
         t = _KalmanTrack(bbox, self._next_id)
-        t.update(bbox, now)
+        # __init__ already seeds the Kalman state from bbox.
+        # Set last_seen so the track isn't pruned on the next frame,
+        # and hits=1 so it needs exactly one more match to confirm.
+        t.last_seen = now
+        t.hits = 1
         self._tracks.append(t)
         logger.debug("New track %d (total: %d)", t.id, len(self._tracks))
         return t
@@ -176,7 +180,7 @@ _state = {
 async def _process_snapshot(snapshot, backend) -> None:
     global _stats
     async with _snapshot_semaphore:
-        results = await _scheduler.schedule(snapshot, settings.direction, backend)
+        results = await _scheduler.schedule(snapshot, backend)
         window_ms = (snapshot.window_end - snapshot.window_start) * 1000
         _stats["windows_processed"] += 1
 
@@ -333,7 +337,7 @@ async def _capture_loop():
             elif settings.motion_threshold > 0 and not _tracker.has_active_tracks():
                 # Software pixel-diff gate (fallback when no Hikvision listener)
                 _gray = cv2.cvtColor(
-                    cv2.resize(detect_frame, (160, 120), interpolation=cv2.INTER_NEAREST),
+                    cv2.resize(detect_frame, (160, 120), interpolation=cv2.INTER_AREA),
                     cv2.COLOR_BGR2GRAY,
                 )
                 if _motion_prev_gray is not None:
@@ -459,7 +463,7 @@ app = FastAPI(
     middleware=[
         Middleware(
             CORSMiddleware,
-            allow_origins=["http://localhost:3000"],
+            allow_origins=[o.strip() for o in settings.cors_origins.split(",")],
             allow_methods=["*"],
             allow_headers=["*"],
         )

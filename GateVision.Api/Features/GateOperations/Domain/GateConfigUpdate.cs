@@ -2,7 +2,6 @@ namespace GateVision.Api.Features.GateOperations.Domain;
 
 public record GateConfigUpdate(
     string? CameraSource = null,
-    string? Direction = null,
     int? ProcessingFps = null,
     string? ModelProfile = null,
     int? DetectorInputWidth = null,
@@ -20,4 +19,7 @@ public record GateConfigUpdate(
     double? MinMatchScore = null,
     double? IdentifyConfidenceThreshold = null,
     double? AutoValidateConfidence = null,
-    double? MinFaceConfidence = null);
+    double? MinFaceConfidence = null,
+    double? TrackerMaxLostS = null,
+    bool? LogUnknown = null,
+    bool? TrainingMode = null);

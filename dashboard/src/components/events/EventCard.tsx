@@ -165,7 +165,6 @@ export const EventCard = memo(function EventCard({
           <span className="text-[11px] font-mono font-medium" style={{ color: col }}>
             {Math.round(event.confidence * 100)}% confidence
           </span>
-          <span className="text-[10px] text-gray-700 capitalize tracking-wide">{event.direction}</span>
           <span className="text-[10px] font-mono text-gray-800">{event.eventId.slice(0, 8)}…</span>
         </div>
       </div>
