@@ -156,7 +156,7 @@ NIST FRVT-validated systems use ≥ 0.65 for same-person determination at 0.1% F
 
 ---
 
-## Step 6 — Fix Interaction Window Timing + Cap Concurrent Tasks 🟡 AWAITING VERIFICATION
+## Step 6 — Fix Interaction Window Timing + Cap Concurrent Tasks ✅ VERIFIED
 
 **Files:** `gate_vision_ai/main.py`  
 **Risk:** Medium — touches the core capture loop timing logic  
@@ -181,7 +181,7 @@ NIST FRVT-validated systems use ≥ 0.65 for same-person determination at 0.1% F
 
 ---
 
-## Step 7 — Add API Key Authentication to Python Endpoints 🟡 AWAITING VERIFICATION
+## Step 7 — Add API Key Authentication to Python Endpoints ✅ VERIFIED
 
 **Files:** `gate_vision_ai/routes.py`, `gate_vision_ai/config.py`  
 **Risk:** Medium — adds auth requirement to all management endpoints  
@@ -206,7 +206,7 @@ The Python FastAPI service had no authentication. `POST /stop`, `POST /restart`,
 
 ---
 
-## Step 8 — Upgrade Tracker to SORT (Kalman Filter + Hungarian Assignment) 🟡 AWAITING VERIFICATION
+## Step 8 — Upgrade Tracker to SORT (Kalman Filter + Hungarian Assignment) ✅ VERIFIED
 
 **Files:** `gate_vision_ai/main.py`  
 **Risk:** Medium-High — replaces core tracking logic in `_capture_loop()`  
@@ -237,7 +237,7 @@ The greedy IoU tracker (threshold 0.15) had no motion prediction and no globally
 
 ---
 
-## Step 9 — Optimize Frame Transfer to Subprocess (Shared Memory) 🟡 AWAITING VERIFICATION
+## Step 9 — Optimize Frame Transfer to Subprocess (Shared Memory) ✅ VERIFIED
 
 **Files:** `gate_vision_ai/detector.py`  
 **Risk:** Medium — replaces IPC mechanism in `DetectorPool`, requires Python 3.8+  
@@ -493,10 +493,10 @@ InsightFace bundles an anti-spoofing model (`miniFASNet` or similar) that output
 | 3 | Fix Auto-Improve Memory Leak + Quality Gate | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
 | 4 | Add IQA Gates (Blur + Brightness) | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
 | 5 | Fix `embed_crop()` Alignment | ✅ VERIFIED | wahidrezgui | 2026-06-16 |
-| 6 | Fix Window Timing + Cap Concurrent Tasks | 🟡 AWAITING VERIFICATION | — | — |
-| 7 | Add Auth to Python Endpoints | 🟡 AWAITING VERIFICATION | — | — |
-| 8 | Upgrade Tracker to SORT | 🟡 AWAITING VERIFICATION | — | — |
-| 9 | Optimize Frame Transfer (Shared Memory) | 🟡 AWAITING VERIFICATION | — | — |
+| 6 | Fix Window Timing + Cap Concurrent Tasks | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 7 | Add Auth to Python Endpoints | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 8 | Upgrade Tracker to SORT | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
+| 9 | Optimize Frame Transfer (Shared Memory) | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
 | 10 | Consolidate Dual Packages | ✅ COMPLETE | — | 2026-06-17 |
 | 11 | Fix Kalman Track Hit-Confirmation Threshold | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
 | 12 | Remove Duplicate Sharpness Computation | ✅ VERIFIED | wahidrezgui | 2026-06-18 |
