@@ -66,10 +66,13 @@ public class WelcomeDedupServiceTests
 
 public class EventBufferServiceTests
 {
+    private static EventBufferService CreateBuffer() =>
+        new(new GateChannelRegistry());
+
     [Fact]
     public void First_Buffer_Entry_Is_New_Best()
     {
-        var buffer = new EventBufferService();
+        var buffer = CreateBuffer();
         var settings = new BufferSettings(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
 
         var (_, isNewBest) = buffer.BufferOrUpdate(MakeTrack(trackId: 1, confidence: 0.7f), settings);
@@ -80,7 +83,7 @@ public class EventBufferServiceTests
     [Fact]
     public void Same_Track_Lower_Confidence_Is_Not_New_Best()
     {
-        var buffer = new EventBufferService();
+        var buffer = CreateBuffer();
         var settings = new BufferSettings(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
         var personId = Guid.NewGuid();
 
@@ -93,7 +96,7 @@ public class EventBufferServiceTests
     [Fact]
     public void Same_Track_Higher_Confidence_Is_New_Best()
     {
-        var buffer = new EventBufferService();
+        var buffer = CreateBuffer();
         var settings = new BufferSettings(TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(3));
         var personId = Guid.NewGuid();
 
@@ -200,11 +203,11 @@ public class GateChannelRegistryTests
     {
         var registry = new GateChannelRegistry();
         var gateId = "3b7a6d06-f8e8-44c9-a731-7f20340e02c4";
-        var (_, readerA) = registry.SubscribeGate(gateId);
-        var (_, readerB) = registry.SubscribeGate(gateId);
+        var (_, readerA) = registry.SubscribeGateLive(gateId);
+        var (_, readerB) = registry.SubscribeGateLive(gateId);
         var evt = MakeEvent(gateId);
 
-        registry.Publish(gateId, evt);
+        registry.PublishLive(gateId, evt);
 
         Assert.True(readerA.TryRead(out var a));
         Assert.True(readerB.TryRead(out var b));
@@ -218,11 +221,11 @@ public class GateChannelRegistryTests
     {
         var registry = new GateChannelRegistry();
         var gateId = "gate-b";
-        var (_, gateReader) = registry.SubscribeGate(gateId);
-        var (_, allReader) = registry.SubscribeAll();
+        var (_, gateReader) = registry.SubscribeGateLive(gateId);
+        var (_, allReader) = registry.SubscribeAllLive();
         var evt = MakeEvent(gateId);
 
-        registry.Publish(gateId, evt);
+        registry.PublishLive(gateId, evt);
 
         Assert.True(gateReader.TryRead(out _));
         Assert.True(allReader.TryRead(out var allEvt));
@@ -235,11 +238,41 @@ public class GateChannelRegistryTests
     {
         var registry = new GateChannelRegistry();
         var gateId = "gate-b";
-        var (subId, reader) = registry.SubscribeGate(gateId);
-        registry.UnsubscribeGate(gateId, subId);
+        var (subId, reader) = registry.SubscribeGateLive(gateId);
+        registry.UnsubscribeGateLive(gateId, subId);
 
         registry.Publish(gateId, MakeEvent(gateId));
 
         Assert.False(reader.TryRead(out _));
+    }
+
+    [Fact]
+    public async Task Live_And_Slim_Channels_Are_Isolated()
+    {
+        var registry = new GateChannelRegistry();
+        var gateId = "gate-c";
+        var (_, liveReader) = registry.SubscribeGateLive(gateId);
+        var (_, slimReader) = registry.SubscribeGateSlim(gateId);
+        var liveEvt = MakeEvent(gateId);
+        liveEvt.TrackId = 1;
+        liveEvt.IsFinal = false;
+        var slimEvt = MakeEvent(gateId);
+        slimEvt.TrackId = 2;
+        slimEvt.IsFinal = true;
+
+        registry.PublishLive(gateId, liveEvt);
+
+        Assert.True(liveReader.TryRead(out var receivedLive));
+        Assert.False(slimReader.TryRead(out _));
+        Assert.Equal(liveEvt.Id, receivedLive.Id);
+        Assert.False(liveEvt.IsFinal);
+
+        registry.PublishSlim(gateId, slimEvt);
+
+        Assert.True(slimReader.TryRead(out var receivedSlim));
+        Assert.False(liveReader.TryRead(out _));
+        Assert.Equal(slimEvt.Id, receivedSlim.Id);
+        Assert.True(receivedSlim.IsFinal);
+        await Task.CompletedTask;
     }
 }

@@ -21,6 +21,10 @@ public class GateEvent
     public string? WelcomeMessage { get; set; }
     [System.ComponentModel.DataAnnotations.Schema.NotMapped]
     public string? Department { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public int TrackId { get; set; }
+    [System.ComponentModel.DataAnnotations.Schema.NotMapped]
+    public bool IsFinal { get; set; }
 
     private GateEvent() { }
 

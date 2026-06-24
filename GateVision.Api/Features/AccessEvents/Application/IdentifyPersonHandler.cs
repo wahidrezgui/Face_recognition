@@ -125,7 +125,10 @@ public class IdentifyPersonHandler(
             // suppressWelcome means "same person seen recently" — still push the event so the
             // desk page can update the face photo, but clear the greeting so no new card fires.
             sseEvt.WelcomeMessage = suppressWelcome ? null : result.WelcomeMessage;
-            channelRegistry.Publish(effectiveGateId, sseEvt);
+            sseEvt.TrackId = cmd.TrackId;
+            sseEvt.IsFinal = false;
+            channelRegistry.PublishLive(effectiveGateId, sseEvt);
+            channelRegistry.PublishSlim(effectiveGateId, sseEvt);
         }
 
         return Result<IdentifyPersonResult>.Ok(new IdentifyPersonResult

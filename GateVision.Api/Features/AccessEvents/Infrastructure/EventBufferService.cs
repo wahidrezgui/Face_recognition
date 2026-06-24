@@ -38,7 +38,7 @@ public record FlushResult(GateEvent? GateEvent, TrainingEvent? TrainingEvent);
 public readonly record struct TrackKey(string GateId, int TrackId);
 internal readonly record struct PersonKey(string GateId, Guid PersonId);
 
-public class EventBufferService
+public class EventBufferService(GateChannelRegistry channelRegistry)
 {
     private readonly ConcurrentDictionary<TrackKey, BufferedTrack> _tracks = new();
     private readonly ConcurrentDictionary<PersonKey, TrackKey> _personToTrack = new();
@@ -126,6 +126,7 @@ public class EventBufferService
             gateEvent.PersonName = match.PersonName;
             gateEvent.WelcomeMessage = match.WelcomeMessage;
             gateEvent.Department = match.Department;
+            PublishSlimFinal(match);
 
             var autoValidate = match.PersonId.HasValue && match.Confidence > match.AutoValidateThreshold;
             if (autoValidate)
@@ -177,6 +178,7 @@ public class EventBufferService
                 gateEvent.PersonName = track.PersonName;
                 gateEvent.WelcomeMessage = track.WelcomeMessage;
                 gateEvent.Department = track.Department;
+                PublishSlimFinal(track);
 
                 var autoValidate = track.PersonId.HasValue && track.Confidence > track.AutoValidateThreshold;
                 if (autoValidate)
@@ -202,4 +204,24 @@ public class EventBufferService
     }
 
     public int ActiveTrackCount => _tracks.Count;
+
+    private void PublishSlimFinal(BufferedTrack track)
+    {
+        if (track.IsTrainingEvent) return;
+        channelRegistry.PublishSlim(track.GateId, ToSseEvent(track, isFinal: true));
+    }
+
+    private static GateEvent ToSseEvent(BufferedTrack track, bool isFinal)
+    {
+        var gateEvent = GateEvent.Reconstitute(
+            track.Id, track.GateId, track.PersonId, track.Confidence,
+            track.Status, track.CapturedAt,
+            track.FaceImageBase64, track.Emotion, track.Age, track.Gender);
+        gateEvent.PersonName = track.PersonName;
+        gateEvent.WelcomeMessage = track.WelcomeMessage;
+        gateEvent.Department = track.Department;
+        gateEvent.TrackId = track.TrackId;
+        gateEvent.IsFinal = isFinal;
+        return gateEvent;
+    }
 }

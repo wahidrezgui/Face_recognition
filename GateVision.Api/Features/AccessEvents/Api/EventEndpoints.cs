@@ -393,17 +393,17 @@ public static class EventEndpoints
             Guid subId;
             ChannelReader<GateEvent> reader;
             if (useAllStream)
-                (subId, reader) = registry.SubscribeAll();
+                (subId, reader) = registry.SubscribeAllSlim();
             else
-                (subId, reader) = registry.SubscribeGate(normalizedGateId!);
+                (subId, reader) = registry.SubscribeGateSlim(normalizedGateId!);
             try
             {
                 await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, WriteSlimEvent, ct);
             }
             finally
             {
-                if (useAllStream) registry.UnsubscribeAll(subId);
-                else registry.UnsubscribeGate(normalizedGateId!, subId);
+                if (useAllStream) registry.UnsubscribeAllSlim(subId);
+                else registry.UnsubscribeGateSlim(normalizedGateId!, subId);
             }
         }).RequireAuthorization();
 
@@ -414,17 +414,17 @@ public static class EventEndpoints
             Guid subId;
             ChannelReader<GateEvent> reader;
             if (includeLegacyDefault)
-                (subId, reader) = registry.SubscribeAll();
+                (subId, reader) = registry.SubscribeAllSlim();
             else
-                (subId, reader) = registry.SubscribeGate(normalizedGateId!);
+                (subId, reader) = registry.SubscribeGateSlim(normalizedGateId!);
             try
             {
                 await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, WriteSlimEvent, ct);
             }
             finally
             {
-                if (includeLegacyDefault) registry.UnsubscribeAll(subId);
-                else registry.UnsubscribeGate(normalizedGateId!, subId);
+                if (includeLegacyDefault) registry.UnsubscribeAllSlim(subId);
+                else registry.UnsubscribeGateSlim(normalizedGateId!, subId);
             }
         }).RequireAuthorization();
 
@@ -436,17 +436,17 @@ public static class EventEndpoints
             Guid subId;
             ChannelReader<GateEvent> reader;
             if (useAllStream)
-                (subId, reader) = registry.SubscribeAll();
+                (subId, reader) = registry.SubscribeAllLive();
             else
-                (subId, reader) = registry.SubscribeGate(normalizedGateId!);
+                (subId, reader) = registry.SubscribeGateLive(normalizedGateId!);
             try
             {
                 await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, WriteEvent, ct);
             }
             finally
             {
-                if (useAllStream) registry.UnsubscribeAll(subId);
-                else registry.UnsubscribeGate(normalizedGateId!, subId);
+                if (useAllStream) registry.UnsubscribeAllLive(subId);
+                else registry.UnsubscribeGateLive(normalizedGateId!, subId);
             }
         }).RequireAuthorization();
 
@@ -457,20 +457,19 @@ public static class EventEndpoints
             Guid subId;
             ChannelReader<GateEvent> reader;
             if (includeLegacyDefault)
-                (subId, reader) = registry.SubscribeAll();
+                (subId, reader) = registry.SubscribeAllLive();
             else
-                (subId, reader) = registry.SubscribeGate(normalizedGateId!);
+                (subId, reader) = registry.SubscribeGateLive(normalizedGateId!);
             try
             {
                 await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, WriteEvent, ct);
             }
             finally
             {
-                if (includeLegacyDefault) registry.UnsubscribeAll(subId);
-                else registry.UnsubscribeGate(normalizedGateId!, subId);
+                if (includeLegacyDefault) registry.UnsubscribeAllLive(subId);
+                else registry.UnsubscribeGateLive(normalizedGateId!, subId);
             }
         }).RequireAuthorization();
-
     }
 
     static async Task StreamLiveEvents(
@@ -593,6 +592,8 @@ public static class EventEndpoints
         var payload = JsonSerializer.Serialize(new
         {
             eventId = evt.Id,
+            trackId = evt.TrackId,
+            isFinal = evt.IsFinal,
             gateId = evt.GateId,
             personId = evt.PersonId?.ToString(),
             personName = evt.PersonName,
@@ -609,6 +610,8 @@ public static class EventEndpoints
         var payload = JsonSerializer.Serialize(new
         {
             eventId = evt.Id,
+            trackId = evt.TrackId,
+            isFinal = evt.IsFinal,
             gateId = evt.GateId,
             personId = evt.PersonId?.ToString(),
             personName = evt.PersonName,
