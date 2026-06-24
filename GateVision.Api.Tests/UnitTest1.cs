@@ -1,6 +1,9 @@
 ﻿using GateVision.Api.Features.AccessEvents.Application;
 using GateVision.Api.Features.AccessEvents.Domain;
 using GateVision.Api.Features.AccessEvents.Infrastructure;
+using GateVision.Api.Features.GateOperations.Domain;
+using GateVision.Api.Shared.Kernel;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace GateVision.Api.Tests;
 
@@ -113,6 +116,51 @@ public class EventBufferServiceTests
     };
 }
 
+public class IdentificationServiceTests
+{
+    private static readonly GateRecognitionSettings Settings = GateRecognitionSettings.Default;
+
+    private static IdentificationService CreateService() =>
+        new(null!, null!, null!, NullLogger<IdentificationService>.Instance);
+
+    [Fact]
+    public void IdentifyFromClient_Known_Person_Above_Threshold()
+    {
+        var personId = Guid.NewGuid();
+        var result = CreateService().IdentifyFromClient(
+            personId, "Alice", 0.92f, "Welcome back!", Settings);
+
+        Assert.Equal(personId, result.PersonId);
+        Assert.Equal("Alice", result.PersonName);
+        Assert.Equal(0.92f, result.Confidence);
+        Assert.Equal(EventStatus.Identified, result.Status);
+        Assert.Equal("Welcome back!", result.WelcomeMessage);
+    }
+
+    [Fact]
+    public void IdentifyFromClient_Known_Person_Below_Threshold()
+    {
+        var personId = Guid.NewGuid();
+        var result = CreateService().IdentifyFromClient(
+            personId, "Alice", 0.6f, null, Settings);
+
+        Assert.Equal(personId, result.PersonId);
+        Assert.Equal(EventStatus.NeedsReview, result.Status);
+    }
+
+    [Fact]
+    public void IdentifyFromClient_Unknown_Skips_PersonId()
+    {
+        var result = CreateService().IdentifyFromClient(
+            null, "UNKNOWN", 0f, "Please proceed to scan your card access", Settings);
+
+        Assert.Null(result.PersonId);
+        Assert.Equal("UNKNOWN", result.PersonName);
+        Assert.Equal(EventStatus.NeedsReview, result.Status);
+        Assert.Equal("Please proceed to scan your card access", result.WelcomeMessage);
+    }
+}
+
 public class IdentifyPersonHandlerTests
 {
     [Fact]
@@ -129,5 +177,69 @@ public class IdentifyPersonHandlerTests
 
         Assert.False(result.IsSuccess);
         Assert.Contains("512", result.Error);
+    }
+}
+
+public class GateChannelRegistryTests
+{
+    private static GateEvent MakeEvent(string gateId) =>
+        GateEvent.Reconstitute(
+            Guid.NewGuid(),
+            gateId,
+            Guid.NewGuid(),
+            0.9f,
+            EventStatus.Identified,
+            DateTime.UtcNow,
+            null,
+            null,
+            null,
+            null);
+
+    [Fact]
+    public async Task Publish_Fans_Out_To_All_Gate_Subscribers()
+    {
+        var registry = new GateChannelRegistry();
+        var gateId = "3b7a6d06-f8e8-44c9-a731-7f20340e02c4";
+        var (_, readerA) = registry.SubscribeGate(gateId);
+        var (_, readerB) = registry.SubscribeGate(gateId);
+        var evt = MakeEvent(gateId);
+
+        registry.Publish(gateId, evt);
+
+        Assert.True(readerA.TryRead(out var a));
+        Assert.True(readerB.TryRead(out var b));
+        Assert.Equal(evt.Id, a.Id);
+        Assert.Equal(evt.Id, b.Id);
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public async Task Publish_Fans_Out_To_All_Subscribers()
+    {
+        var registry = new GateChannelRegistry();
+        var gateId = "gate-b";
+        var (_, gateReader) = registry.SubscribeGate(gateId);
+        var (_, allReader) = registry.SubscribeAll();
+        var evt = MakeEvent(gateId);
+
+        registry.Publish(gateId, evt);
+
+        Assert.True(gateReader.TryRead(out _));
+        Assert.True(allReader.TryRead(out var allEvt));
+        Assert.Equal(evt.Id, allEvt.Id);
+        await Task.CompletedTask;
+    }
+
+    [Fact]
+    public void Unsubscribe_Stops_Delivery()
+    {
+        var registry = new GateChannelRegistry();
+        var gateId = "gate-b";
+        var (subId, reader) = registry.SubscribeGate(gateId);
+        registry.UnsubscribeGate(gateId, subId);
+
+        registry.Publish(gateId, MakeEvent(gateId));
+
+        Assert.False(reader.TryRead(out _));
     }
 }

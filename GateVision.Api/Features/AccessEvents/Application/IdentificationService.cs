@@ -27,6 +27,48 @@ public class IdentificationService
         _logger = logger;
     }
 
+    /// <summary>
+    /// Trust gate-AI pre-resolved identity — no Qdrant match or Persons DB lookup.
+    /// </summary>
+    public IdentifyResponse IdentifyFromClient(
+        Guid? personId,
+        string? personName,
+        float? confidence,
+        string? welcomeMessage,
+        GateRecognitionSettings settings)
+    {
+        var resolvedConfidence = confidence ?? 0f;
+        if (float.IsNaN(resolvedConfidence) || float.IsInfinity(resolvedConfidence))
+            resolvedConfidence = 0f;
+
+        var resolvedName = string.IsNullOrWhiteSpace(personName) ? "UNKNOWN" : personName.Trim();
+
+        if (personId is null || resolvedName.Equals("UNKNOWN", StringComparison.OrdinalIgnoreCase))
+        {
+            return new IdentifyResponse
+            {
+                PersonId = null,
+                PersonName = "UNKNOWN",
+                Confidence = resolvedConfidence,
+                Status = EventStatus.NeedsReview,
+                WelcomeMessage = string.IsNullOrWhiteSpace(welcomeMessage) ? null : welcomeMessage.Trim(),
+            };
+        }
+
+        var status = resolvedConfidence >= settings.IdentifyConfidenceThreshold
+            ? EventStatus.Identified
+            : EventStatus.NeedsReview;
+
+        return new IdentifyResponse
+        {
+            PersonId = personId,
+            PersonName = resolvedName,
+            Confidence = resolvedConfidence,
+            Status = status,
+            WelcomeMessage = string.IsNullOrWhiteSpace(welcomeMessage) ? null : welcomeMessage.Trim(),
+        };
+    }
+
     public async Task<IdentifyResponse> Identify(
         float[] embedding,
         float frameQuality,

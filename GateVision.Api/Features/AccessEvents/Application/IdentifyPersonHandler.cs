@@ -18,7 +18,14 @@ public class IdentifyPersonCommand
     public string? Emotion { get; init; }
     public int? Age { get; init; }
     public string? Gender { get; init; }
+    public string? PersonId { get; init; }
+    public string? PersonName { get; init; }
+    public float? Confidence { get; init; }
+    public string? WelcomeMessage { get; init; }
     public string? AuthenticatedGateId { get; init; }
+
+    /// <summary>True when gate AI sent pre-resolved identity (skip Qdrant + Persons DB).</summary>
+    public bool ClientProvidedIdentity => PersonName != null || Confidence.HasValue;
 }
 
 public class IdentifyPersonResult
@@ -53,7 +60,14 @@ public class IdentifyPersonHandler(
         capturedAt = DateTimeUtils.NormalizeToUtc(capturedAt);
         var workflow = await gateService.GetWorkflowSettingsAsync(effectiveGateId, ct);
         var recognition = workflow.Recognition;
-        var result = await identification.Identify(cmd.Embedding, cmd.FrameQuality, capturedAt, recognition);
+        var result = cmd.ClientProvidedIdentity
+            ? identification.IdentifyFromClient(
+                TryParsePersonId(cmd.PersonId),
+                cmd.PersonName,
+                cmd.Confidence,
+                cmd.WelcomeMessage,
+                recognition)
+            : await identification.Identify(cmd.Embedding, cmd.FrameQuality, capturedAt, recognition);
 
         bool isIdentified = result.Status == EventStatus.Identified;
         bool isKnownPerson = result.PersonId.HasValue;
@@ -138,5 +152,11 @@ public class IdentifyPersonHandler(
             return gates[0].Id.ToString().ToLowerInvariant();
 
         return "default";
+    }
+
+    private static Guid? TryParsePersonId(string? personId)
+    {
+        if (string.IsNullOrWhiteSpace(personId)) return null;
+        return Guid.TryParse(personId, out var id) ? id : null;
     }
 }

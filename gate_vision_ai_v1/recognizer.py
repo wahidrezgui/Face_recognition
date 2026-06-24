@@ -26,11 +26,18 @@ def _probe_faiss() -> bool:
 
 
 @dataclass
+class PersonMeta:
+    name: str
+    welcome_message: str | None = None
+
+
+@dataclass
 class SearchResult:
     person_id: str
     label: str
     score: float    # cosine similarity [0, 1]
     index: int      # row index in the embedding matrix
+    welcome_message: str | None = None
 
 
 class EmbeddingStore:
@@ -49,6 +56,7 @@ class EmbeddingStore:
         self.matrix: np.ndarray = np.empty((0, 512), dtype=np.float32)
         self.labels: list[str] = []
         self.person_ids: list[str] = []
+        self.person_meta: dict[str, PersonMeta] = {}
         self._faiss_index: Any | None = None
         self._lock = threading.Lock()
 
@@ -65,6 +73,11 @@ class EmbeddingStore:
         logger.info("EmbeddingStore: FAISS IndexFlatIP built with %d vectors", len(self.matrix))
 
     # ── Bulk load (called by qdrant_loader) ───────────────────────────────────
+
+    def set_person_meta(self, meta: dict[str, PersonMeta]) -> None:
+        """Replace in-memory person metadata (names + welcome messages)."""
+        with self._lock:
+            self.person_meta = dict(meta)
 
     def bulk_add(self, entries: list[tuple[str, str, "np.ndarray"]]) -> int:
         """Add many embeddings at once — single vstack + one FAISS rebuild.
@@ -107,6 +120,7 @@ class EmbeddingStore:
             self.matrix = np.empty((0, 512), dtype=np.float32)
             self.labels = []
             self.person_ids = []
+            self.person_meta = {}
             self._faiss_index = None
             logger.debug("EmbeddingStore: cleared")
 
@@ -140,11 +154,14 @@ class EmbeddingStore:
             if best_score < thr:
                 return None
 
+            pid = self.person_ids[best_idx]
+            meta = self.person_meta.get(pid)
             return SearchResult(
-                person_id=self.person_ids[best_idx],
+                person_id=pid,
                 label=self.labels[best_idx],
                 score=best_score,
                 index=best_idx,
+                welcome_message=meta.welcome_message if meta else None,
             )
 
     # ── In-session mutation (enroll route) ───────────────────────────────────

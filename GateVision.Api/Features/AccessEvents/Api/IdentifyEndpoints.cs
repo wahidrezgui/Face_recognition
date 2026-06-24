@@ -27,6 +27,10 @@ public static class IdentifyEndpoints
                 Emotion = dto.Emotion,
                 Age = dto.Age,
                 Gender = dto.Gender,
+                PersonId = dto.PersonId,
+                PersonName = dto.PersonName,
+                Confidence = dto.Confidence,
+                WelcomeMessage = dto.WelcomeMessage,
                 AuthenticatedGateId = ctx.User.FindFirstValue("GateId"),
             }, ct);
 
@@ -78,4 +82,16 @@ public class IdentifyRequestDto
 
     [JsonPropertyName("gender")]
     public string? Gender { get; set; }
+
+    [JsonPropertyName("person_id")]
+    public string? PersonId { get; set; }
+
+    [JsonPropertyName("person_name")]
+    public string? PersonName { get; set; }
+
+    [JsonPropertyName("confidence")]
+    public float? Confidence { get; set; }
+
+    [JsonPropertyName("welcome_message")]
+    public string? WelcomeMessage { get; set; }
 }

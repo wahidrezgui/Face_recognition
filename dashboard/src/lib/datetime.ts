@@ -18,20 +18,6 @@ export function isEventFromToday(timestamp: string): boolean {
   return new Date(timestamp) >= localTodayStart();
 }
 
-/** One thumbnail per person (newest win); unknowns keyed by eventId. */
-export function dedupeCapturesByPerson(events: GateEvent[]): GateEvent[] {
-  const sorted = sortGateEventsByDetectionDesc(events);
-  const seen = new Set<string>();
-  const out: GateEvent[] = [];
-  for (const e of sorted) {
-    const key = e.personId ?? e.eventId;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push(e);
-  }
-  return out;
-}
-
 /** Display helpers — DB stores UTC; UI shows the viewer's local time. */
 export function formatLocalTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("en-US", { hour12: false });

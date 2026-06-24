@@ -11,13 +11,6 @@ import {
   type ValidatedEvent,
   type EventActivityRange,
 } from "@/lib/api";
-import {
-  fetchGateAutoValidateThresholds,
-  resolveAutoValidateThreshold,
-  shouldAutoValidate,
-  gateEventToValidatedPreview,
-} from "@/lib/gateRecognition";
-import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -28,12 +21,6 @@ import { ValidatedRow } from "@/components/access-log/ValidatedRow";
 
 const LIMIT = 50;
 
-function sortValidatedBySaveOrder(items: ValidatedEvent[]): ValidatedEvent[] {
-  return [...items].sort(
-    (a, b) => new Date(b.validatedAt).getTime() - new Date(a.validatedAt).getTime(),
-  );
-}
-
 export default function AccessLogPage() {
   const queryClient = useQueryClient();
   const [period, setPeriod] = useState<EventActivityRange>("today");
@@ -41,7 +28,6 @@ export default function AccessLogPage() {
   const [nameInput, setNameInput] = useState("");
   const [name, setName] = useState("");
   const [page, setPage] = useState(1);
-  const [sseConnected, setSseConnected] = useState(false);
 
   useEffect(() => {
     const id = setTimeout(() => setName(nameInput), 300);
@@ -49,7 +35,6 @@ export default function AccessLogPage() {
   }, [nameInput]);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
-  const isMilSearch = /^\d+$/.test(name);
 
   const { data: gates = [] } = useQuery({
     queryKey: ["admin-gates"],
@@ -72,71 +57,17 @@ export default function AccessLogPage() {
     bounds.to,
   ] as const;
 
-  const { data: gateThresholds } = useQuery({
-    queryKey: ["gate-auto-validate-thresholds"],
-    queryFn: fetchGateAutoValidateThresholds,
-    staleTime: 60_000,
-  });
-
   const { data: stats } = useQuery({
     queryKey: ["validated-events-stats", period, bounds.from, bounds.to, gateTab],
     queryFn: () => fetchValidatedEventStats(bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: sseConnected ? false : 60_000,
+    refetchInterval: 60_000,
   });
 
   const { data, isLoading } = useQuery({
     queryKey: validatedQueryKey,
     queryFn: () =>
       fetchValidatedEvents(page, LIMIT, name || undefined, bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: sseConnected ? false : 60_000,
-  });
-
-  useGateEventStream({
-    enabled: !!gateThresholds,
-    gateId: gateTab || undefined,
-    onOpen: () => setSseConnected(true),
-    onError: () => setSseConnected(false),
-    onEvent: (evt) => {
-      if (!gateThresholds) return;
-      if (gateTab && evt.gateId?.toLowerCase() !== gateTab) return;
-
-      const threshold = resolveAutoValidateThreshold(
-        evt.gateId,
-        gateThresholds.thresholds,
-        gateThresholds.gateIds,
-      );
-      if (!shouldAutoValidate(evt, threshold)) return;
-
-      const ts = new Date(evt.timestamp).getTime();
-      const fromMs = new Date(bounds.from).getTime();
-      const toMs = new Date(bounds.to).getTime();
-      if (ts < fromMs || ts >= toMs) return;
-      if (name && !isMilSearch && !evt.personName.toLowerCase().includes(name.toLowerCase())) return;
-
-      const preview = gateEventToValidatedPreview(evt);
-      queryClient.setQueryData(
-        validatedQueryKey,
-        (old: { items?: ValidatedEvent[]; total?: number } | undefined) => {
-          if (!old?.items) return old;
-          const filtered = old.items.filter(
-            (i) => i.gateEventId !== evt.eventId && i.eventId !== evt.eventId,
-          );
-          const isNew = filtered.length === old.items.length;
-          return {
-            ...old,
-            items: sortValidatedBySaveOrder([preview, ...filtered]).slice(0, LIMIT),
-            total: old.total! + (isNew ? 1 : 0),
-          };
-        },
-      );
-      queryClient.setQueryData(
-        ["validated-events-stats", period, bounds.from, bounds.to, gateTab],
-        (old: { total: number; autoCount: number; manualCount: number } | undefined) => {
-          if (!old) return old;
-          return { ...old, total: old.total + 1, autoCount: old.autoCount + 1 };
-        },
-      );
-    },
+    refetchInterval: 60_000,
   });
 
   const handleDelete = useCallback(

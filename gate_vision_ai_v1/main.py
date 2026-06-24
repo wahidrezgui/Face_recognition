@@ -28,6 +28,8 @@ logging.basicConfig(
 logger = logging.getLogger("gate_vision_ai_v1")
 logging.getLogger("httpx").setLevel(logging.WARNING)  # silence per-batch scroll noise
 
+UNKNOWN_WELCOME_MESSAGE = "Please proceed to scan your card access"
+
 # Pull per-gate settings from the .NET API before anything else starts.
 # GV1_* env vars always take priority over whatever the DB returns.
 load_gate_config_from_api()
@@ -279,6 +281,10 @@ async def _capture_loop() -> None:
                                         face_bbox=face.bbox,
                                         age=face.age,
                                         gender=face.gender,
+                                        person_id=result.person_id,
+                                        person_name=result.label,
+                                        confidence=_score,
+                                        welcome_message=result.welcome_message,
                                     )
                                 )
                             elif _is_first:
@@ -327,6 +333,10 @@ async def _capture_loop() -> None:
                                         face_bbox=face.bbox,
                                         age=face.age,
                                         gender=face.gender,
+                                        person_id=None,
+                                        person_name="UNKNOWN",
+                                        confidence=0.0,
+                                        welcome_message=UNKNOWN_WELCOME_MESSAGE,
                                     )
                                 )
                             if len(_unknown_notified_tracks) > 1000:

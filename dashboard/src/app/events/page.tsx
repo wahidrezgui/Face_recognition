@@ -12,7 +12,6 @@ import {
   type GateEvent,
   type EventActivityRange,
 } from "@/lib/api";
-import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { sortGateEventsByDetectionDesc } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
@@ -51,7 +50,6 @@ export default function EventsPage() {
 
   const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
   const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
-  const [sseConnected, setSseConnected] = useState(false);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
@@ -69,7 +67,7 @@ export default function EventsPage() {
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ["events-activity", period, bounds.from, bounds.to, gateTab],
     queryFn: () => fetchEventActivity(period, bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: sseConnected ? false : 60_000,
+    refetchInterval: 60_000,
   });
 
   const eventsQueryKey = ["events", period, page, name, statusTab, gateTab, bounds.from, bounds.to] as const;
@@ -78,54 +76,13 @@ export default function EventsPage() {
     queryKey: eventsQueryKey,
     queryFn: () =>
       fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: sseConnected ? false : 60_000,
+    refetchInterval: 60_000,
   });
 
   const sortedEvents = useMemo(
     () => sortGateEventsByDetectionDesc(data?.items ?? []),
     [data?.items],
   );
-
-  useGateEventStream({
-    gateId: gateTab || undefined,
-    onOpen: () => setSseConnected(true),
-    onError: () => setSseConnected(false),
-    onEvent: (evt) => {
-      if (statusTab && evt.status !== statusTab) return;
-      if (gateTab && evt.gateId?.toLowerCase() !== gateTab) return;
-
-      const ts = new Date(evt.timestamp).getTime();
-      const fromMs = new Date(bounds.from).getTime();
-      const toMs = new Date(bounds.to).getTime();
-      if (ts < fromMs || ts >= toMs) return;
-
-      queryClient.setQueryData(
-        eventsQueryKey,
-        (old: { items?: GateEvent[]; total?: number } | undefined) => {
-          if (!old?.items) return old;
-          const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
-          return {
-            ...old,
-            items: sortGateEventsByDetectionDesc([evt, ...filtered]).slice(0, LIMIT),
-            total: old.total! + (filtered.length === old.items.length ? 1 : 0),
-          };
-        },
-      );
-      queryClient.setQueryData(
-        ["events-activity", period, bounds.from, bounds.to, gateTab],
-        (old: { total: number; identified: number; needsReview: number } | undefined) => {
-          if (!old) return old;
-          const isIdentified = evt.status === "Identified";
-          return {
-            ...old,
-            total: old.total + 1,
-            identified: old.identified + (isIdentified ? 1 : 0),
-            needsReview: old.needsReview + (isIdentified ? 0 : 1),
-          };
-        },
-      );
-    },
-  });
 
   const invalidateEvents = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["events"] });

@@ -24,12 +24,14 @@ function normalizeGateId(gateId?: string): string | undefined {
 }
 
 export function buildEventStreamUrl(token: string | null, gateId?: string): string {
-  const params = new URLSearchParams();
   const normalized = normalizeGateId(gateId);
-  if (normalized) params.set("gateId", normalized);
+  const params = new URLSearchParams();
   if (token) params.set("token", token);
   const qs = params.toString();
-  return qs ? `${API_BASE}/api/v1/events/stream?${qs}` : `${API_BASE}/api/v1/events/stream`;
+  const base = normalized
+    ? `${API_BASE}/api/v1/events/stream/live/${encodeURIComponent(normalized)}`
+    : `${API_BASE}/api/v1/events/stream/live`;
+  return qs ? `${base}?${qs}` : base;
 }
 
 export type GateEventStreamOptions = {

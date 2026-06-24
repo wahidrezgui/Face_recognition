@@ -41,6 +41,10 @@ class NetBackendClient:
         face_bbox: Optional[list] = None,
         age: Optional[float] = None,
         gender: Optional[str] = None,
+        person_id: Optional[str] = None,
+        person_name: Optional[str] = None,
+        confidence: Optional[float] = None,
+        welcome_message: Optional[str] = None,
     ) -> None:
         """POST one recognition event to .NET — non-blocking, called via create_task."""
         if time.monotonic() < self._open_until:
@@ -62,6 +66,10 @@ class NetBackendClient:
             "age": int(age) if age is not None else None,
             "gender": gender[0].upper() if gender else None,  # "Male" → "M"
             "emotion": None,
+            "person_id": person_id,
+            "person_name": person_name,
+            "confidence": round(float(confidence), 4) if confidence is not None else None,
+            "welcome_message": welcome_message,
         }
 
         headers: dict[str, str] = {}

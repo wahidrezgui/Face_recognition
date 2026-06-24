@@ -2,8 +2,8 @@
 
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { type GateEvent, fetchGateDeskConfig } from "@/lib/api";
-import { useGateEventStream } from "@/hooks/useGateEventStream";
+import { type GateEvent } from "@/lib/api";
+import { useDeskLiveEventStream } from "@/hooks/useDeskLiveEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
 import { IdleScreen } from "@/components/kiosk/IdleScreen";
 
@@ -45,11 +45,6 @@ function classifyEvent(e: GateEvent): Mode {
   return "review";
 }
 
-function shouldShowOnDesk(e: GateEvent, showNeedsReview: boolean): boolean {
-  if (e.status === "Identified") return true;
-  return showNeedsReview && e.status === "NeedsReview";
-}
-
 const THEMES = {
   identified: {
     ring: "border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.4)]",
@@ -72,16 +67,12 @@ const THEMES = {
 function DeskPageInner() {
   const searchParams = useSearchParams();
   const gateId = searchParams.get("gateId")?.trim().toLowerCase() ?? undefined;
-  const pageLoadedAt = useRef(Date.now());
   const [event, setEvent] = useState<GateEvent | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
-  const [connected, setConnected] = useState(false);
   const [progress, setProgress] = useState(1);
   const [visible, setVisible] = useState(false);
   const [wishText, setWishText] = useState("");
   const [deskDisplayMs, setDeskDisplayMs] = useState(10_000);
-  const [deskLookbackMs, setDeskLookbackMs] = useState(30_000);
-  const [showNeedsReviewOnDesk, setShowNeedsReviewOnDesk] = useState(false);
   const wishHistory = useRef<string[]>([]);
   const wellWishesRef = useRef<WellWish[]>([]);
 
@@ -94,7 +85,8 @@ function DeskPageInner() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeEventIdRef = useRef<string | null>(null);
-  const activePersonIdRef = useRef<string | null>(null);
+  const visibleRef = useRef(false);
+  const displayedPersonIdRef = useRef<string | null>(null);
   const clearTimers = () => {
     if (timerRef.current) clearInterval(timerRef.current);
     if (dismissRef.current) clearTimeout(dismissRef.current);
@@ -103,7 +95,8 @@ function DeskPageInner() {
   const showEvent = useCallback((e: GateEvent) => {
     const m = classifyEvent(e);
     activeEventIdRef.current = e.eventId;
-    activePersonIdRef.current = e.personId ?? null;
+    displayedPersonIdRef.current = e.personId ?? null;
+    visibleRef.current = true;
     setEvent(e);
     setMode(m);
     setProgress(1);
@@ -123,7 +116,8 @@ function DeskPageInner() {
     dismissRef.current = setTimeout(() => {
       clearTimers();
       activeEventIdRef.current = null;
-      activePersonIdRef.current = null;
+      displayedPersonIdRef.current = null;
+      visibleRef.current = false;
       setVisible(false);
       setTimeout(() => {
         setEvent(null);
@@ -134,33 +128,31 @@ function DeskPageInner() {
 
   useEffect(() => {
     if (!gateId) return;
-    fetchGateDeskConfig(gateId).then((cfg) => {
-      setDeskDisplayMs(cfg.desk_display_seconds * 1000);
-      setDeskLookbackMs(cfg.desk_event_lookback_seconds * 1000);
-      setShowNeedsReviewOnDesk(cfg.show_needs_review_on_desk);
-    });
+    import("@/lib/api").then(({ fetchGateDeskConfig }) =>
+      fetchGateDeskConfig(gateId).then((cfg) => {
+        setDeskDisplayMs(cfg.desk_display_seconds * 1000);
+      }),
+    );
   }, [gateId]);
 
-  useGateEventStream({
-    gateId,
-    filter: (e) =>
-      shouldShowOnDesk(e, showNeedsReviewOnDesk) &&
-      new Date(e.timestamp).getTime() >= pageLoadedAt.current - deskLookbackMs,
-    onEvent: (e) => {
-      if (!shouldShowOnDesk(e, showNeedsReviewOnDesk)) return;
-      if (activeEventIdRef.current === e.eventId) {
-        setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
-        return;
-      }
-      if (e.personId && activePersonIdRef.current === e.personId) {
-        setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
-        return;
-      }
-      showEvent(e);
-    },
-    onOpen: () => setConnected(true),
-    onError: () => setConnected(false),
-  });
+  const handleStreamEvent = useCallback((e: GateEvent) => {
+    if (activeEventIdRef.current === e.eventId) {
+      setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
+      return;
+    }
+    if (
+      visibleRef.current &&
+      displayedPersonIdRef.current &&
+      e.personId === displayedPersonIdRef.current &&
+      !e.welcomeMessage?.trim()
+    ) {
+      setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
+      return;
+    }
+    showEvent(e);
+  }, [showEvent]);
+
+  const { connected } = useDeskLiveEventStream(gateId, handleStreamEvent);
 
   useEffect(() => () => { clearTimers(); }, []);
 

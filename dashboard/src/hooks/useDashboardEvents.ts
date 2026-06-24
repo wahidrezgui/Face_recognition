@@ -1,104 +1,69 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useCallback } from "react";
+import { fetchEvents, fetchValidatedEvents, type GateEvent } from "@/lib/api";
+import { useDeskLiveEventStream } from "@/hooks/useDeskLiveEventStream";
 import {
-  fetchEvents,
-  fetchPersonIds,
-  activityRangeBounds,
-  type GateEvent,
-} from "@/lib/api";
-import { useGateEventStream } from "@/hooks/useGateEventStream";
-import {
-  dedupeCapturesByPerson,
-  isEventFromToday,
-  sortGateEventsByDetectionDesc,
-} from "@/lib/datetime";
+  mergeDeskLiveEvent,
+  normalizeGateId,
+  seedEventsFromRest,
+} from "@/lib/deskLiveEvents";
 
-export function useDashboardEvents(selectedGate?: string) {
+/**
+ * Target Analysis — desk-aligned live feed.
+ * REST seeds recent gate + validated events; SSE appends live updates (fan-out per subscriber).
+ */
+export function useDashboardEvents(sseGateId?: string) {
+  const gateId = normalizeGateId(sseGateId);
   const [liveEvents, setLiveEvents] = useState<GateEvent[]>([]);
-  const [streamError, setStreamError] = useState(false);
-
-  const todayBounds = useMemo(() => activityRangeBounds("today"), []);
-
-  const { data: initialData, refetch: refetchEvents } = useQuery({
-    queryKey: ["events", "dashboard", "today"],
-    queryFn: () =>
-      fetchEvents(1, 30, undefined, undefined, todayBounds.from, todayBounds.to),
-  });
-
-  const { data: employeeIds = new Set<string>() } = useQuery({
-    queryKey: ["personIds"],
-    queryFn: async () => new Set(await fetchPersonIds()),
-    staleTime: 5 * 60 * 1000,
-  });
 
   useEffect(() => {
-    setStreamError(false);
-  }, [selectedGate]);
+    setLiveEvents([]);
+  }, [gateId]);
 
-  useEffect(() => {
-    if (initialData?.items) setLiveEvents(sortGateEventsByDetectionDesc(initialData.items));
-  }, [initialData]);
-
-  const handleStreamEvent = useCallback((e: GateEvent) => {
-    setLiveEvents((prev) => {
-      const exactIdx = prev.findIndex((p) => p.eventId === e.eventId);
-      if (exactIdx !== -1) {
-        const updated = [...prev];
-        updated[exactIdx] = e;
-        return sortGateEventsByDetectionDesc(updated);
-      }
-      if (e.personId) {
-        const newTime = new Date(e.timestamp).getTime();
-        const dupIdx = prev.findIndex(
-          (p) => p.personId === e.personId && newTime - new Date(p.timestamp).getTime() <= 5000,
-        );
-        if (dupIdx !== -1) {
-          if (e.confidence > prev[dupIdx].confidence) {
-            const updated = [...prev];
-            updated[dupIdx] = e;
-            return sortGateEventsByDetectionDesc(updated);
-          }
-          return prev;
-        }
-      }
-      return sortGateEventsByDetectionDesc([e, ...prev]).slice(0, 100);
-    });
+  const handleEvent = useCallback((e: GateEvent) => {
+    setLiveEvents((prev) => mergeDeskLiveEvent(prev, e));
   }, []);
 
-  useGateEventStream({
-    gateId: selectedGate,
-    filter: (e) => isEventFromToday(e.timestamp),
-    onEvent: handleStreamEvent,
-    onOpen: () => setStreamError(false),
-    onError: () => setStreamError(true),
-  });
+  const { connected, lastEventAt, sseError, deskLookbackMs, showNeedsReview } =
+    useDeskLiveEventStream(gateId, handleEvent, { applyLookback: false });
 
-  const todayEvents = useMemo(
-    () => sortGateEventsByDetectionDesc(liveEvents.filter((e) => isEventFromToday(e.timestamp))),
-    [liveEvents],
-  );
+  useEffect(() => {
+    if (!gateId) return;
 
-  const matchedEvents = useMemo(
-    () => todayEvents.filter((e) => e.personId && employeeIds.has(e.personId)),
-    [todayEvents, employeeIds],
-  );
+    let cancelled = false;
 
-  const recentCaptures = useMemo(
-    () => dedupeCapturesByPerson(todayEvents).slice(0, 6),
-    [todayEvents],
-  );
+    const seedFromRest = async () => {
+      const from = new Date(Date.now() - deskLookbackMs).toISOString();
+      try {
+        const [gateRes, validatedRes] = await Promise.all([
+          fetchEvents(1, 50, undefined, undefined, from, undefined, gateId),
+          fetchValidatedEvents(1, 50, undefined, from, undefined, gateId),
+        ]);
+        if (cancelled) return;
 
-  const clearCaptures = useCallback(() => setLiveEvents([]), []);
+        const seeded = seedEventsFromRest(gateRes.items, validatedRes.items, showNeedsReview);
+        setLiveEvents((prev) => {
+          let merged = prev;
+          for (const e of seeded) merged = mergeDeskLiveEvent(merged, e);
+          return merged;
+        });
+      } catch {
+        /* non-fatal — live SSE still works */
+      }
+    };
+
+    void seedFromRest();
+    return () => {
+      cancelled = true;
+    };
+  }, [gateId, deskLookbackMs, showNeedsReview]);
 
   return {
-    todayEvents,
-    matchedEvents,
-    recentCaptures,
-    streamError,
-    setStreamError,
-    refetchEvents,
-    clearCaptures,
+    liveEvents,
+    sseConnected: connected,
+    sseError,
+    lastEventAt,
+    needsGate: !gateId,
   };
 }

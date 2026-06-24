@@ -1,7 +1,7 @@
 """Load all face embeddings from Qdrant into the local EmbeddingStore at startup.
 
 Qdrant is the source of truth for enrolled faces.  This module:
-  1. Fetches all person names from the .NET API (GET /api/v1/persons)
+  1. Fetches all active persons from the .NET API (name + welcome message)
   2. Scrolls the entire face_embeddings Qdrant collection (all vectors + payloads)
   3. Populates the EmbeddingStore via bulk_add() — single matrix vstack, one FAISS rebuild
 
@@ -16,18 +16,18 @@ import httpx
 import numpy as np
 
 from .config import settings
-from .recognizer import EmbeddingStore
+from .recognizer import EmbeddingStore, PersonMeta
 
 logger = logging.getLogger("gate_vision_ai_v1")
 
 
-async def _fetch_all_persons(backend_url: str, api_key: str) -> dict[str, str]:
-    """Fetch every person from the .NET API. Returns {person_id_str: full_name}."""
+async def _fetch_all_persons(backend_url: str, api_key: str) -> dict[str, PersonMeta]:
+    """Fetch every active person from the .NET API."""
     headers: dict[str, str] = {}
     if api_key:
         headers["X-API-Key"] = api_key
 
-    persons: dict[str, str] = {}
+    persons: dict[str, PersonMeta] = {}
     page = 1
     page_size = 200
 
@@ -49,10 +49,20 @@ async def _fetch_all_persons(backend_url: str, api_key: str) -> dict[str, str]:
                 body = resp.json()
                 items = body.get("items") or body.get("Items") or []
                 for item in items:
+                    status = (
+                        item.get("enrollmentStatus")
+                        or item.get("EnrollmentStatus")
+                        or "Active"
+                    )
+                    if str(status).lower() != "active":
+                        continue
+
                     pid = str(item.get("Id") or item.get("id") or "").strip()
                     name = (item.get("FullName") or item.get("fullName") or "").strip()
+                    welcome = item.get("welcomeMessage") or item.get("WelcomeMessage")
+                    welcome_msg = welcome.strip() if isinstance(welcome, str) and welcome.strip() else None
                     if pid and name:
-                        persons[pid] = name
+                        persons[pid] = PersonMeta(name=name, welcome_message=welcome_msg)
 
                 total = body.get("total") or body.get("Total") or 0
                 total_pages = body.get("totalPages") or body.get("TotalPages") or (
@@ -123,14 +133,15 @@ async def load_embeddings_from_qdrant(store: EmbeddingStore) -> int:
         )
         return 0
 
-    # ── Step 2: fetch person names ─────────────────────────────────────────────
-    persons_map: dict[str, str] = {}
+    # ── Step 2: fetch active person metadata ───────────────────────────────────
+    persons_map: dict[str, PersonMeta] = {}
     if backend_url:
         try:
             persons_map = await _fetch_all_persons(backend_url, api_key)
+            with_welcome = sum(1 for p in persons_map.values() if p.welcome_message)
             logger.info(
-                "qdrant_loader: fetched %d person names from %s",
-                len(persons_map), backend_url,
+                "qdrant_loader: fetched %d active persons (%d with welcome) from %s",
+                len(persons_map), with_welcome, backend_url,
             )
         except Exception as exc:
             logger.warning(
@@ -142,6 +153,8 @@ async def load_embeddings_from_qdrant(store: EmbeddingStore) -> int:
         logger.info(
             "qdrant_loader: GV1_NET_BACKEND_URL not set — faces will use UUID labels"
         )
+
+    store.set_person_meta(persons_map)
 
     # ── Step 3: scroll all points ──────────────────────────────────────────────
     entries: list[tuple[str, str, np.ndarray]] = []
@@ -185,7 +198,12 @@ async def load_embeddings_from_qdrant(store: EmbeddingStore) -> int:
                         skipped += 1
                         continue
 
-                    name = persons_map.get(person_id, person_id[:8])
+                    if persons_map and person_id not in persons_map:
+                        skipped += 1
+                        continue
+
+                    meta = persons_map.get(person_id)
+                    name = meta.name if meta else person_id[:8]
                     emb = np.array(vector, dtype=np.float32)
                     entries.append((person_id, name, emb))
 
