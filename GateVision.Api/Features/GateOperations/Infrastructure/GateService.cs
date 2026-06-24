@@ -55,17 +55,23 @@ public class GateService
 
     public async Task<GateRecognitionSettings> GetRecognitionSettingsAsync(string gateId, CancellationToken ct = default)
     {
+        var workflow = await GetWorkflowSettingsAsync(gateId, ct);
+        return workflow.Recognition;
+    }
+
+    public async Task<GateWorkflowSettings> GetWorkflowSettingsAsync(string gateId, CancellationToken ct = default)
+    {
         if (Guid.TryParse(gateId, out var id))
         {
             var gate = await GetByIdAsync(id, ct);
-            return GateRecognitionSettings.FromGate(gate);
+            return GateWorkflowSettings.FromGate(gate);
         }
 
         var gates = await GetAllAsync(ct);
         if (gates.Count == 1)
-            return GateRecognitionSettings.FromGate(gates[0]);
+            return GateWorkflowSettings.FromGate(gates[0]);
 
-        return GateRecognitionSettings.Default;
+        return GateWorkflowSettings.Default;
     }
 
     public void InvalidateCache()

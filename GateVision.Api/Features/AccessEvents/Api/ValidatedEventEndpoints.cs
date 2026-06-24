@@ -24,8 +24,8 @@ public static class ValidatedEventEndpoints
 
             var query = db.ValidatedEvents.AsQueryable();
 
-            if (from.HasValue) query = query.Where(e => e.CapturedAt >= from.Value);
-            if (to.HasValue) query = query.Where(e => e.CapturedAt < to.Value);
+            if (from.HasValue) query = query.Where(e => e.CapturedAt >= DateTimeUtils.NormalizeToUtc(from.Value));
+            if (to.HasValue) query = query.Where(e => e.CapturedAt < DateTimeUtils.NormalizeToUtc(to.Value));
 
             if (!string.IsNullOrWhiteSpace(gateId))
             {
@@ -165,8 +165,8 @@ public static class ValidatedEventEndpoints
             DateTime? to = null) =>
         {
             var query = db.ValidatedEvents.AsQueryable();
-            if (from.HasValue) query = query.Where(e => e.CapturedAt >= from.Value);
-            if (to.HasValue) query = query.Where(e => e.CapturedAt < to.Value);
+            if (from.HasValue) query = query.Where(e => e.CapturedAt >= DateTimeUtils.NormalizeToUtc(from.Value));
+            if (to.HasValue) query = query.Where(e => e.CapturedAt < DateTimeUtils.NormalizeToUtc(to.Value));
 
             if (!string.IsNullOrWhiteSpace(gateId))
             {

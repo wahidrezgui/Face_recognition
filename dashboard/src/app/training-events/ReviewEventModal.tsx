@@ -459,7 +459,7 @@ export default function ReviewEventModal({
               {/* Row 2: Create & Replace via Webcam */}
               <button
                 onClick={() => handleCreate("capture")}
-                disabled={busy || !newName || !newDept}
+                disabled={busy || !newName.trim()}
                 className="w-full px-3 py-2 rounded text-xs font-semibold transition-all disabled:opacity-40"
                 style={{
                   background: "rgba(99,102,241,0.1)",

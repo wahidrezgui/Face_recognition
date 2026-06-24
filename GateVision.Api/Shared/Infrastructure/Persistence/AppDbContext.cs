@@ -92,6 +92,14 @@ public class AppDbContext : DbContext
             e.Property(g => g.TrackerMaxLostS).HasDefaultValue(3.0);
             e.Property(g => g.LogUnknown).HasDefaultValue(false);
             e.Property(g => g.TrainingMode).HasDefaultValue(false);
+            e.Property(g => g.WelcomeCooldownSeconds).HasDefaultValue(7);
+            e.Property(g => g.BufferTrackExpirySeconds).HasDefaultValue(3);
+            e.Property(g => g.BufferPersonDedupSeconds).HasDefaultValue(2);
+            e.Property(g => g.RefireScoreDelta).HasDefaultValue(0.03);
+            e.Property(g => g.MinTrackHits).HasDefaultValue(2);
+            e.Property(g => g.DeskDisplaySeconds).HasDefaultValue(10);
+            e.Property(g => g.DeskEventLookbackSeconds).HasDefaultValue(30);
+            e.Property(g => g.ShowNeedsReviewOnDesk).HasDefaultValue(false);
         });
     }
 }

@@ -27,7 +27,10 @@ public class BufferedTrack
     public DateTime LastSeen { get; set; }
     public bool IsTrainingEvent { get; set; }
     public float AutoValidateThreshold { get; set; } = 0.85f;
+    public TimeSpan TrackExpiry { get; set; } = TimeSpan.FromSeconds(3);
 }
+
+public readonly record struct BufferSettings(TimeSpan PersonDedup, TimeSpan TrackExpiry);
 
 /// <summary>Carries the flushed entity — exactly one of GateEvent or TrainingEvent is non-null.</summary>
 public record FlushResult(GateEvent? GateEvent, TrainingEvent? TrainingEvent);
@@ -39,11 +42,11 @@ public class EventBufferService
 {
     private readonly ConcurrentDictionary<TrackKey, BufferedTrack> _tracks = new();
     private readonly ConcurrentDictionary<PersonKey, TrackKey> _personToTrack = new();
-    private static readonly TimeSpan Expiry = TimeSpan.FromSeconds(3);
-    private static readonly TimeSpan PersonDedup = TimeSpan.FromSeconds(2);
+    private readonly ConcurrentDictionary<Guid, TrackKey> _idToKey = new();
 
-    public (Guid EventId, bool IsNewBest) BufferOrUpdate(BufferedTrack track)
+    public (Guid EventId, bool IsNewBest) BufferOrUpdate(BufferedTrack track, BufferSettings settings)
     {
+        track.TrackExpiry = settings.TrackExpiry;
         var key = new TrackKey(track.GateId, track.TrackId);
 
         if (track.PersonId.HasValue)
@@ -52,7 +55,7 @@ public class EventBufferService
             if (_personToTrack.TryGetValue(personKey, out var existingKey)
                 && existingKey != key
                 && _tracks.TryGetValue(existingKey, out var existingPersonTrack)
-                && DateTime.UtcNow - existingPersonTrack.LastSeen <= PersonDedup)
+                && DateTime.UtcNow - existingPersonTrack.LastSeen <= settings.PersonDedup)
             {
                 key = existingKey;
                 track.TrackId = existingPersonTrack.TrackId;
@@ -72,6 +75,7 @@ public class EventBufferService
             (_, existing) =>
             {
                 track.Id = existing.Id;
+                track.TrackExpiry = existing.TrackExpiry;
                 var statusUpgraded = track.Status == EventStatus.Identified &&
                     existing.Status != EventStatus.Identified;
                 if (track.Confidence > existing.Confidence || statusUpgraded)
@@ -91,15 +95,14 @@ public class EventBufferService
                     _personToTrack[new PersonKey(track.GateId, track.PersonId.Value)] = key;
                 return existing;
             });
+        _idToKey[result.Id] = key;
         return (result.Id, isNewBest);
     }
 
     public async Task<FlushResult?> FindAndFlushAsync(AppDbContext db, Guid eventId)
     {
-        var match = _tracks.Values.FirstOrDefault(t => t.Id == eventId);
-        if (match is null) return null;
-
-        var key = new TrackKey(match.GateId, match.TrackId);
+        if (!_idToKey.TryRemove(eventId, out var key)) return null;
+        if (!_tracks.TryGetValue(key, out var match)) return null;
         if (!_tracks.TryRemove(key, out _)) return null;
         if (match.PersonId.HasValue)
             _personToTrack.TryRemove(new KeyValuePair<PersonKey, TrackKey>(new PersonKey(match.GateId, match.PersonId.Value), key));
@@ -147,13 +150,14 @@ public class EventBufferService
     {
         var now = DateTime.UtcNow;
         var expired = _tracks
-            .Where(kvp => now - kvp.Value.LastSeen > Expiry)
+            .Where(kvp => now - kvp.Value.LastSeen > kvp.Value.TrackExpiry)
             .ToList();
 
         var persisted = 0;
         foreach (var (key, track) in expired)
         {
             if (!_tracks.TryRemove(key, out _)) continue;
+            _idToKey.TryRemove(track.Id, out _);
             if (track.PersonId.HasValue)
                 _personToTrack.TryRemove(new KeyValuePair<PersonKey, TrackKey>(new PersonKey(track.GateId, track.PersonId.Value), key));
 

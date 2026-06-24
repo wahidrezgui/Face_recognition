@@ -50,19 +50,20 @@ public class IdentifyPersonHandler(
         if (!DateTime.TryParse(cmd.CapturedAt, null, System.Globalization.DateTimeStyles.RoundtripKind, out var capturedAt))
             return Result<IdentifyPersonResult>.Fail($"Invalid CapturedAt format: '{cmd.CapturedAt}'");
 
-        capturedAt = capturedAt.Kind switch
-        {
-            DateTimeKind.Utc => capturedAt,
-            DateTimeKind.Local => capturedAt.ToUniversalTime(),
-            _ => DateTime.SpecifyKind(capturedAt, DateTimeKind.Utc),
-        };
-        var recognition = await gateService.GetRecognitionSettingsAsync(effectiveGateId, ct);
+        capturedAt = DateTimeUtils.NormalizeToUtc(capturedAt);
+        var workflow = await gateService.GetWorkflowSettingsAsync(effectiveGateId, ct);
+        var recognition = workflow.Recognition;
         var result = await identification.Identify(cmd.Embedding, cmd.FrameQuality, capturedAt, recognition);
 
         bool isIdentified = result.Status == EventStatus.Identified;
         bool isKnownPerson = result.PersonId.HasValue;
         bool isTrainingEvent = !isIdentified && !isKnownPerson && !recognition.LogUnknown;
         bool willPersist = isIdentified || isKnownPerson || recognition.LogUnknown || recognition.TrainingMode;
+
+        var bufferSettings = new BufferSettings(
+            TimeSpan.FromSeconds(workflow.BufferPersonDedupSeconds),
+            TimeSpan.FromSeconds(workflow.BufferTrackExpirySeconds));
+        var welcomeCooldown = TimeSpan.FromSeconds(workflow.WelcomeCooldownSeconds);
 
         Guid eventId;
         bool publishToSse;
@@ -85,7 +86,7 @@ public class IdentifyPersonHandler(
                 Gender = cmd.Gender,
                 IsTrainingEvent = isTrainingEvent,
                 AutoValidateThreshold = recognition.AutoValidateConfidence,
-            });
+            }, bufferSettings);
             eventId = eid;
             publishToSse = isNewBest;
         }
@@ -97,17 +98,19 @@ public class IdentifyPersonHandler(
 
         var suppressWelcome = false;
         if (publishToSse && !cmd.Replayed && isIdentified &&
-            !welcomeDedup.ShouldPublish(effectiveGateId, result.PersonId, capturedAt))
+            !welcomeDedup.ShouldPublish(effectiveGateId, result.PersonId, capturedAt, welcomeCooldown))
             suppressWelcome = true;
 
-        if (publishToSse && !cmd.Replayed && !suppressWelcome)
+        if (publishToSse && !cmd.Replayed)
         {
             var sseEvt = GateEvent.Reconstitute(
                 eventId, effectiveGateId, result.PersonId, result.Confidence,
                 result.Status, capturedAt,
                 cmd.FaceCrop, cmd.Emotion, cmd.Age, cmd.Gender);
             sseEvt.PersonName = result.PersonName;
-            sseEvt.WelcomeMessage = result.WelcomeMessage;
+            // suppressWelcome means "same person seen recently" — still push the event so the
+            // desk page can update the face photo, but clear the greeting so no new card fires.
+            sseEvt.WelcomeMessage = suppressWelcome ? null : result.WelcomeMessage;
             channelRegistry.Publish(effectiveGateId, sseEvt);
         }
 

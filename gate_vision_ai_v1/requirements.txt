@@ -1,0 +1,16 @@
+fastapi>=0.115.0
+uvicorn>=0.30.0
+opencv-python>=4.9.0
+insightface>=0.7.3
+pydantic-settings>=2.3.0
+numpy>=1.26.0
+scipy>=1.13.0
+
+# Install exactly ONE onnxruntime variant matching your hardware:
+#   pip install onnxruntime-gpu        (NVIDIA CUDA)
+#   pip install onnxruntime-directml   (Windows DirectX 12 — Intel/AMD iGPU)
+#   pip install onnxruntime            (CPU fallback, all platforms)
+
+# Optional: FAISS for fast search when gallery N >= 5000 (install ONE):
+#   pip install faiss-cpu              (CPU, all platforms)
+#   pip install faiss-gpu              (NVIDIA only, requires CUDA toolkit)

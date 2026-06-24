@@ -17,6 +17,7 @@ using GateVision.Api.Shared.Infrastructure.HostedServices;
 using GateVision.Api.Shared.Infrastructure.Middleware;
 using GateVision.Api.Shared.Infrastructure.Persistence;
 using GateVision.Api.Shared.Infrastructure.Redis;
+using GateVision.Api.Shared.Kernel;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -96,6 +97,11 @@ builder.Services.AddAuthentication("Bearer")
     });
 builder.Services.AddAuthorization();
 builder.Services.AddProblemDetails();
+builder.Services.ConfigureHttpJsonOptions(options =>
+{
+    options.SerializerOptions.Converters.Add(new UtcDateTimeJsonConverter());
+    options.SerializerOptions.Converters.Add(new NullableUtcDateTimeJsonConverter());
+});
 builder.Services.AddRateLimiter(options =>
 {
     options.AddFixedWindowLimiter("IdentifyPolicy", cfg =>

@@ -34,6 +34,15 @@ public class Gate
     public bool LogUnknown { get; private set; } = false;
     public bool TrainingMode { get; private set; } = false;
 
+    public int WelcomeCooldownSeconds { get; private set; } = 7;
+    public int BufferTrackExpirySeconds { get; private set; } = 3;
+    public int BufferPersonDedupSeconds { get; private set; } = 2;
+    public double RefireScoreDelta { get; private set; } = 0.03;
+    public int MinTrackHits { get; private set; } = 2;
+    public int DeskDisplaySeconds { get; private set; } = 10;
+    public int DeskEventLookbackSeconds { get; private set; } = 30;
+    public bool ShowNeedsReviewOnDesk { get; private set; } = false;
+
     private Gate() { }
 
     public static Gate Create(string name, string pythonUrl, string? apiKey = null, string? startCommand = null)
@@ -98,6 +107,14 @@ public class Gate
         if (dto.TrackerMaxLostS.HasValue) TrackerMaxLostS = Math.Max(0.5, dto.TrackerMaxLostS.Value);
         if (dto.LogUnknown.HasValue) LogUnknown = dto.LogUnknown.Value;
         if (dto.TrainingMode.HasValue) TrainingMode = dto.TrainingMode.Value;
+        if (dto.WelcomeCooldownSeconds.HasValue) WelcomeCooldownSeconds = Math.Max(1, dto.WelcomeCooldownSeconds.Value);
+        if (dto.BufferTrackExpirySeconds.HasValue) BufferTrackExpirySeconds = Math.Max(1, dto.BufferTrackExpirySeconds.Value);
+        if (dto.BufferPersonDedupSeconds.HasValue) BufferPersonDedupSeconds = Math.Max(0, dto.BufferPersonDedupSeconds.Value);
+        if (dto.RefireScoreDelta.HasValue) RefireScoreDelta = Math.Clamp(dto.RefireScoreDelta.Value, 0.001, 0.5);
+        if (dto.MinTrackHits.HasValue) MinTrackHits = Math.Max(1, dto.MinTrackHits.Value);
+        if (dto.DeskDisplaySeconds.HasValue) DeskDisplaySeconds = Math.Max(1, dto.DeskDisplaySeconds.Value);
+        if (dto.DeskEventLookbackSeconds.HasValue) DeskEventLookbackSeconds = Math.Max(1, dto.DeskEventLookbackSeconds.Value);
+        if (dto.ShowNeedsReviewOnDesk.HasValue) ShowNeedsReviewOnDesk = dto.ShowNeedsReviewOnDesk.Value;
     }
 
     static double Clamp01(double v) => Math.Clamp(v, 0.01, 0.99);

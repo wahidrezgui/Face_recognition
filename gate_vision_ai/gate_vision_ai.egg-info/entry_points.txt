@@ -1,2 +1,0 @@
-[console_scripts]
-gate_vision_ai = gate_vision_ai.main:main

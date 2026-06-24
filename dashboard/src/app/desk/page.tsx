@@ -2,13 +2,13 @@
 
 import { Suspense, useState, useEffect, useRef, useCallback } from "react";
 import { useSearchParams } from "next/navigation";
-import { type GateEvent } from "@/lib/api";
+import { type GateEvent, fetchGateDeskConfig } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
 import { FacePhoto } from "@/components/kiosk/FacePhoto";
 import { IdleScreen } from "@/components/kiosk/IdleScreen";
-import wellWishes from "@/data/well-wishes.json";
 
-const DISPLAY_MS = 10000;
+type WellWish = { id: string; text: string; category: string };
+
 const REPEAT_HISTORY_SIZE = 4;
 
 const categoryMap: Record<string, string[]> = {
@@ -16,7 +16,11 @@ const categoryMap: Record<string, string[]> = {
   review: ["encouragement", "wellness"],
 };
 
-function pickWish(mode: string, history: string[]): { wish: string; id: string } {
+function pickWish(
+  mode: string,
+  history: string[],
+  wellWishes: WellWish[],
+): { wish: string; id: string } {
   const preferredCats = categoryMap[mode] ?? ["encouragement"];
   const preferred = wellWishes.filter(
     (w) => preferredCats.includes(w.category) && !history.includes(w.id),
@@ -41,6 +45,11 @@ function classifyEvent(e: GateEvent): Mode {
   return "review";
 }
 
+function shouldShowOnDesk(e: GateEvent, showNeedsReview: boolean): boolean {
+  if (e.status === "Identified") return true;
+  return showNeedsReview && e.status === "NeedsReview";
+}
+
 const THEMES = {
   identified: {
     ring: "border-cyan-400 shadow-[0_0_20px_rgba(0,255,255,0.4)]",
@@ -60,19 +69,27 @@ const THEMES = {
   },
 };
 
-// FacePhoto and IdleScreen are imported from @/components/kiosk/
-
 function DeskPageInner() {
   const searchParams = useSearchParams();
   const gateId = searchParams.get("gateId")?.trim().toLowerCase() ?? undefined;
+  const pageLoadedAt = useRef(Date.now());
   const [event, setEvent] = useState<GateEvent | null>(null);
   const [mode, setMode] = useState<Mode>("idle");
   const [connected, setConnected] = useState(false);
-  const [time, setTime] = useState(new Date());
   const [progress, setProgress] = useState(1);
   const [visible, setVisible] = useState(false);
   const [wishText, setWishText] = useState("");
+  const [deskDisplayMs, setDeskDisplayMs] = useState(10_000);
+  const [deskLookbackMs, setDeskLookbackMs] = useState(30_000);
+  const [showNeedsReviewOnDesk, setShowNeedsReviewOnDesk] = useState(false);
   const wishHistory = useRef<string[]>([]);
+  const wellWishesRef = useRef<WellWish[]>([]);
+
+  useEffect(() => {
+    import("@/data/well-wishes.json").then((mod) => {
+      wellWishesRef.current = mod.default as WellWish[];
+    });
+  }, []);
 
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dismissRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -93,13 +110,13 @@ function DeskPageInner() {
     setVisible(true);
     clearTimers();
 
-    const { wish, id } = pickWish(m, wishHistory.current);
+    const { wish, id } = pickWish(m, wishHistory.current, wellWishesRef.current);
     setWishText(wish);
     wishHistory.current = [id, ...wishHistory.current].slice(0, REPEAT_HISTORY_SIZE);
 
     const start = Date.now();
     timerRef.current = setInterval(() => {
-      const ratio = Math.max(0, 1 - (Date.now() - start) / DISPLAY_MS);
+      const ratio = Math.max(0, 1 - (Date.now() - start) / deskDisplayMs);
       setProgress(ratio);
     }, 100);
 
@@ -112,24 +129,30 @@ function DeskPageInner() {
         setEvent(null);
         setMode("idle");
       }, 600);
-    }, DISPLAY_MS);
-  }, []);
+    }, deskDisplayMs);
+  }, [deskDisplayMs]);
 
   useEffect(() => {
-    const t = setInterval(() => setTime(new Date()), 1000);
-    return () => clearInterval(t);
-  }, []);
+    if (!gateId) return;
+    fetchGateDeskConfig(gateId).then((cfg) => {
+      setDeskDisplayMs(cfg.desk_display_seconds * 1000);
+      setDeskLookbackMs(cfg.desk_event_lookback_seconds * 1000);
+      setShowNeedsReviewOnDesk(cfg.show_needs_review_on_desk);
+    });
+  }, [gateId]);
 
   useGateEventStream({
     gateId,
+    filter: (e) =>
+      shouldShowOnDesk(e, showNeedsReviewOnDesk) &&
+      new Date(e.timestamp).getTime() >= pageLoadedAt.current - deskLookbackMs,
     onEvent: (e) => {
+      if (!shouldShowOnDesk(e, showNeedsReviewOnDesk)) return;
       if (activeEventIdRef.current === e.eventId) {
-        // Same track, higher confidence frame — update silently
         setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
         return;
       }
       if (e.personId && activePersonIdRef.current === e.personId) {
-        // Same identified person re-detected while card is still displayed — upgrade, don't restart
         setEvent((prev) => (prev && e.confidence > prev.confidence) ? e : prev);
         return;
       }
@@ -179,7 +202,6 @@ function DeskPageInner() {
         style={{ fontFamily: "'Cairo', system-ui, sans-serif", background: "#020617" }}
         dir="rtl"
       >
-        {/* ── Grid background ─────────────────────────────── */}
         <div
           className="absolute inset-0 z-0 opacity-30 pointer-events-none"
           style={{
@@ -196,7 +218,6 @@ function DeskPageInner() {
           }}
         />
 
-        {/* ── Idle layer ──────────────────────────────────── */}
         <div
           className="absolute inset-0"
           style={{
@@ -208,7 +229,6 @@ function DeskPageInner() {
           <IdleScreen connected={connected} showBrand={false} />
         </div>
 
-        {/* ── Detection layer ─────────────────────────────── */}
         <div
           className="absolute inset-0 z-20 flex flex-col items-center justify-center"
           style={{
@@ -219,7 +239,6 @@ function DeskPageInner() {
         >
           {event && (
             <div className="flex flex-col items-center justify-center w-full h-full px-8">
-              {/* Halo + Avatar */}
               <div
                 className="relative flex items-center justify-center mb-10"
                 style={{ animation: "fade-in-scale 0.8s ease-out forwards" }}
@@ -237,7 +256,6 @@ function DeskPageInner() {
                 </div>
               </div>
 
-              {/* Greeting (hero text, replaces name) */}
               <h2
                 className="text-5xl md:text-6xl font-black text-center leading-tight text-white px-4"
                 style={{
@@ -253,7 +271,6 @@ function DeskPageInner() {
                 {greeting}
               </h2>
 
-              {/* Department badge */}
               {event.department && (
                 <div
                   className={`inline-flex items-center gap-3 px-6 py-3 mt-6 rounded-full border backdrop-blur-sm ${t.badge}`}
@@ -264,7 +281,6 @@ function DeskPageInner() {
                 </div>
               )}
 
-              {/* Warm message */}
               {wishText && (
                 <p
                   className="mt-10 text-xl md:text-2xl text-center leading-relaxed max-w-lg text-gray-300/80"
@@ -274,7 +290,6 @@ function DeskPageInner() {
                 </p>
               )}
 
-              {/* Dismiss timer bar */}
               <div
                 className="absolute bottom-10 w-48 h-1 rounded-full overflow-hidden"
                 style={{ background: "rgba(255,255,255,0.06)" }}

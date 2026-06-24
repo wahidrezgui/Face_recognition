@@ -269,7 +269,7 @@ export function SyncEmployeesDialog({
                       <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-green-400" />
                     )}
                     {res && res.status === "failed" && (
-                      <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" title={res.error ?? undefined} />
+                      <XCircle className="h-3.5 w-3.5 shrink-0 text-red-400" aria-label={res.error ?? "Failed"} />
                     )}
                   </div>
                 );

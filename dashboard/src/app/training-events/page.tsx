@@ -1,14 +1,15 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fetchTrainingEvents, deleteEvent, type GateEvent } from "@/lib/api";
 import { toast } from "sonner";
-import ReviewEventModal from "./ReviewEventModal";
-import EditTrainingEventModal from "./EditTrainingEventModal";
-
 import { EventCard } from "@/components/events/EventCard";
-import EventDetailModal from "@/components/events/EventDetailModal";
+
+const ReviewEventModal = dynamic(() => import("./ReviewEventModal"), { ssr: false });
+const EditTrainingEventModal = dynamic(() => import("./EditTrainingEventModal"), { ssr: false });
+const EventDetailModal = dynamic(() => import("@/components/events/EventDetailModal"), { ssr: false });
 
 const TABS = [
   { value: "", label: "All", col: "#64748b" },

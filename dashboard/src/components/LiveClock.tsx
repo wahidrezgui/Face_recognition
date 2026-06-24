@@ -2,7 +2,7 @@
 import { memo, useState, useEffect } from "react";
 
 interface LiveClockProps {
-  mode?: "date" | "time";
+  mode?: "date" | "time" | "datetime";
   locale?: string;
   options?: Intl.DateTimeFormatOptions;
   className?: string;
@@ -26,7 +26,9 @@ export const LiveClock = memo(function LiveClock({
   const text =
     mode === "date"
       ? now.toLocaleDateString(locale, options)
-      : now.toLocaleTimeString(locale, options);
+      : mode === "datetime"
+        ? now.toLocaleString(locale, options)
+        : now.toLocaleTimeString(locale, options);
 
   return (
     <span className={className} suppressHydrationWarning>

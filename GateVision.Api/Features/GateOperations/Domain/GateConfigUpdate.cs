@@ -22,4 +22,12 @@ public record GateConfigUpdate(
     double? MinFaceConfidence = null,
     double? TrackerMaxLostS = null,
     bool? LogUnknown = null,
-    bool? TrainingMode = null);
+    bool? TrainingMode = null,
+    int? WelcomeCooldownSeconds = null,
+    int? BufferTrackExpirySeconds = null,
+    int? BufferPersonDedupSeconds = null,
+    double? RefireScoreDelta = null,
+    int? MinTrackHits = null,
+    int? DeskDisplaySeconds = null,
+    int? DeskEventLookbackSeconds = null,
+    bool? ShowNeedsReviewOnDesk = null);

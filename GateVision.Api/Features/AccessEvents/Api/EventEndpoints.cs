@@ -29,9 +29,9 @@ public static class EventEndpoints
             var query = db.GateEvents.AsQueryable();
 
             if (from.HasValue)
-                query = query.Where(e => e.CapturedAt >= from.Value);
+                query = query.Where(e => e.CapturedAt >= DateTimeUtils.NormalizeToUtc(from.Value));
             if (to.HasValue)
-                query = query.Where(e => e.CapturedAt < to.Value);
+                query = query.Where(e => e.CapturedAt < DateTimeUtils.NormalizeToUtc(to.Value));
 
             if (!string.IsNullOrWhiteSpace(gateId))
             {
@@ -65,6 +65,7 @@ public static class EventEndpoints
 
             var rawEvents = await query
                 .OrderByDescending(e => e.CapturedAt)
+                .ThenByDescending(e => e.Id)
                 .Skip((page - 1) * limit)
                 .Take(limit)
                 .ToListAsync(ct);
@@ -102,6 +103,7 @@ public static class EventEndpoints
 
         app.MapGet("/api/v1/events/stats", async (AppDbContext db, CancellationToken ct) =>
         {
+            // "Today" uses UTC calendar day. Clients needing local-day counts should pass explicit from/to UTC bounds or use /events/activity?tzOffset=...
             var todayStart = DateTime.UtcNow.Date;
             var todayEnd = todayStart.AddDays(1);
 
@@ -124,7 +126,7 @@ public static class EventEndpoints
         {
             var offset = tzOffset ?? 0;
             var (rangeFrom, rangeTo, normalized) = from.HasValue && to.HasValue
-                ? (from.Value, to.Value, NormalizeActivityRange(range))
+                ? (DateTimeUtils.NormalizeToUtc(from.Value), DateTimeUtils.NormalizeToUtc(to.Value), NormalizeActivityRange(range))
                 : ResolveActivityRange(range);
 
             var query = db.GateEvents.Where(e => e.CapturedAt >= rangeFrom && e.CapturedAt < rangeTo);
@@ -306,6 +308,7 @@ public static class EventEndpoints
 
             var rawEvents = await query
                 .OrderByDescending(e => e.CapturedAt)
+                .ThenByDescending(e => e.Id)
                 .Skip((page - 1) * limit)
                 .Take(limit)
                 .ToListAsync(ct);
@@ -363,7 +366,7 @@ public static class EventEndpoints
                 ? await db.Persons.FindAsync([personId.Value], ct)
                 : null;
 
-            evt.Update(personId, dto.Confidence, status, dto.CapturedAt, dto.Emotion, dto.Age, dto.Gender);
+            evt.Update(personId, dto.Confidence, status, DateTimeUtils.NormalizeToUtc(dto.CapturedAt), dto.Emotion, dto.Age, dto.Gender);
             await db.SaveChangesAsync(ct);
             logger.LogInformation("Training event {EventId} updated", id);
 
@@ -389,7 +392,7 @@ public static class EventEndpoints
             var reader = normalizedGateId is null || includeLegacyDefault
                 ? registry.GetAllReader()
                 : registry.GetReader(normalizedGateId);
-            await StreamEvents(ctx, db, reader, ct, normalizedGateId, includeLegacyDefault);
+            await StreamEvents(ctx, db, reader, normalizedGateId, includeLegacyDefault, null, ct);
         });
 
         app.MapGet("/api/v1/events/stream/{gateId}", async (string gateId, HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, CancellationToken ct) =>
@@ -399,13 +402,91 @@ public static class EventEndpoints
             var reader = includeLegacyDefault
                 ? registry.GetAllReader()
                 : registry.GetReader(normalizedGateId!);
-            await StreamEvents(ctx, db, reader, ct, normalizedGateId, includeLegacyDefault);
+            await StreamEvents(ctx, db, reader, normalizedGateId, includeLegacyDefault, null, ct);
         });
+
+        app.MapGet("/api/v1/events/stream/slim", async (HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, string? gateId, CancellationToken ct) =>
+        {
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = normalizedGateId is null || includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId);
+            await StreamEvents(ctx, db, reader, normalizedGateId, includeLegacyDefault, WriteSlimEvent, ct);
+        }).RequireAuthorization();
+
+        app.MapGet("/api/v1/events/stream/slim/{gateId}", async (string gateId, HttpContext ctx, AppDbContext db, GateChannelRegistry registry, GateService gateService, CancellationToken ct) =>
+        {
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId!);
+            await StreamEvents(ctx, db, reader, normalizedGateId, includeLegacyDefault, WriteSlimEvent, ct);
+        }).RequireAuthorization();
+
+        app.MapGet("/api/v1/events/stream/live", async (HttpContext ctx, GateChannelRegistry registry, GateService gateService, string? gateId, CancellationToken ct) =>
+        {
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = normalizedGateId is null || includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId);
+            await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, ct);
+        }).RequireAuthorization();
+
+        app.MapGet("/api/v1/events/stream/live/{gateId}", async (string gateId, HttpContext ctx, GateChannelRegistry registry, GateService gateService, CancellationToken ct) =>
+        {
+            var normalizedGateId = NormalizeGateId(gateId);
+            var includeLegacyDefault = await ShouldIncludeLegacyDefaultAsync(normalizedGateId, gateService, ct);
+            var reader = includeLegacyDefault
+                ? registry.GetAllReader()
+                : registry.GetReader(normalizedGateId!);
+            await StreamLiveEvents(ctx, reader, normalizedGateId, includeLegacyDefault, ct);
+        }).RequireAuthorization();
 
     }
 
-    static async Task StreamEvents(HttpContext ctx, AppDbContext db, ChannelReader<GateEvent> channel, CancellationToken ct, string? gateId, bool includeLegacyDefault)
+    static async Task StreamLiveEvents(HttpContext ctx, ChannelReader<GateEvent> channel, string? gateId, bool includeLegacyDefault, CancellationToken ct)
     {
+        ctx.Response.ContentType = "text/event-stream";
+        ctx.Response.Headers.CacheControl = "no-cache";
+        ctx.Response.Headers.Connection = "keep-alive";
+
+        var heartbeatInterval = 5000;
+        while (!ct.IsCancellationRequested)
+        {
+            var readTask = channel.WaitToReadAsync(ct).AsTask();
+            var heartbeatTask = Task.Delay(heartbeatInterval, CancellationToken.None);
+            var done = await Task.WhenAny(readTask, heartbeatTask);
+
+            if (done == readTask)
+            {
+                var hasItem = await readTask;
+                if (hasItem)
+                {
+                    heartbeatInterval = 5000;
+                    while (channel.TryRead(out var evt))
+                    {
+                        if (!MatchesGateFilter(evt.GateId, gateId, includeLegacyDefault))
+                            continue;
+                        await WriteSlimEvent(ctx, evt, ct);
+                    }
+                }
+            }
+            else
+            {
+                heartbeatInterval = Math.Min(heartbeatInterval + 5000, 30000);
+                await ctx.Response.WriteAsync(": heartbeat\n\n", ct);
+            }
+
+            await ctx.Response.Body.FlushAsync(ct);
+        }
+    }
+
+    static async Task StreamEvents(HttpContext ctx, AppDbContext db, ChannelReader<GateEvent> channel, string? gateId, bool includeLegacyDefault, Func<HttpContext, GateEvent, CancellationToken, Task>? writeEvent, CancellationToken ct)
+    {
+        writeEvent ??= WriteEvent;
         ctx.Response.ContentType = "text/event-stream";
         ctx.Response.Headers.CacheControl = "no-cache";
         ctx.Response.Headers.Connection = "keep-alive";
@@ -414,7 +495,7 @@ public static class EventEndpoints
         if (ctx.Request.Headers.TryGetValue("Last-Event-Id", out var lastId) &&
             DateTime.TryParse(lastId, out var parsed))
         {
-            lastTimestamp = parsed.Kind == DateTimeKind.Local ? parsed.ToUniversalTime() : parsed;
+            lastTimestamp = DateTimeUtils.NormalizeToUtc(parsed);
         }
 
         var normalizedGateId = NormalizeGateId(gateId);
@@ -484,7 +565,7 @@ public static class EventEndpoints
             }
             if (evt.CapturedAt > lastTimestamp)
                 lastTimestamp = evt.CapturedAt;
-            await WriteEvent(ctx, evt, ct);
+            await writeEvent(ctx, evt, ct);
         }
         await ctx.Response.Body.FlushAsync(ct);
 
@@ -508,7 +589,7 @@ public static class EventEndpoints
                         if (evt.CapturedAt > lastTimestamp)
                         {
                             lastTimestamp = evt.CapturedAt;
-                            await WriteEvent(ctx, evt, ct);
+                            await writeEvent(ctx, evt, ct);
                         }
                     }
                 }
@@ -548,14 +629,11 @@ public static class EventEndpoints
         return gates.Any(g => string.Equals(g.Id.ToString(), requestedGateId, StringComparison.OrdinalIgnoreCase));
     }
 
-    static DateTime AsUtc(DateTime dt) =>
-        dt.Kind == DateTimeKind.Utc ? dt : dt.ToUniversalTime();
-
     static int ToLocalHour(DateTime dt, int tzOffsetMinutes) =>
-        AsUtc(dt).AddMinutes(-tzOffsetMinutes).Hour;
+        DateTimeUtils.NormalizeToUtc(dt).AddMinutes(-tzOffsetMinutes).Hour;
 
     static string ToLocalDateKey(DateTime dt, int tzOffsetMinutes) =>
-        AsUtc(dt).AddMinutes(-tzOffsetMinutes).ToString("yyyy-MM-dd");
+        DateTimeUtils.NormalizeToUtc(dt).AddMinutes(-tzOffsetMinutes).ToString("yyyy-MM-dd");
 
     static string NormalizeActivityRange(string range) =>
         range.Trim().ToLowerInvariant() switch
@@ -585,8 +663,8 @@ public static class EventEndpoints
     {
         var map = rows.ToDictionary(r => r.date, r => r);
         var list = new List<object>();
-        var localFrom = AsUtc(fromUtc).AddMinutes(-tzOffsetMinutes).Date;
-        var localTo = AsUtc(toUtc).AddMinutes(-tzOffsetMinutes).Date;
+        var localFrom = DateTimeUtils.NormalizeToUtc(fromUtc).AddMinutes(-tzOffsetMinutes).Date;
+        var localTo = DateTimeUtils.NormalizeToUtc(toUtc).AddMinutes(-tzOffsetMinutes).Date;
         for (var d = localFrom; d < localTo; d = d.AddDays(1))
         {
             var key = d.ToString("yyyy-MM-dd");
@@ -598,19 +676,20 @@ public static class EventEndpoints
         return list;
     }
 
-    static List<object> FillDailySeries(DateTime from, DateTime to, IEnumerable<(string date, int total, int identified)> rows)
+    static async Task WriteSlimEvent(HttpContext ctx, GateEvent evt, CancellationToken ct)
     {
-        var map = rows.ToDictionary(r => r.date, r => r);
-        var list = new List<object>();
-        for (var d = from.Date; d < to.Date; d = d.AddDays(1))
+        var payload = JsonSerializer.Serialize(new
         {
-            var key = d.ToString("yyyy-MM-dd");
-            if (map.TryGetValue(key, out var row))
-                list.Add(new { date = key, total = row.total, identified = row.identified });
-            else
-                list.Add(new { date = key, total = 0, identified = 0 });
-        }
-        return list;
+            eventId = evt.Id,
+            gateId = evt.GateId,
+            personId = evt.PersonId?.ToString(),
+            personName = evt.PersonName,
+            confidence = evt.Confidence,
+            faceImageBase64 = evt.FaceImageBase64,
+            timestamp = evt.CapturedAt.ToString("O"),
+            status = evt.Status.ToString(),
+        }, JsonOpts);
+        await ctx.Response.WriteAsync($"id: {evt.CapturedAt:O}\ndata: {payload}\n\n", ct);
     }
 
     static async Task WriteEvent(HttpContext ctx, GateEvent evt, CancellationToken ct)

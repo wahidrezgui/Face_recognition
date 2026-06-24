@@ -61,7 +61,8 @@ public class AuthMiddleware
         }
 
         if (ctx.Request.Method == "GET"
-            && path.Contains("/kiosk-settings", StringComparison.OrdinalIgnoreCase))
+            && (path.Contains("/kiosk-settings", StringComparison.OrdinalIgnoreCase)
+                || path.Contains("/desk-settings", StringComparison.OrdinalIgnoreCase)))
         {
             await _next(ctx);
             return;

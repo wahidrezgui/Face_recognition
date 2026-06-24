@@ -377,6 +377,60 @@ public static class GateEndpoints
             return Results.Ok(new { speechBuffered = req.SpeechBuffered });
         }).RequireAuthorization();
 
+        // ── GET /api/config/gates/{gateId}/desk-settings ────────────────────────
+        // Public kiosk endpoint — desk page loads display timing without admin auth.
+        app.MapGet("/api/v1/config/gates/{gateId:guid}/desk-settings",
+            async (Guid gateId, GateService gateService, CancellationToken ct) =>
+        {
+            var gate = await gateService.GetByIdAsync(gateId, ct);
+            if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
+            return Results.Ok(new
+            {
+                desk_display_seconds = gate.DeskDisplaySeconds,
+                desk_event_lookback_seconds = gate.DeskEventLookbackSeconds,
+                show_needs_review_on_desk = gate.ShowNeedsReviewOnDesk,
+            });
+        });
+
+        // ── POST /api/config/gates/{gateId}/welcome-workflow ────────────────────
+        app.MapPost("/api/v1/config/gates/{gateId:guid}/welcome-workflow",
+            async (Guid gateId, WelcomeWorkflowConfigRequest req,
+                   GateService gateService, AppDbContext db,
+                   ILogger<Program> logger, CancellationToken ct) =>
+        {
+            var gate = await db.Gates.FindAsync([gateId], ct);
+            if (gate is null) return Results.NotFound($"Gate '{gateId}' not configured.");
+
+            gate.UpdateConfig(new GateConfigUpdate
+            {
+                WelcomeCooldownSeconds = req.WelcomeCooldownSeconds,
+                BufferTrackExpirySeconds = req.BufferTrackExpirySeconds,
+                BufferPersonDedupSeconds = req.BufferPersonDedupSeconds,
+                RefireScoreDelta = req.RefireScoreDelta,
+                MinTrackHits = req.MinTrackHits,
+                DeskDisplaySeconds = req.DeskDisplaySeconds,
+                DeskEventLookbackSeconds = req.DeskEventLookbackSeconds,
+                ShowNeedsReviewOnDesk = req.ShowNeedsReviewOnDesk,
+            });
+            await db.SaveChangesAsync(ct);
+            gateService.InvalidateCache();
+            logger.LogInformation("Gate {GateId} welcome workflow settings saved", gateId);
+
+            return Results.Ok(new
+            {
+                status = "saved",
+                welcome_cooldown_seconds = gate.WelcomeCooldownSeconds,
+                buffer_track_expiry_seconds = gate.BufferTrackExpirySeconds,
+                buffer_person_dedup_seconds = gate.BufferPersonDedupSeconds,
+                refire_score_delta = gate.RefireScoreDelta,
+                min_track_hits = gate.MinTrackHits,
+                desk_display_seconds = gate.DeskDisplaySeconds,
+                desk_event_lookback_seconds = gate.DeskEventLookbackSeconds,
+                show_needs_review_on_desk = gate.ShowNeedsReviewOnDesk,
+                note = "Restart the gate AI service to apply min_track_hits and refire_score_delta.",
+            });
+        }).RequireAuthorization();
+
         // ── POST /api/config/gates/{gateId}/processing-fps ──────────────────────
         // Persists to DB, then hot-updates the running Python instance in-memory.
         app.MapPost("/api/v1/config/gates/{gateId:guid}/processing-fps",
@@ -828,6 +882,14 @@ public static class GateEndpoints
                 TrackerMaxLostS = req.TrackerMaxLostS,
                 LogUnknown = req.LogUnknown,
                 TrainingMode = req.TrainingMode,
+                WelcomeCooldownSeconds = req.WelcomeCooldownSeconds,
+                BufferTrackExpirySeconds = req.BufferTrackExpirySeconds,
+                BufferPersonDedupSeconds = req.BufferPersonDedupSeconds,
+                RefireScoreDelta = req.RefireScoreDelta,
+                MinTrackHits = req.MinTrackHits,
+                DeskDisplaySeconds = req.DeskDisplaySeconds,
+                DeskEventLookbackSeconds = req.DeskEventLookbackSeconds,
+                ShowNeedsReviewOnDesk = req.ShowNeedsReviewOnDesk,
             });
 
             await db.SaveChangesAsync(ct);
@@ -899,6 +961,14 @@ public static class GateEndpoints
             tracker_max_lost_s = gate.TrackerMaxLostS,
             log_unknown = gate.LogUnknown,
             training_mode = gate.TrainingMode,
+            welcome_cooldown_seconds = gate.WelcomeCooldownSeconds,
+            buffer_track_expiry_seconds = gate.BufferTrackExpirySeconds,
+            buffer_person_dedup_seconds = gate.BufferPersonDedupSeconds,
+            refire_score_delta = gate.RefireScoreDelta,
+            min_track_hits = gate.MinTrackHits,
+            desk_display_seconds = gate.DeskDisplaySeconds,
+            desk_event_lookback_seconds = gate.DeskEventLookbackSeconds,
+            show_needs_review_on_desk = gate.ShowNeedsReviewOnDesk,
         };
     }
 
@@ -1010,6 +1080,14 @@ public class UpdateGateRequest
     public double? TrackerMaxLostS { get; set; }
     public bool? LogUnknown { get; set; }
     public bool? TrainingMode { get; set; }
+    public int? WelcomeCooldownSeconds { get; set; }
+    public int? BufferTrackExpirySeconds { get; set; }
+    public int? BufferPersonDedupSeconds { get; set; }
+    public double? RefireScoreDelta { get; set; }
+    public int? MinTrackHits { get; set; }
+    public int? DeskDisplaySeconds { get; set; }
+    public int? DeskEventLookbackSeconds { get; set; }
+    public bool? ShowNeedsReviewOnDesk { get; set; }
 }
 
 internal record RestartRequestBody(string Source, string? GateId = null);
@@ -1026,6 +1104,18 @@ public class RecognitionConfigRequest
     public double? MinFaceConfidence { get; set; }
     public bool? LogUnknown { get; set; }
     public bool? TrainingMode { get; set; }
+}
+
+public class WelcomeWorkflowConfigRequest
+{
+    public int? WelcomeCooldownSeconds { get; set; }
+    public int? BufferTrackExpirySeconds { get; set; }
+    public int? BufferPersonDedupSeconds { get; set; }
+    public double? RefireScoreDelta { get; set; }
+    public int? MinTrackHits { get; set; }
+    public int? DeskDisplaySeconds { get; set; }
+    public int? DeskEventLookbackSeconds { get; set; }
+    public bool? ShowNeedsReviewOnDesk { get; set; }
 }
 
 public class KioskSettingsRequest

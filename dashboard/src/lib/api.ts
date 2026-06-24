@@ -205,6 +205,13 @@ export async function fetchPersonsCount(): Promise<number> {
   return data.count;
 }
 
+export async function fetchPersonIds(): Promise<string[]> {
+  const res = await apiFetch(`${API_BASE}/api/v1/persons/ids`, { headers: authHeaders() });
+  if (!res.ok) throw new Error("Failed to fetch person ids");
+  const data = await res.json();
+  return data.ids ?? [];
+}
+
 export interface PersonsPage {
   items: Person[];
   total: number;
@@ -791,6 +798,31 @@ export interface GateDbConfig {
   tracker_max_lost_s?: number;
   log_unknown?: boolean;
   training_mode?: boolean;
+  welcome_cooldown_seconds?: number;
+  buffer_track_expiry_seconds?: number;
+  buffer_person_dedup_seconds?: number;
+  refire_score_delta?: number;
+  min_track_hits?: number;
+  desk_display_seconds?: number;
+  desk_event_lookback_seconds?: number;
+  show_needs_review_on_desk?: boolean;
+}
+
+export interface GateDeskConfig {
+  desk_display_seconds: number;
+  desk_event_lookback_seconds: number;
+  show_needs_review_on_desk: boolean;
+}
+
+export interface GateWelcomeWorkflowConfig {
+  welcome_cooldown_seconds: number;
+  buffer_track_expiry_seconds: number;
+  buffer_person_dedup_seconds: number;
+  refire_score_delta: number;
+  min_track_hits: number;
+  desk_display_seconds: number;
+  desk_event_lookback_seconds: number;
+  show_needs_review_on_desk: boolean;
 }
 
 export async function fetchGateDbConfig(gateId: string): Promise<GateDbConfig | null> {
@@ -801,6 +833,48 @@ export async function fetchGateDbConfig(gateId: string): Promise<GateDbConfig | 
   } catch {
     return null;
   }
+}
+
+export async function fetchGateDeskConfig(gateId: string): Promise<GateDeskConfig> {
+  const defaults: GateDeskConfig = {
+    desk_display_seconds: 10,
+    desk_event_lookback_seconds: 30,
+    show_needs_review_on_desk: false,
+  };
+  try {
+    const token = typeof window !== "undefined"
+      ? new URLSearchParams(window.location.search).get("token")
+      ?? localStorage.getItem("gv_token")
+      : null;
+    const params = token ? `?token=${encodeURIComponent(token)}` : "";
+    const res = await fetch(`${API_BASE}/api/v1/config/gates/${gateId}/desk-settings${params}`);
+    if (!res.ok) return defaults;
+    return res.json();
+  } catch {
+    return defaults;
+  }
+}
+
+export async function setGateWelcomeConfig(
+  gateId: string,
+  config: GateWelcomeWorkflowConfig,
+): Promise<{ status: string } & GateWelcomeWorkflowConfig> {
+  const res = await apiFetch(`${API_BASE}/api/v1/config/gates/${gateId}/welcome-workflow`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeaders() },
+    body: JSON.stringify({
+      welcomeCooldownSeconds: config.welcome_cooldown_seconds,
+      bufferTrackExpirySeconds: config.buffer_track_expiry_seconds,
+      bufferPersonDedupSeconds: config.buffer_person_dedup_seconds,
+      refireScoreDelta: config.refire_score_delta,
+      minTrackHits: config.min_track_hits,
+      deskDisplaySeconds: config.desk_display_seconds,
+      deskEventLookbackSeconds: config.desk_event_lookback_seconds,
+      showNeedsReviewOnDesk: config.show_needs_review_on_desk,
+    }),
+  });
+  if (!res.ok) throw new Error("Failed to set welcome workflow config");
+  return res.json();
 }
 
 export interface AdminGate {

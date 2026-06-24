@@ -41,6 +41,12 @@ public static class PersonEndpoints
             return Results.Ok(new { count });
         });
 
+        app.MapGet("/api/v1/persons/ids", async (AppDbContext db, CancellationToken ct) =>
+        {
+            var ids = await db.Persons.AsNoTracking().Select(p => p.Id).ToListAsync(ct);
+            return Results.Ok(new { ids });
+        });
+
         app.MapGet("/api/v1/persons/{id:guid}", async (Guid id, AppDbContext db, CancellationToken ct) =>
         {
             var person = await db.Persons.AsNoTracking()

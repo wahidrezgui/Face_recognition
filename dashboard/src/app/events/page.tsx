@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   fetchEvents,
@@ -12,22 +13,19 @@ import {
   type EventActivityRange,
 } from "@/lib/api";
 import { useGateEventStream } from "@/hooks/useGateEventStream";
+import { sortGateEventsByDetectionDesc } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EventCard } from "@/components/events/EventCard";
-import EventDetailModal from "@/components/events/EventDetailModal";
 import { EventActivityStatsPanel } from "@/components/events/EventActivityStats";
 import { EventActivityChart } from "@/components/events/EventActivityChart";
 import { GateFilterCombobox } from "@/components/events/GateFilterCombobox";
-import ReviewEventModal from "./ReviewEventModal";
+import { PeriodTabs, PERIOD_TABS } from "@/components/events/PeriodTabs";
 
-const PERIOD_TABS: { value: EventActivityRange; label: string; hint: string }[] = [
-  { value: "today", label: "Today", hint: "Local midnight → now" },
-  { value: "week", label: "This week", hint: "Last 7 days" },
-  { value: "month", label: "This month", hint: "Calendar month" },
-];
+const EventDetailModal = dynamic(() => import("@/components/events/EventDetailModal"), { ssr: false });
+const ReviewEventModal = dynamic(() => import("./ReviewEventModal"), { ssr: false });
 
 const STATUS_TABS = [
   { value: "", label: "All", col: "#64748b" },
@@ -53,6 +51,7 @@ export default function EventsPage() {
 
   const [selectedEvent, setSelectedEvent] = useState<GateEvent | null>(null);
   const [reviewEvent, setReviewEvent] = useState<GateEvent | null>(null);
+  const [sseConnected, setSseConnected] = useState(false);
 
   const bounds = useMemo(() => activityRangeBounds(period), [period]);
 
@@ -70,7 +69,7 @@ export default function EventsPage() {
   const { data: activity, isLoading: activityLoading } = useQuery({
     queryKey: ["events-activity", period, bounds.from, bounds.to, gateTab],
     queryFn: () => fetchEventActivity(period, bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: 30_000,
+    refetchInterval: sseConnected ? false : 60_000,
   });
 
   const eventsQueryKey = ["events", period, page, name, statusTab, gateTab, bounds.from, bounds.to] as const;
@@ -79,11 +78,18 @@ export default function EventsPage() {
     queryKey: eventsQueryKey,
     queryFn: () =>
       fetchEvents(page, LIMIT, name || undefined, statusTab || undefined, bounds.from, bounds.to, gateTab || undefined),
-    refetchInterval: 30_000,
+    refetchInterval: sseConnected ? false : 60_000,
   });
+
+  const sortedEvents = useMemo(
+    () => sortGateEventsByDetectionDesc(data?.items ?? []),
+    [data?.items],
+  );
 
   useGateEventStream({
     gateId: gateTab || undefined,
+    onOpen: () => setSseConnected(true),
+    onError: () => setSseConnected(false),
     onEvent: (evt) => {
       if (statusTab && evt.status !== statusTab) return;
       if (gateTab && evt.gateId?.toLowerCase() !== gateTab) return;
@@ -100,12 +106,24 @@ export default function EventsPage() {
           const filtered = old.items.filter((i) => i.eventId !== evt.eventId);
           return {
             ...old,
-            items: [evt, ...filtered].slice(0, LIMIT),
+            items: sortGateEventsByDetectionDesc([evt, ...filtered]).slice(0, LIMIT),
             total: old.total! + (filtered.length === old.items.length ? 1 : 0),
           };
         },
       );
-      queryClient.invalidateQueries({ queryKey: ["events-activity", period] });
+      queryClient.setQueryData(
+        ["events-activity", period, bounds.from, bounds.to, gateTab],
+        (old: { total: number; identified: number; needsReview: number } | undefined) => {
+          if (!old) return old;
+          const isIdentified = evt.status === "Identified";
+          return {
+            ...old,
+            total: old.total + 1,
+            identified: old.identified + (isIdentified ? 1 : 0),
+            needsReview: old.needsReview + (isIdentified ? 0 : 1),
+          };
+        },
+      );
     },
   });
 
@@ -162,31 +180,13 @@ export default function EventsPage() {
         />
 
         {/* Period tabs */}
-        <div className="shrink-0 border-b border-gv-border bg-gv-panel-header px-4 py-3 sm:px-6">
-          <div className="mx-auto flex max-w-6xl flex-wrap gap-2">
-            {PERIOD_TABS.map((t) => {
-              const active = period === t.value;
-              return (
-                <button
-                  key={t.value}
-                  type="button"
-                  onClick={() => { setPeriod(t.value); setPage(1); }}
-                  className={cn(
-                    "rounded-lg border px-4 py-2 text-left transition-colors",
-                    active
-                      ? "border-blue-600/40 bg-blue-700/25"
-                      : "border-transparent bg-transparent hover:bg-white/5",
-                  )}
-                >
-                  <span className={cn("block text-xs font-semibold", active ? "text-blue-300" : "text-gray-400")}>
-                    {t.label}
-                  </span>
-                  <span className="block text-[10px] text-gv-muted">{t.hint}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
+        <PeriodTabs
+          period={period}
+          onChange={(p) => {
+            setPeriod(p);
+            setPage(1);
+          }}
+        />
 
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
           <div className="mx-auto max-w-6xl space-y-5">
@@ -259,7 +259,7 @@ export default function EventsPage() {
                   ))}
 
                 {!isLoading &&
-                  data?.items.map((event) => (
+                  sortedEvents.map((event) => (
                     <EventCard
                       key={event.eventId}
                       event={event}
@@ -269,7 +269,7 @@ export default function EventsPage() {
                     />
                   ))}
 
-                {!isLoading && data?.items.length === 0 && (
+                {!isLoading && sortedEvents.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-center">
                     <p className="text-sm text-gv-muted">No events in this period</p>
                     <p className="mt-1 text-xs text-gv-muted/80">Try another tab or clear filters</p>
