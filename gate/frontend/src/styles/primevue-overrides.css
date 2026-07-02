@@ -1,0 +1,49 @@
+:root {
+    --primary-color: #8A1538;
+    --primary-color-text: #ffffff;
+    --highlight-bg: #F3E4E9;
+    --highlight-text-color: #6E1029;
+    --focus-ring: 0 0 0 0.2rem rgba(138, 21, 56, 0.25);
+}
+
+.p-button {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.p-button:enabled:hover {
+    background: #A52D52;
+    border-color: #A52D52;
+}
+
+.p-button:enabled:active {
+    background: #6E1029;
+    border-color: #6E1029;
+}
+
+.p-checkbox .p-checkbox-box.p-highlight {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.p-radiobutton .p-radiobutton-box.p-highlight {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.p-inputtext:enabled:focus,
+.p-dropdown:not(.p-disabled).p-focus {
+    border-color: var(--primary-color);
+    box-shadow: var(--focus-ring);
+}
+
+.p-tabview .p-tabview-nav li.p-highlight .p-tabview-nav-link {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.p-paginator .p-paginator-pages .p-paginator-page.p-highlight {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: var(--primary-color-text);
+}

@@ -1,0 +1,90 @@
+/**
+ * Gate app AG Grid theme — maroon brand, slate surfaces, RTL-friendly.
+ * Use with base ag-grid.css: class="ag-theme-gate"
+ */
+.ag-theme-gate {
+    --ag-font-family: inherit;
+    --ag-font-size: 13px;
+    --ag-grid-size: 6px;
+    --ag-row-height: 48px;
+    --ag-header-height: 44px;
+    --ag-line-height: 48px;
+
+    --ag-background-color: #ffffff;
+    --ag-foreground-color: #0f172a;
+    --ag-secondary-foreground-color: #64748b;
+    --ag-header-foreground-color: #64748b;
+    --ag-header-background-color: #f8fafc;
+    --ag-odd-row-background-color: #ffffff;
+    --ag-row-hover-color: #f8fafc;
+    --ag-selected-row-background-color: #f3e4e9;
+
+    --ag-border-color: #e2e8f0;
+    --ag-row-border-color: #f1f5f9;
+    --ag-header-column-separator-display: block;
+    --ag-header-column-separator-color: #e2e8f0;
+
+    --ag-range-selection-border-color: #8a1538;
+    --ag-input-focus-border-color: #8a1538;
+    --ag-checkbox-checked-color: #8a1538;
+    --ag-alpine-active-color: #8a1538;
+
+    --ag-card-radius: 12px;
+    --ag-wrapper-border-radius: 12px;
+    --ag-borders: solid 1px;
+    --ag-border-radius: 8px;
+
+    --ag-icon-font-color: #64748b;
+    --ag-icon-font-color-hover: #8a1538;
+}
+
+.ag-theme-gate .ag-root-wrapper {
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.ag-theme-gate .ag-header {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.ag-theme-gate .ag-header-cell-label {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.ag-theme-gate .ag-header-cell-sorted-asc .ag-sort-indicator-icon,
+.ag-theme-gate .ag-header-cell-sorted-desc .ag-sort-indicator-icon {
+    color: #8a1538;
+}
+
+.ag-theme-gate .ag-right-aligned-header .ag-header-cell-label {
+    justify-content: flex-end;
+    flex-direction: row-reverse;
+}
+
+.ag-theme-gate .ag-cell,
+.ag-theme-gate .ag-header-cell {
+    direction: rtl;
+}
+
+.ag-theme-gate .ag-overlay-no-rows-center {
+    padding: 2.5rem 1rem;
+    color: #64748b;
+    font-size: 14px;
+}
+
+.ag-theme-gate .ag-overlay-no-rows-center .gate-grid-empty-icon {
+    display: block;
+    font-size: 2rem;
+    color: #cbd5e1;
+    margin-bottom: 0.5rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ag-theme-gate .ag-row-animation {
+        transition: none;
+    }
+}

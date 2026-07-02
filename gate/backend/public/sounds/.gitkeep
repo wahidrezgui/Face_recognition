@@ -1,0 +1,8 @@
+# Optional gate kiosk sounds (WAV). If present, the app uses these instead of beep fallbacks.
+# Place files here: backend/public/sounds/
+#
+#   success.wav
+#   error.wav
+#   alert.wav
+#   dakhool.wav   (check-in voice)
+#   kharooj.wav   (check-out voice)

@@ -1,0 +1,58 @@
+:root {
+    --color-brand: #8A1538;
+    --color-brand-light: #A52D52;
+    --color-brand-dark: #6E1029;
+    --color-brand-muted: #F3E4E9;
+    --color-accent-gold: #C9A227;
+    --color-surface: #F8FAFC;
+    --color-success: #059669;
+    --color-danger: #DC2626;
+
+    --sidebar-width: 16rem;
+    --sidebar-width-collapsed: 4.5rem;
+    --header-height: 4rem;
+    --radius-card: 1rem;
+}
+
+/* App shell: sidebar fixed on physical right, main content inset beside it */
+.app-sidebar {
+    width: var(--sidebar-width);
+    transition: width 0.2s ease;
+}
+
+.app-sidebar.is-collapsed {
+    width: var(--sidebar-width-collapsed);
+}
+
+.app-shell-main {
+    min-height: 100vh;
+    padding-top: var(--header-height);
+    transition: padding-right 0.2s ease;
+}
+
+@media (min-width: 1024px) {
+    .app-shell-main {
+        padding-right: var(--sidebar-width);
+    }
+
+    .app-shell-main.is-sidebar-collapsed {
+        padding-right: var(--sidebar-width-collapsed);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .app-shell-main {
+        transition: none;
+    }
+
+    .app-sidebar {
+        transition: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    * {
+        transition-duration: 0.01ms !important;
+        animation-duration: 0.01ms !important;
+    }
+}

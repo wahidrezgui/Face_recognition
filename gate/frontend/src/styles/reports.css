@@ -1,0 +1,59 @@
+/* Deprecated: use AppLoader variant="overlay" instead */
+.report-loading-overlay,
+.report-spinner {
+    /* kept for any external references; styles live in AppLoader.vue */
+}
+
+.arabic-sentence {
+    font-size: 1.25rem;
+}
+
+.d-none {
+    display: none !important;
+}
+
+.vsp-close {
+    top: 9px !important;
+    inset-inline-end: 10px !important;
+}
+
+.p-card .p-card-title {
+    font-size: 1rem !important;
+}
+
+.csv table {
+    table-layout: auto;
+    width: 100%;
+    text-indent: 0;
+    border-color: inherit;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+.csv table thead tr {
+    background-color: #f3f3f3;
+    line-height: 40px;
+}
+
+.csv table thead tr th {
+    font-weight: normal;
+    text-align: right;
+}
+
+.csv table tbody tr {
+    border-bottom: 1px solid #f3f3f3;
+}
+
+.p-tree-wrapper {
+    background-color: #ffffff !important;
+}
+
+.p-treeselect {
+    width: 100%;
+}
+
+.ag-theme-material {
+    --ag-header-background-color: #f8fafc;
+    --ag-header-foreground-color: #334155;
+    --ag-border-color: #e2e8f0;
+}
