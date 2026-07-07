@@ -12,6 +12,22 @@ export function customCellRendererOut(params) {
     return `<span class="font-bold p-4">${params.value}</span>`;
 }
 
+export function customCompanyCheckinRenderer(params) {
+    const cellValue = params.value;
+    if (cellValue != null && String(cellValue).indexOf('.') > -1) {
+        return `<span class="font-bold text-red p-4">${String(cellValue).substring(1)}</span>`;
+    }
+    return `<span class="font-bold p-4">${cellValue ?? ''}</span>`;
+}
+
+export function customCompanyCheckoutRenderer(params) {
+    const cellValue = params.value;
+    if (cellValue != null && String(cellValue).indexOf('.') > -1) {
+        return `<span class="font-bold text-red p-4">${String(cellValue).substring(1)}</span>`;
+    }
+    return `<span class="font-bold p-4">${cellValue ?? ''}</span>`;
+}
+
 export function customCellImgRenderer(params) {
     const cellValue = params.value;
     if (cellValue != null) {
@@ -71,6 +87,14 @@ export function buildMergedColumnDefs(columnsDef) {
     const columnOut = modifiedColumnDefs.findIndex((column) => column.field === 'khorooj');
     if (columnOut !== -1) {
         modifiedColumnDefs[columnOut].cellRenderer = customCellRendererOut;
+    }
+    const checkinCol = modifiedColumnDefs.findIndex((column) => column.field === 'checkin');
+    if (checkinCol !== -1) {
+        modifiedColumnDefs[checkinCol].cellRenderer = customCompanyCheckinRenderer;
+    }
+    const checkoutCol = modifiedColumnDefs.findIndex((column) => column.field === 'checkout');
+    if (checkoutCol !== -1) {
+        modifiedColumnDefs[checkoutCol].cellRenderer = customCompanyCheckoutRenderer;
     }
     const mvtypeCol = modifiedColumnDefs.findIndex((column) => column.field === 'mvtype');
     if (mvtypeCol !== -1) {

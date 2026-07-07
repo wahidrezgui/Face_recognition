@@ -2,7 +2,69 @@ import {
     fetchAttendanceReport,
     fetchIssuesReport,
     fetchIndividualReport,
+    fetchCompaniesReport,
+    fetchCompaniesIssuesReport,
 } from '../api/reports';
+
+const ISSUES_COLUMNS = [
+    'military_number',
+    'rank',
+    'fullname_ar',
+    'department',
+    'mvdate',
+    'dakhool',
+    'khorooj',
+    'notes',
+];
+
+const REPORTS_COLUMNS = [
+    'military_number',
+    'rank',
+    'gender',
+    'fullname_ar',
+    'department',
+    'mvdate',
+    'dakhool',
+    'khorooj',
+    'notes',
+];
+
+const INDIVIDUAL_COLUMNS = [
+    'military_number',
+    'rank_category',
+    'rank',
+    'gender',
+    'fullname_ar',
+    'department',
+    'mvtype',
+    'mvdate',
+    'mvtime',
+    'base',
+    'gate',
+];
+
+const ISSUES_PDF_OPTIONS = {
+    issueHighlight: true, blankNotes: false,
+
+};
+
+const COMPANIES_COLUMNS = [
+    'department',
+    'fullname_en',
+    'nationality',
+    'phone_number',
+    'checkin',
+    'checkout',
+];
+
+const COMPANIES_ISSUES_COLUMNS = [
+    'department',
+    'fullname_en',
+    'nationality',
+    'phone',
+    'checkin',
+    'checkout',
+];
 
 export const reportSearchPresets = {
     individual: {
@@ -11,6 +73,19 @@ export const reportSearchPresets = {
         requireDate: false,
         fetchFn: fetchIndividualReport,
         extraParams: {},
+        pdfTitle: 'تقرير متقدم',
+        csvFileName: 'Advanced-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'excel generated',
+        pdfColumnFields: ['numbering', ...INDIVIDUAL_COLUMNS],
+        exportColumnFields: INDIVIDUAL_COLUMNS,
+        exportIncludeRemaining: true,
+        pdfOptions: {
+            issueHighlight: false,
+            blankNotes: false,
+            groupByPerson: true,
+            detailColumnFields: ['numbering', 'mvtype', 'mvdate', 'mvtime', 'base', 'gate'],
+        },
     },
     reports: {
         key: 'reports',
@@ -18,6 +93,13 @@ export const reportSearchPresets = {
         requireDate: true,
         fetchFn: fetchAttendanceReport,
         extraParams: { type: 'basic_date' },
+        pdfTitle: 'تقارير التسجيل اليومية',
+        csvFileName: 'DailyBasicReports-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'excel generated',
+        pdfColumnFields: ['numbering', ...REPORTS_COLUMNS],
+        exportColumnFields: REPORTS_COLUMNS,
+        pdfOptions: ISSUES_PDF_OPTIONS,
     },
     issues: {
         key: 'issues',
@@ -25,6 +107,13 @@ export const reportSearchPresets = {
         requireDate: true,
         fetchFn: fetchAttendanceReport,
         extraParams: { type: 'daily_issues' },
+        pdfTitle: 'تقارير التأخير اليومية',
+        csvFileName: 'DailyIssues-Report.csv',
+        pdfAction: 'PDF generated',
+        excelAction: 'excel generated',
+        pdfColumnFields: ['numbering', ...ISSUES_COLUMNS],
+        exportColumnFields: ISSUES_COLUMNS,
+        pdfOptions: ISSUES_PDF_OPTIONS,
     },
     export: {
         key: 'export',
@@ -32,6 +121,13 @@ export const reportSearchPresets = {
         requireDate: false,
         fetchFn: fetchIssuesReport,
         extraParams: { status: 'export' },
+        pdfTitle: 'استخراج تقارير التأخير',
+        csvFileName: 'ExportReports-Report.csv',
+        pdfAction: 'PDF generated',
+        excelAction: 'EXCEL generated',
+        pdfColumnFields: ['numbering', ...ISSUES_COLUMNS],
+        exportColumnFields: ISSUES_COLUMNS,
+        pdfOptions: ISSUES_PDF_OPTIONS,
     },
     unjustified: {
         key: 'unjustified',
@@ -39,13 +135,65 @@ export const reportSearchPresets = {
         requireDate: false,
         fetchFn: fetchIssuesReport,
         extraParams: { status: 'unjustified' },
+        pdfTitle: 'تقرير بدون عذr',
+        csvFileName: 'Unjustified-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'EXCEL generated',
+        pdfColumnFields: ['numbering', ...ISSUES_COLUMNS],
+        exportColumnFields: ISSUES_COLUMNS,
+        pdfOptions: { issueHighlight: true, blankNotes: true },
     },
     justified: {
         key: 'justified',
         dateMode: 'range',
         requireDate: false,
+        allowDeleteNote: true,
         fetchFn: fetchIssuesReport,
         extraParams: { status: 'justified' },
+        pdfTitle: 'تقرير بعذr',
+        csvFileName: 'Justified-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'EXCEL generated',
+        pdfColumnFields: ['numbering', ...ISSUES_COLUMNS],
+        exportColumnFields: ISSUES_COLUMNS,
+        pdfOptions: ISSUES_PDF_OPTIONS,
+    },
+    companiesReporting: {
+        key: 'companiesReporting',
+        dateMode: 'single',
+        requireDate: true,
+        responseShape: 'flat',
+        filterMode: 'companyBasic',
+        autoSearch: true,
+        defaultPerPage: 25,
+        showPrint: false,
+        fetchFn: fetchCompaniesReport,
+        extraParams: {},
+        pdfTitle: 'تقارير الشركات',
+        csvFileName: 'Companies-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'excel generated',
+        pdfColumnFields: ['numbering', ...COMPANIES_COLUMNS],
+        exportColumnFields: COMPANIES_COLUMNS,
+        pdfOptions: { issueHighlight: false, blankNotes: false },
+    },
+    companiesIssues: {
+        key: 'companiesIssues',
+        dateMode: 'single',
+        requireDate: true,
+        responseShape: 'flat',
+        filterMode: 'companyIssues',
+        autoSearch: true,
+        defaultPerPage: 25,
+        fetchFn: fetchCompaniesIssuesReport,
+        extraParams: {},
+        pdfTitle: 'مشاكل الشركات',
+        csvFileName: 'Companies-Issues-Report.csv',
+        pdfAction: 'pdf generated',
+        excelAction: 'excel generated',
+        pdfColumnFields: ['numbering', ...COMPANIES_ISSUES_COLUMNS],
+        exportColumnFields: COMPANIES_ISSUES_COLUMNS,
+        pdfOptions: { issueHighlight: true, blankNotes: false },
     },
 };
 

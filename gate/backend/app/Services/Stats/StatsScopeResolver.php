@@ -3,55 +3,31 @@
 namespace App\Services\Stats;
 
 use App\Models\User;
-use App\Support\Tree\DepartmentTreeService;
+use App\Support\Access\DataScopeResolver;
 
 class StatsScopeResolver
 {
-    public function __construct(private DepartmentTreeService $departmentTree)
+    public function __construct(private DataScopeResolver $dataScope)
     {
     }
 
     public function resolveScopeForUser(User $user): string
     {
-        $roleName = $user->roles->first()?->name ?? '';
-        $map = config('dashboard.scope_by_role', []);
-
-        return $map[$roleName] ?? 'hierarchy';
+        return $this->dataScope->resolveForUser($user, 'dashboard');
     }
 
     public function clampScope(string $roleScope, ?string $requestedScope): string
     {
-        if ($roleScope === 'global') {
-            return 'global';
-        }
-
-        if ($roleScope === 'self') {
-            return 'self';
-        }
-
-        if ($requestedScope === 'self') {
-            return 'self';
-        }
-
-        return 'hierarchy';
+        return $this->dataScope->clampScope($roleScope, $requestedScope);
     }
 
     public function resolveDepartmentIds(int $departmentId, string $scope): array
     {
-        if ($scope === 'self') {
-            return [$departmentId];
-        }
-
-        return $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds($departmentId);
+        return $this->dataScope->resolveDepartmentIdsForScope($departmentId, $scope);
     }
 
     public function scopeLabel(string $scope): string
     {
-        return match ($scope) {
-            'global' => 'إحصائيات المؤسسة',
-            'hierarchy' => 'إحصائيات الوحدة والوحدات الفرعية',
-            'self' => 'إحصائيات الوحدة فقط',
-            default => '',
-        };
+        return $this->dataScope->scopeLabel($scope);
     }
 }

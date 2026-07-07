@@ -1,4 +1,5 @@
 import api, { ensureCsrfCookie, resetCsrfCookie } from './client';
+import { getDefaultRedirectPath } from '../lib/access';
 import { loginResponseSchema, meResponseSchema } from '../schemas/auth';
 
 export async function fetchAuthProviders() {
@@ -75,11 +76,6 @@ export function clearLegacyStorage() {
     });
 }
 
-export function getRedirectPathForRole(roleName) {
-    if (roleName === 'Super Admin') return '/dashboard';
-    if (roleName === 'Gate Pass Provider') return '/database';
-    if (roleName === 'Admin' || roleName === 'Local Admin') return '/home';
-    if (roleName === 'Gate Guard') return '/gate';
-    if (roleName === 'Reporting') return '/reports';
-    return '/permission-denied';
+export function getRedirectPathForUser(user) {
+    return getDefaultRedirectPath(user);
 }

@@ -20,6 +20,9 @@ use App\Models\Bases;
 use App\Models\CheckTimes;
 use App\Models\Gates;
 use App\Models\Movements;
+use App\Models\Zones;
+use App\Models\BadgeLog;
+use App\Support\EmployeeStatus;
 use App\Support\Tree\DepartmentTreeService;
 use App\Support\Tree\RankTreeService;
 
@@ -30,31 +33,24 @@ class EmployeeService
         private RankTreeService $rankTreeService,
     ) {}
     public function getemployees(Request $request){
-
-        function getStatusText($status) {
-            $statusMapping = [
-                0 => 'Pending',
-                1 => 'Approved',
-                2 => 'Printed',
-                3 => 'Collected',
-                4 => 'Canceled',
-            ];
-        
-            return $statusMapping[$status] ?? 'unknown';
-          }    
-
         //columns
         $columns = [
             [
-                'headerName' => 'الرقم القاعدي',
-                'field' => 'id',
-                'sortable' => true,
-                'width'=>150,
+                'headerName' => '',
+                'colId' => 'selection',
+                'width' => 56,
+                'maxWidth' => 56,
+                'minWidth' => 56,
+                'sortable' => false,
+                'filter' => false,
+                'resizable' => false,
+                'suppressMenu' => true,
+                'pinned' => 'right',
                 'headerCheckboxSelection' => true,
                 'headerCheckboxSelectionFilteredOnly' => true,
                 'checkboxSelection' => true,
-                'headerCheckboxSelectionCurrentPageOnly' => true
-                ],
+                'headerCheckboxSelectionCurrentPageOnly' => true,
+            ],
             [
             'headerName' => 'الصورة',
             'field' => 'photo',
@@ -150,152 +146,83 @@ class EmployeeService
                 ->select(DB::raw("COUNT(*) as count"), DB::raw("status"))
                 ->where('employees.active', 1)
                 ->whereIn('dep_id', $departmentIds);
-            } 
+            }
 
-                // Initialize base query
-                /*$baseQuery = Employees::query()
-                    ->select(DB::raw("COUNT(*) as count"), DB::raw("status"))
-                    ->where('employees.active', 1)
-                    ->where('dep_parent_id', $request->dep_id);
-            */
-                // Apply filters independently
-                if ($request->has('military_number') && $request->military_number) {
-                    $baseQuery->where('military_number', $request->military_number);
-                }
-if ($request->filled('fullname_ar')) {
-    $name = trim($request->fullname_ar);
+                $this->applyEmployeeListFilters($baseQuery, $request);
 
-    $baseQuery->where(function ($query) use ($name) {
-        $query->where('fullname_ar', 'LIKE', "%{$name}%")
-              ->orWhere('fullname_en', 'LIKE', "%{$name}%");
-    });
-}
-
-            
-if (!empty(trim($request->plate_number))) {
-
-    $search = trim($request->plate_number);
-
-    $baseQuery->join('employee_cars', 'employees.id', '=', 'employee_cars.emp_id')
-        ->where('employee_cars.active', 1)
-        ->whereRaw('employee_cars.plate_number LIKE ?', ["%{$search}%"]);
-}
-                // Log the base query
-                //\Log::info('Base Query', ['query' => $baseQuery->toSql(), 'bindings' => $baseQuery->getBindings()]);
-            
-                // Get records
                 $records = $baseQuery->groupBy('status')
                     ->orderBy('status', 'asc')
-                    ->get();
-            
-               // \Log::info('Records Found', ['records' => $records]);
-            
-                $data = [];
-                $departmentIds = [];
-                $genderIds = [];
-                $nationalityIds = [];
-                $rankIds = [];
-                
-                foreach ($records as $row) {
-                   // \Log::info('Processing Row', ['row' => $row]);
-            $departmentIds = $this->departmentTree->getAllChildrenDepartmentIds($request->dep_id);
-            
-                    $perPage = $request->input('per_page', 25);
-                    $page = $request->input('page', 1);
-            
-                    // Initialize guests query
-                    /*$guestsQuery = Employees::query()
-                        ->where('employees.active', 1)
-                        ->where('status', $row->status)
-                        ->where('dep_parent_id', $request->dep_id);*/
-                        if($request->dep_id==1)//allqaf
-                        {
-                            $guestsQuery = Employees::query()
-                                    ->where('employees.active', 1)
-                                    ->where('status', $row->status);
-                        }
-                        else
-                        {
-                                $guestsQuery = Employees::query()
-                                    ->where('employees.active', 1)
-                                    ->where('status', $row->status)
-                                    ->wherein('dep_id', $departmentIds);
-                        }
-                        $carsearch = !empty($request->plate_number); 
-                    // Apply filters independently
-                    if ($request->has('military_number') && $request->military_number) {
-                        $guestsQuery->where('military_number', $request->military_number);
-                    }
-if ($request->filled('fullname_ar')) {
-    $name = trim($request->fullname_ar);
+                    ->get()
+                    ->keyBy('status');
 
-    $guestsQuery->where(function ($query) use ($name) {
-        $query->where('fullname_ar', 'LIKE', "%{$name}%")
-              ->orWhere('fullname_en', 'LIKE', "%{$name}%");
-    });
-}
-            
-                    if ($request->has('plate_number') && $request->plate_number) {
-                        $guestsQuery->join('employee_cars', 'employees.id', '=', 'employee_cars.emp_id')
-                        ->whereRaw('employee_cars.plate_number LIKE ?', ["%{$request->plate_number}%"])
-                                    ->where('employee_cars.active', 1);
-                        $carsearch = 1;
-                    }
-                    
-            
-                    // Log the guests query
-                    //\Log::info('Guests Query', ['query' => $guestsQuery->toSql(), 'bindings' => $guestsQuery->getBindings()]);
-            
-                    // Get guests
-                    $guests = $guestsQuery->latest('employees.created_at')->paginate($perPage, ['*'], 'page', $page);
-            
-                    //\Log::info('Guests Found', ['guests' => $guests]);
-            
-                    // Collect unique department, gender, nationality, and rank IDs for efficient querying
-                    $departmentIds = array_merge($departmentIds, $guests->pluck('dep_id')->unique()->toArray());
-                    $genderIds = array_merge($genderIds, $guests->pluck('gender_id')->unique()->toArray());
-                    $nationalityIds = array_merge($nationalityIds, $guests->pluck('nationality_id')->unique()->toArray());
-                    $rankIds = array_merge($rankIds, $guests->pluck('rank_id')->unique()->toArray());
-            
-                    $data[] = [
-                        'id' => $row->status,
-                        'status' => getStatusText($row->status),
-                        'count' => $row->count,
-                        'guests' => $guests,
-                        'pagination' => [
-                            'current_page' => $guests->currentPage(),
-                            'per_page' => $guests->perPage(),
-                            'total' => $guests->total(),
-                        ],
+                $departmentScopeIds = $this->departmentTree->getAllChildrenDepartmentIds($request->dep_id);
+                $perPage = $request->input('per_page', 25);
+                $page = $request->input('page', 1);
+
+                $stats = [];
+                foreach (EmployeeStatus::cardStatusIds() as $statusId) {
+                    $stats[] = [
+                        'id' => $statusId,
+                        'status' => EmployeeStatus::labelEn($statusId),
+                        'label_en' => EmployeeStatus::labelEn($statusId),
+                        'label_ar' => EmployeeStatus::labelAr($statusId),
+                        'count' => (int) ($records[$statusId]->count ?? 0),
                     ];
                 }
-            
-                // Fetch related data for all guests in one go
-                $departments = Departments::find($departmentIds)->keyBy('id');
-                $genders = Genders::find($genderIds)->keyBy('id');
-                $nationalities = Nationalities::find($nationalityIds)->keyBy('id');
-                $ranks = Ranks::find($rankIds)->keyBy('id');
-            
-                foreach ($data as &$item) {
-                    if (!isset($item['guests'])) { // Ensure 'guests' key exists
-                        $item['guests'] = [];
-                    }
-                    foreach ($item['guests'] as &$guest) {
-                        $guest->department = $departments[$guest->dep_id]->name_ar ?? '';
-                        $guest->gender = $genders[$guest->gender_id]->name_ar ?? '';
-                        $guest->nationality = $nationalities[$guest->nationality_id]->name_ar ?? '';
-                        $guest->rank = $ranks[$guest->rank_id]->name_ar ?? '';
-                        if($carsearch == 1){
-                            $guest->id = $guest->emp_id; //faza bhima ema mrigla (condition on the cars search)
-                        }
-                        
-                        
+
+                if ($request->dep_id == 1) {
+                    $listQuery = Employees::query()
+                        ->where('employees.active', 1)
+                        ->whereIn('status', EmployeeStatus::cardStatusIds());
+                } else {
+                    $listQuery = Employees::query()
+                        ->where('employees.active', 1)
+                        ->whereIn('status', EmployeeStatus::cardStatusIds())
+                        ->whereIn('dep_id', $departmentScopeIds);
+                }
+
+                if ($request->filled('status')) {
+                    $listQuery->where('status', (int) $request->status);
+                }
+
+                $carsearch = $this->applyEmployeeListFilters($listQuery, $request);
+
+                if ($carsearch) {
+                    $listQuery->select('employees.*')->distinct();
+                }
+
+                $guests = $listQuery->latest('employees.created_at')->paginate($perPage, ['*'], 'page', $page);
+
+                $departmentIds = $guests->pluck('dep_id')->unique()->filter()->values()->all();
+                $genderIds = $guests->pluck('gender_id')->unique()->filter()->values()->all();
+                $nationalityIds = $guests->pluck('nationality_id')->unique()->filter()->values()->all();
+                $rankIds = $guests->pluck('rank_id')->unique()->filter()->values()->all();
+
+                $departments = $departmentIds ? Departments::find($departmentIds)->keyBy('id') : collect();
+                $genders = $genderIds ? Genders::find($genderIds)->keyBy('id') : collect();
+                $nationalities = $nationalityIds ? Nationalities::find($nationalityIds)->keyBy('id') : collect();
+                $ranks = $rankIds ? Ranks::find($rankIds)->keyBy('id') : collect();
+
+                foreach ($guests as &$guest) {
+                    $guest->department = $departments[$guest->dep_id]->name_ar ?? '';
+                    $guest->gender = $genders[$guest->gender_id]->name_ar ?? '';
+                    $guest->nationality = $nationalities[$guest->nationality_id]->name_ar ?? '';
+                    $guest->rank = $ranks[$guest->rank_id]->name_ar ?? '';
+                    if ($request->filled('plate_number') && isset($guest->emp_id)) {
+                        $guest->id = $guest->emp_id;
                     }
                 }
-            
-               // \Log::info('Final Data', ['data' => $data]);
-            
-                return response()->json(['columns' => $columns, 'data' => $data]);
+
+                return response()->json([
+                    'columns' => $columns,
+                    'data' => $stats,
+                    'guests' => $guests,
+                    'pagination' => [
+                        'current_page' => $guests->currentPage(),
+                        'per_page' => $guests->perPage(),
+                        'total' => $guests->total(),
+                    ],
+                ]);
             }
 
 
@@ -394,6 +321,7 @@ if ($request->filled('fullname_ar')) {
                 ];
             }
             $item->movements = $m;
+            $item->badge_logs = $this->formatBadgeLogs($item->id);
     
             // Return the modified employee item
             return $item;
@@ -537,6 +465,7 @@ if ($request->filled('fullname_ar')) {
                 $item->all_movements=$all;
                 $item->defaut=$inpb;
                 $item->notes=$notes;
+                $item->badge_logs = $this->formatBadgeLogs($item->id);
                 return $item;
             });
 
@@ -545,8 +474,80 @@ if ($request->filled('fullname_ar')) {
     }
 
 
+    private function applyEmployeeDepartmentIds(array &$input, ?Employees $existing = null): void
+    {
+        if (empty($input['dep_id'])) {
+            return;
+        }
+
+        $input['dep_id'] = (int) $input['dep_id'];
+
+        if (! empty($input['dep_parent_id'])) {
+            $input['dep_parent_id'] = (int) $input['dep_parent_id'];
+
+            return;
+        }
+
+        if ($existing?->dep_parent_id) {
+            $input['dep_parent_id'] = (int) $existing->dep_parent_id;
+
+            return;
+        }
+
+        $input['dep_parent_id'] = $input['dep_id'];
+    }
+
+    private function applyEmployeeListFilters($query, Request $request): bool
+    {
+        $carSearch = false;
+
+        if ($request->has('military_number') && $request->military_number) {
+            $query->where('military_number', $request->military_number);
+        }
+
+        if ($request->filled('fullname_ar')) {
+            $name = trim($request->fullname_ar);
+            $query->where(function ($inner) use ($name) {
+                $inner->where('fullname_ar', 'LIKE', "%{$name}%")
+                    ->orWhere('fullname_en', 'LIKE', "%{$name}%");
+            });
+        }
+
+        if (! empty(trim((string) $request->plate_number))) {
+            $search = trim($request->plate_number);
+            $query->join('employee_cars', 'employees.id', '=', 'employee_cars.emp_id')
+                ->where('employee_cars.active', 1)
+                ->whereRaw('employee_cars.plate_number LIKE ?', ["%{$search}%"]);
+            $carSearch = true;
+        }
+
+        if ($request->filled('base_id')) {
+            $baseId = (int) $request->base_id;
+            $query->where(function ($inner) use ($baseId) {
+                $inner->where('employees.default_base', $baseId)
+                    ->orWhereExists(function ($sub) use ($baseId) {
+                        $sub->from('employee_zones')
+                            ->whereColumn('employee_zones.emp_id', 'employees.id')
+                            ->where('employee_zones.base_id', $baseId);
+                    });
+            });
+        }
+
+        if ($request->filled('zone_id')) {
+            $zoneId = (int) $request->zone_id;
+            $query->whereExists(function ($sub) use ($zoneId) {
+                $sub->from('employee_zones')
+                    ->whereColumn('employee_zones.emp_id', 'employees.id')
+                    ->where('employee_zones.zone_id', $zoneId);
+            });
+        }
+
+        return $carSearch;
+    }
+
     public function addemployee(Request $request){
         $input=$request->all();
+        $this->applyEmployeeDepartmentIds($input);
 
         if ($request->hasFile('photo')) {
             $photo = $request->file('photo');
@@ -558,6 +559,8 @@ if ($request->filled('fullname_ar')) {
 
         $input['qrcode']=uniqid();
         $input['active']=1;
+
+        unset($input['zoning'], $input['zones']);
 
         $employee=Employees::create($input);
         $id=$employee->id;
@@ -591,7 +594,8 @@ if ($request->filled('fullname_ar')) {
     public function editemployee(Request $request){
 
         $input=$request->all();
-        $employee=Employees::find($request->id);
+        $employee=Employees::findOrFail($request->id);
+        $this->applyEmployeeDepartmentIds($input, $employee);
         if ($request->hasFile('photo')) {
             $photo = $request->file('photo');
             $filename = time() . '.' . $photo->getClientOriginalExtension();
@@ -599,6 +603,9 @@ if ($request->filled('fullname_ar')) {
             move_uploaded_file($photo, $filepath);
             $input['photo']=$filepath;
         }
+
+        unset($input['zoning'], $input['zones']);
+
         $employee->update($input);
 
         if($request->zoning){
@@ -639,14 +646,8 @@ if ($request->filled('fullname_ar')) {
 
     public function approvalemployee(Request $request)
     {
-        $status = $request->status;
-    
-        $statusText = [
-            0 => 'PENDING',
-            1 => 'APPROVED',
-            2 => 'PRINTED',
-            3 => 'COLLECTED'
-        ];
+        $status = (int) $request->status;
+        $printerId = auth()->id();
     
         foreach ($request->guests as $item)
         {
@@ -678,7 +679,7 @@ if ($request->filled('fullname_ar')) {
             $zoneText = $zoneText ?: 'None';
     
             // 5. Build task text
-            $task = '' . ($statusText[$status] ?? 'UNKNOWN');
+            $task = EmployeeStatus::logLabel($status);
             $task .= ' | Base: ' . ($baseName ?: 'None');
             $task .= ' | Zones: ' . $zoneText;
     
@@ -690,7 +691,43 @@ if ($request->filled('fullname_ar')) {
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+
+            if ($status === 2 && $employee) {
+                BadgeLog::create([
+                    'emp_id' => $item,
+                    'badge_expiry_date' => $employee->expiry_date,
+                    'date_printed' => now(),
+                    'created_by' => $printerId,
+                ]);
+            }
         }
+    }
+
+    private function formatBadgeLogs(int $empId): array
+    {
+        return BadgeLog::where('emp_id', $empId)
+            ->with('createdByUser')
+            ->orderByDesc('date_printed')
+            ->get()
+            ->map(function (BadgeLog $log) {
+                $user = $log->createdByUser;
+                $name = $user
+                    ? trim(($user->firstname ?? '') . ' ' . ($user->lastname ?? ''))
+                    : '';
+
+                return [
+                    'date_printed' => $log->date_printed
+                        ? $log->date_printed->format('d/m/Y H:i')
+                        : '',
+                    'badge_expiry_date' => $log->badge_expiry_date
+                        ? $log->badge_expiry_date->format('d/m/Y')
+                        : '—',
+                    'created_by' => $log->created_by,
+                    'created_by_name' => $name !== '' ? $name : '—',
+                ];
+            })
+            ->values()
+            ->all();
     }
 
 
@@ -889,16 +926,46 @@ if ($request->filled('fullname_ar')) {
     }
 
       public function badgeInfo($id){
-        $badge2=Badges::where('dep_id',$id)->get()->first();
-        return response()->json($badge2);
+        $badge = Badges::where('dep_id', $id)->first();
+
+        if (! $badge) {
+            return response()->json([
+                'data' => null,
+                'exists' => false,
+            ]);
+        }
+
+        return response()->json($badge);
       }
 
     public function editBadge(Request $request){
-        $input = $request->all();
-    
-        $item = Badges::find($request->id);
-        $item->update($input);
-        
+        $request->validate([
+            'id' => 'nullable|integer|exists:badges,id',
+            'dep_id' => 'required_without:id|integer|exists:departments,id',
+            'content' => 'required|string',
+            'width' => 'required|integer|min:1',
+            'heigth' => 'required|integer|min:1',
+        ]);
+
+        if ($request->filled('id')) {
+            $item = Badges::findOrFail($request->id);
+            $item->update($request->only(['content', 'width', 'heigth']));
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $item->fresh(),
+            ]);
+        }
+
+        $item = Badges::updateOrCreate(
+            ['dep_id' => $request->dep_id],
+            $request->only(['content', 'width', 'heigth'])
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $item,
+        ], $item->wasRecentlyCreated ? 201 : 200);
       }
 
 
@@ -918,7 +985,7 @@ if ($request->filled('fullname_ar')) {
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
-              $ZoneColors[] = ['color' => $z->color];
+              $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
       
           // Retrieve the associated EmployeeCars
@@ -970,7 +1037,7 @@ if ($request->filled('fullname_ar')) {
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
-              $ZoneColors[] = ['color' => $z->color];
+              $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
       
           // Retrieve the associated EmployeeCars
@@ -1007,16 +1074,46 @@ if ($request->filled('fullname_ar')) {
       } */
 
     public function badge2Info($id){
-        $badge2=Badges2::where('dep_id',$id)->get()->first();
-        return response()->json($badge2);
+        $badge = Badges2::where('dep_id', $id)->first();
+
+        if (! $badge) {
+            return response()->json([
+                'data' => null,
+                'exists' => false,
+            ]);
+        }
+
+        return response()->json($badge);
       }
 
     public function editBadge2(Request $request){
-        $input = $request->all();
-    
-        $item = Badges2::find($request->id);
-        $item->update($input);
-        
+        $request->validate([
+            'id' => 'nullable|integer|exists:badges2,id',
+            'dep_id' => 'required_without:id|integer|exists:departments,id',
+            'content' => 'required|string',
+            'width' => 'required|integer|min:1',
+            'heigth' => 'required|integer|min:1',
+        ]);
+
+        if ($request->filled('id')) {
+            $item = Badges2::findOrFail($request->id);
+            $item->update($request->only(['content', 'width', 'heigth']));
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $item->fresh(),
+            ]);
+        }
+
+        $item = Badges2::updateOrCreate(
+            ['dep_id' => $request->dep_id],
+            $request->only(['content', 'width', 'heigth'])
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $item,
+        ], $item->wasRecentlyCreated ? 201 : 200);
       }
 
       public function guestbadge2($id)
@@ -1039,7 +1136,7 @@ if ($request->filled('fullname_ar')) {
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
-              $ZoneColors[] = ['color' => $z->color];
+              $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
       
           // Retrieve the associated EmployeeCars
@@ -1109,7 +1206,7 @@ if ($request->filled('fullname_ar')) {
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
-              $ZoneColors[] = ['color' => $z->color];
+              $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
       
           // Retrieve the associated EmployeeCars

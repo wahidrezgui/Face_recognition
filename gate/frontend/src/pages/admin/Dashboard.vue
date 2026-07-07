@@ -21,7 +21,7 @@
                     subtitle="عدد الدخول والخروج اليومي"
                     padding="lg"
                 >
-                    <Chart v-if="chartPresence.datasets[0].data.length" type="bar" :data="chartPresence" :options="barChartOptions" />
+                    <Chart v-if="chartHasData(chartPresence)" type="bar" :data="chartPresence" :options="barChartOptions" />
                     <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات حضور لهذه الفترة.</p>
                 </AppCard>
 
@@ -31,7 +31,7 @@
                     subtitle="تأخر الدخول وخروج مبكر لكل وحدة"
                     padding="lg"
                 >
-                    <Chart v-if="chartIssuesByDepartment.datasets[0].data.length" type="bar" :data="chartIssuesByDepartment" :options="barChartOptions" />
+                    <Chart v-if="chartHasData(chartIssuesByDepartment)" type="bar" :data="chartIssuesByDepartment" :options="barChartOptions" />
                     <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد مخالفات مسجلة اليوم.</p>
                 </AppCard>
 
@@ -41,7 +41,7 @@
                     subtitle="الموظفون المسجلون حديثاً"
                     padding="lg"
                 >
-                    <Chart v-if="chartRegistration.datasets[0].data.length" type="bar" :data="chartRegistration" :options="barChartOptions" />
+                    <Chart v-if="chartHasData(chartRegistration)" type="bar" :data="chartRegistration" :options="barChartOptions" />
                     <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات تسجيل لهذه الفترة.</p>
                 </AppCard>
             </div>
@@ -53,7 +53,7 @@
                 subtitle="تطور تأخر الدخول والخروج المبكر"
                 padding="lg"
             >
-                <Chart v-if="chartIssuesTrend.datasets[0].data.length" type="line" :data="chartIssuesTrend" :options="lineChartOptions" />
+                <Chart v-if="chartHasData(chartIssuesTrend)" type="line" :data="chartIssuesTrend" :options="lineChartOptions" />
                 <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات مخالفات لهذه الفترة.</p>
             </AppCard>
         </PageContainer>
@@ -67,7 +67,8 @@ import QueryState from '../../components/shared/QueryState.vue';
 import PageContainer from '../../components/ui/PageContainer.vue';
 import AppCard from '../../components/ui/AppCard.vue';
 import { useDashboard } from '../../composables/useDashboard';
-import { userHasRole } from '../../lib/auth-session';
+import { canReadResource, canWriteResource, isGlobalScope } from '../../lib/auth-roles';
+import { getAuthUser } from '../../lib/auth-session';
 
 const emptyBarChart = {
     labels: [],
@@ -87,7 +88,7 @@ const STAT_CARDS = [
         icon: 'pi-users',
         iconColor: 'bg-slate-100 text-slate-700',
         borderColor: 'border-slate-200',
-        roles: ['Super Admin', 'Admin', 'Local Admin', 'Reporting'],
+        visible: (user) => canReadResource('employees', user) || canReadResource('reports', user),
     },
     {
         id: 'checkInsToday',
@@ -96,7 +97,7 @@ const STAT_CARDS = [
         icon: 'pi-sign-in',
         iconColor: 'bg-emerald-700 text-white',
         borderColor: 'border-emerald-200',
-        roles: ['Super Admin', 'Admin', 'Local Admin', 'Reporting'],
+        visible: (user) => canReadResource('reports', user),
     },
     {
         id: 'checkOutsToday',
@@ -105,7 +106,7 @@ const STAT_CARDS = [
         icon: 'pi-sign-out',
         iconColor: 'bg-red-700 text-white',
         borderColor: 'border-red-200',
-        roles: ['Super Admin', 'Admin', 'Local Admin', 'Reporting'],
+        visible: (user) => canReadResource('reports', user),
     },
     {
         id: 'pending',
@@ -114,7 +115,7 @@ const STAT_CARDS = [
         icon: 'pi-user',
         iconColor: 'bg-orange-100 text-orange-700',
         borderColor: 'border-orange-200',
-        roles: ['Admin', 'Local Admin'],
+        visible: (user) => canWriteResource('employees', user),
     },
     {
         id: 'printed',
@@ -123,7 +124,7 @@ const STAT_CARDS = [
         icon: 'pi-print',
         iconColor: 'bg-blue-100 text-blue-700',
         borderColor: 'border-blue-200',
-        roles: ['Admin', 'Local Admin'],
+        visible: (user) => canWriteResource('employees', user),
     },
     {
         id: 'collected',
@@ -132,7 +133,7 @@ const STAT_CARDS = [
         icon: 'pi-thumbs-up',
         iconColor: 'bg-green-100 text-green-700',
         borderColor: 'border-green-200',
-        roles: ['Admin', 'Local Admin'],
+        visible: (user) => canWriteResource('employees', user),
     },
     {
         id: 'departments',
@@ -141,7 +142,7 @@ const STAT_CARDS = [
         icon: 'pi-sitemap',
         iconColor: 'bg-blue-100 text-blue-700',
         borderColor: 'border-blue-200',
-        roles: ['Super Admin'],
+        visible: (user) => isGlobalScope('dashboard', user) && canReadResource('departments', user),
     },
     {
         id: 'bases',
@@ -150,7 +151,7 @@ const STAT_CARDS = [
         icon: 'pi-map-marker',
         iconColor: 'bg-green-100 text-green-700',
         borderColor: 'border-green-200',
-        roles: ['Super Admin'],
+        visible: (user) => isGlobalScope('dashboard', user) && canReadResource('departments', user),
     },
     {
         id: 'gates',
@@ -159,7 +160,7 @@ const STAT_CARDS = [
         icon: 'pi-qrcode',
         iconColor: 'bg-indigo-500 text-white',
         borderColor: 'border-indigo-200',
-        roles: ['Super Admin'],
+        visible: (user) => isGlobalScope('dashboard', user) && canReadResource('departments', user),
     },
     {
         id: 'zones',
@@ -168,7 +169,7 @@ const STAT_CARDS = [
         icon: 'pi-stop-circle',
         iconColor: 'bg-red-400 text-white',
         borderColor: 'border-red-200',
-        roles: ['Super Admin'],
+        visible: (user) => isGlobalScope('dashboard', user) && canReadResource('departments', user),
     },
 ];
 
@@ -266,20 +267,28 @@ export default {
             scopeLabel,
             pending,
             errorMessage,
-            isSuperAdmin,
+            isGlobalDashboard,
         } = useDashboard();
 
-        const pageTitle = computed(() => (isSuperAdmin.value ? 'لوحة الإدارة' : 'لوحة التحكم'));
+        const pageTitle = computed(() => (isGlobalDashboard.value ? 'لوحة الإدارة' : 'لوحة التحكم'));
         const loadingLabel = computed(() => (
-            isSuperAdmin.value ? 'جاري تحميل لوحة الإدارة…' : 'جاري تحميل لوحة التحكم…'
+            isGlobalDashboard.value ? 'جاري تحميل لوحة الإدارة…' : 'جاري تحميل لوحة التحكم…'
         ));
 
-        const visibleStatCards = computed(() => STAT_CARDS.filter((card) => userHasRole(card.roles)));
+        const visibleStatCards = computed(() => {
+            const user = getAuthUser();
+            return STAT_CARDS.filter((card) => {
+                if (['departments', 'bases', 'gates', 'zones'].includes(card.id)) {
+                    return isGlobalDashboard.value && card.visible(user);
+                }
+                return card.visible(user);
+            });
+        });
 
-        const showPresenceChart = computed(() => userHasRole(['Super Admin', 'Admin', 'Local Admin', 'Reporting']));
-        const showIssuesByDepartmentChart = computed(() => userHasRole('Super Admin'));
-        const showIssuesTrendChart = computed(() => userHasRole('Super Admin'));
-        const showRegistrationChart = computed(() => userHasRole(['Admin', 'Local Admin']));
+        const showPresenceChart = computed(() => canReadResource('reports', getAuthUser()));
+        const showIssuesByDepartmentChart = computed(() => isGlobalDashboard.value);
+        const showIssuesTrendChart = computed(() => isGlobalDashboard.value);
+        const showRegistrationChart = computed(() => canWriteResource('employees', getAuthUser()));
 
         const chartGridClass = computed(() => {
             const count = [
@@ -296,8 +305,10 @@ export default {
         });
 
         function cardValue(card) {
-            return stats.value[card.field] ?? 0;
+            return stats.value?.[card.field] ?? 0;
         }
+
+        const chartHasData = (chart) => Boolean(chart?.datasets?.[0]?.data?.length);
 
         const chartPresence = computed(() => {
             const presence = reports.value?.presence;
@@ -414,6 +425,7 @@ export default {
             scopeLabel,
             visibleStatCards,
             cardValue,
+            chartHasData,
             showPresenceChart,
             showIssuesByDepartmentChart,
             showIssuesTrendChart,

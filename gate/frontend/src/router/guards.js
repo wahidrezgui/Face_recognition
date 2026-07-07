@@ -1,11 +1,12 @@
-import { getRedirectPathForRole } from '../api/auth';
+import { getRedirectPathForUser } from '../api/auth';
 import {
     ensureAuthUser,
     getAuthUser,
     isAuthenticated,
-    userHasRole,
     getAuthRoleName,
 } from '../lib/auth-session';
+import { pathToRouteKey } from '../lib/access';
+import { userCanAccessRoute } from '../lib/auth-roles';
 
 export function registerRouterGuards(router) {
     router.beforeEach(async (to, from, next) => {
@@ -18,14 +19,19 @@ export function registerRouterGuards(router) {
         const user = getAuthUser();
 
         if (to.meta.guest && isAuthenticated(user)) {
-            return next(getRedirectPathForRole(getAuthRoleName(user)));
+            return next(getRedirectPathForUser(user));
         }
 
         if (to.meta.requiresAuth && !isAuthenticated(user)) {
             return next('/');
         }
 
-        if (to.meta.roles && !userHasRole(to.meta.roles, user)) {
+        const routeKey = to.meta.routeKey ?? pathToRouteKey(to.path);
+
+        if (routeKey) {
+            if (userCanAccessRoute(routeKey, user)) {
+                return next();
+            }
             return next('/permission-denied');
         }
 

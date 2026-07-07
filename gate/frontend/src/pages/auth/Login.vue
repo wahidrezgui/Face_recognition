@@ -74,15 +74,16 @@
 
         <div class="rounded-xl border border-slate-200 bg-slate-50/80 p-4">
           <p class="mb-3 text-center text-xs text-slate-500">{{ loginCopy.sso_help_text }}</p>
-          <button
-            type="button"
-            class="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-3.5 text-sm font-medium text-slate-700 transition hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/20 disabled:cursor-not-allowed disabled:opacity-60"
+          <AppButton
+            variant="secondary"
+            size="lg"
+            class="w-full"
             :disabled="ssoLoading"
             @click="startKeycloakLogin"
           >
             <i class="pi pi-key" />
             <span>{{ ssoLoading ? 'جاري التحويل إلى مرسال...' : loginCopy.sso_button_label }}</span>
-          </button>
+          </AppButton>
         </div>
       </template>
     </div>
@@ -95,7 +96,7 @@ import { useAuth } from '../../composables/useAuth';
 import {
   dismissKeycloakPending,
   fetchAuthProviders,
-  getRedirectPathForRole,
+  getRedirectPathForUser,
 } from '../../api/auth';
 import { loginDefaults, mergeLoginCopy } from '../../config/login';
 
@@ -192,8 +193,7 @@ export default {
         const response = await this.login(this.formData);
 
         if (response.status === 'success') {
-          const roleName = response.user.roles[0].name;
-          this.$router.push(getRedirectPathForRole(roleName));
+          this.$router.push(getRedirectPathForUser(response.user));
         }
       } catch (error) {
         const apiMessage = error.response?.data?.message;

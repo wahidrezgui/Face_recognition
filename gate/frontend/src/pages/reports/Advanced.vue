@@ -109,9 +109,9 @@
                 <div class="col-span-3">
                 <div class="mb-3">
                 <div class="relative">
-                    <button type="submit" class="inline-flex text-sm bg-blue-500 hover:bg-blue-700 text-white p-3 focus:z-10 rounded-r-md ">
-                   <i class="pi pi-filter pr-2"></i> Filter Data
-                    </button>
+                    <AppButton type="submit">
+                   <i class="pi pi-filter"></i> Filter Data
+                    </AppButton>
                 </div>
                 </div>
                 </div>
@@ -123,17 +123,16 @@
             <div v-if="isdata" >
             <div class="flex items-start justify-between mb-2">
                 <div>
-                <Toast />
                 <div class="flex justify-between">
                     <input type="text" id="filter-text-box" placeholder="Filter..." v-on:input="onFilterTextBoxChanged()">
                 </div>
                 </div>
 
                 <div class="mt-5 mb-5 sm:ms-6 sm:mt-0 sm:flex sm:shrink-0 sm:items-center" v-if="toolbar">
-                <button @click="onBtExport" type="button" class="inline-flex text-sm bg-purple-500 hover:bg-purple-700 text-white py-2 px-4 rounded">
-                <i class="pi pi-file-export pr-2"></i>
+                <AppButton variant="secondary" @click="onBtExport">
+                <i class="pi pi-file-export"></i>
                 Export CSV Data
-                </button>
+                </AppButton>
                 </div>
             </div>
 
@@ -183,7 +182,7 @@
 <div id="tabPanel-timeline">
 
 <div v-show="activeTab === 10" role="tabpanel">
-    <div class="p-5 flex justify-end" ><button @click="print"><i class="pi pi-print pr-2" ></i> Print</button></div>
+    <div class="p-5 flex justify-end" ><AppButton variant="secondary" size="sm" @click="print"><i class="pi pi-print"></i> Print</AppButton></div>
     <div class="p-5" id="printMe">
         <div class="md:flex no-wrap md:-mx-2 ">
             <div class="w-full md:w-3/12 md:mx-2">
@@ -398,8 +397,6 @@ import { submitAdvancedReport } from '../../api/reports';
 import { AgGridVue } from "ag-grid-vue3"; 
 import "ag-grid-community/styles/ag-grid.css"; 
 import "ag-grid-community/styles/ag-theme-material.css";
-import Toast from 'primevue/toast';
-import { useToast } from 'primevue/usetoast';
 import { ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import Checkbox from 'primevue/checkbox';
@@ -409,6 +406,7 @@ import Calendar from 'primevue/calendar';
 import TreeSelect from 'primevue/treeselect';
 import CustomTooltip from '../../lib/customTooltipVue.js';
 import PageContainer from '../../components/ui/PageContainer.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const gridApi = ref();
 
@@ -439,7 +437,7 @@ function customCellImgRenderer(params) {
 
 export default {
         components: {
-                    AgGridVue, Toast, Dropdown, Checkbox, Card, Avatar, Calendar, TreeSelect, CustomTooltip, PageContainer
+                    AgGridVue, Dropdown, Checkbox, Card, Avatar, Calendar, TreeSelect, CustomTooltip, PageContainer, AppButton
                     },
         data() {
             return {

@@ -6,7 +6,7 @@ Accepted
 
 ## Context
 
-The gate application is a Laravel 10 + Vue 3 SPA for military gate pass check-in/out. It currently uses a single ~7,000-line `ApiController`, unauthenticated API routes, and client-only role checks via `localStorage`. Multiple duplicate assets (TinyMCE) and legacy file copies exist.
+The gate application is a Laravel 10 + Vue 3 SPA for military gate pass check-in/out. It currently uses a single ~7,000-line `ApiController`, unauthenticated API routes, and client-only role checks via `localStorage`. Duplicate frontend assets and legacy file copies existed (badge editing previously used TinyMCE; now CodeMirror for HTML and Konva for visual layout).
 
 ## Decision
 

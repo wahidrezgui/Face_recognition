@@ -51,9 +51,9 @@
                     <h3 class="text-lg font-bold text-slate-900">
                         نتائج البحث ({{ generalSearchResults.length }} موظف)
                     </h3>
-                    <button type="button" class="text-slate-500 hover:text-slate-700" aria-label="إغلاق" @click="closeGeneralSearch">
+                    <AppButton variant="ghost" size="sm" class="!p-1 text-slate-500 hover:text-slate-700" aria-label="إغلاق" @click="closeGeneralSearch">
                         <i class="pi pi-times text-lg" />
-                    </button>
+                    </AppButton>
                 </div>
                 <div v-if="isGeneralSearchLoading" class="py-8 text-center">
                     <i class="pi pi-spinner pi-spin text-2xl text-brand" />
@@ -93,9 +93,9 @@
                         <!-- Header -->
                         <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-4 pb-2 pt-4">
                             <h3 class="text-lg font-bold text-slate-900">قائمة الشركات</h3>
-                            <button @click="OpenAddCompany" type="button" class="inline-flex items-center rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white transition hover:bg-brand-dark">
-                                <i class="pi pi-plus ms-1 text-xs" /> إضافة
-                            </button>
+                            <AppButton size="sm" @click="OpenAddCompany">
+                                <i class="pi pi-plus text-xs" /> إضافة
+                            </AppButton>
                         </div>
 
                         <!-- Search -->
@@ -136,8 +136,8 @@
                                 <span class="flex-1 truncate">{{ comp.name_ar || comp.name_en }}</span>
                                 <span class="max-w-[80px] truncate text-xs font-normal text-slate-400">{{ comp.name_en }}</span>
                                 <div class="flex flex-shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
-                                    <button type="button" @click.stop="editDep(comp.id)" class="text-brand hover:text-brand-dark" title="تعديل"><i class="pi pi-pencil text-xs" /></button>
-                                    <button type="button" @click.stop="infoComp(comp.id)" class="text-emerald-600 hover:text-emerald-700" title="عرض"><i class="pi pi-eye text-xs" /></button>
+                                    <AppButton variant="ghost" size="sm" class="!p-1 text-brand" @click.stop="editDep(comp.id)" title="تعديل"><i class="pi pi-pencil text-xs" /></AppButton>
+                                    <AppButton variant="ghost" size="sm" class="!p-1 text-emerald-600 hover:text-emerald-700" @click.stop="infoComp(comp.id)" title="عرض"><i class="pi pi-eye text-xs" /></AppButton>
                                    
                                 </div>
                             </div>
@@ -153,36 +153,40 @@
                                 {{ (companyPage - 1) * companyPageSize + 1 }}–{{ Math.min(companyPage * companyPageSize, filteredDepartments.length) }} من {{ filteredDepartments.length }}
                             </span>
                             <div class="flex items-center gap-1">
-                                <button
-                                    type="button"
+                                <AppButton
+                                    variant="secondary"
+                                    size="sm"
+                                    class="!h-7 !w-7 !p-0"
                                     @click="companyPage = 1"
                                     :disabled="companyPage === 1"
-                                    class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-xs text-slate-500 hover:border-brand hover:bg-brand-muted disabled:opacity-30"
-                                >«</button>
-                                <button
-                                    type="button"
+                                >«</AppButton>
+                                <AppButton
+                                    variant="secondary"
+                                    size="sm"
+                                    class="!h-7 !w-7 !p-0"
                                     @click="companyPage--"
                                     :disabled="companyPage === 1"
-                                    class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-xs text-slate-500 hover:border-brand hover:bg-brand-muted disabled:opacity-30"
-                                >‹</button>
+                                >‹</AppButton>
                                 <span
                                     v-for="p in visiblePageNumbers" :key="p"
                                     @click="companyPage = p"
                                     class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border text-xs"
                                     :class="p === companyPage ? 'border-brand bg-brand font-bold text-white' : 'border-slate-200 text-slate-600 hover:border-brand hover:bg-brand-muted'"
                                 >{{ p }}</span>
-                                <button
-                                    type="button"
+                                <AppButton
+                                    variant="secondary"
+                                    size="sm"
+                                    class="!h-7 !w-7 !p-0"
                                     @click="companyPage++"
                                     :disabled="companyPage === companyTotalPages"
-                                    class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-xs text-slate-500 hover:border-brand hover:bg-brand-muted disabled:opacity-30"
-                                >›</button>
-                                <button
-                                    type="button"
+                                >›</AppButton>
+                                <AppButton
+                                    variant="secondary"
+                                    size="sm"
+                                    class="!h-7 !w-7 !p-0"
                                     @click="companyPage = companyTotalPages"
                                     :disabled="companyPage === companyTotalPages"
-                                    class="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-xs text-slate-500 hover:border-brand hover:bg-brand-muted disabled:opacity-30"
-                                >»</button>
+                                >»</AppButton>
                             </div>
                         </div>
                     </AppCard>
@@ -211,27 +215,27 @@
                                 </div>
 
                                 <div class="flex flex-wrap items-center gap-2" v-if="toolbar">
-                                    <button @click="OpenAddEmployee" type="button" class="inline-flex items-center rounded-lg bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark">
-                                        <i class="pi pi-user-plus ms-2" /> إضافة موظف
-                                    </button>
+                                    <AppButton @click="OpenAddEmployee">
+                                        <i class="pi pi-user-plus" /> إضافة موظف
+                                    </AppButton>
                                 </div>
 
                                 <div class="flex flex-wrap items-center gap-2" v-if="toolbar2">
-                                    <button @click="approveSelected(5)" type="button" class="inline-flex items-center rounded-lg bg-red-700 px-3 py-2 text-sm text-white hover:bg-red-800">
-                                        <i class="pi pi-times ms-2" /> رفض
-                                    </button>
-                                    <button @click="deleteSelected" type="button" class="inline-flex items-center rounded-lg bg-red-500 px-3 py-2 text-sm text-white hover:bg-red-700">
-                                        <i class="pi pi-trash ms-2" /> حذف
-                                    </button>
-                                    <button @click="approveSelected(1)" type="button" class="inline-flex items-center rounded-lg bg-emerald-600 px-3 py-2 text-sm text-white hover:bg-emerald-700">
-                                        <i class="pi pi-check ms-2" /> اعتماد
-                                    </button>
-                                    <button @click="bulkprintCombined" type="button" class="inline-flex items-center rounded-lg bg-amber-500 px-3 py-2 text-sm text-white hover:bg-amber-600">
-                                        <i class="pi pi-print ms-2" /> طباعة جماعية
-                                    </button>
-                                    <button @click="approveSelected(3)" type="button" class="inline-flex items-center rounded-lg bg-brand px-3 py-2 text-sm text-white hover:bg-brand-dark">
-                                        <i class="pi pi-thumbs-up ms-2" /> استلام
-                                    </button>
+                                    <AppButton variant="danger" size="sm" @click="approveSelected(5)">
+                                        <i class="pi pi-times" /> رفض
+                                    </AppButton>
+                                    <AppButton variant="danger" size="sm" @click="deleteSelected">
+                                        <i class="pi pi-trash" /> حذف
+                                    </AppButton>
+                                    <AppButton size="sm" class="!bg-emerald-600 hover:!bg-emerald-700" @click="approveSelected(1)">
+                                        <i class="pi pi-check" /> اعتماد
+                                    </AppButton>
+                                    <AppButton variant="accent" size="sm" @click="bulkprintCombined">
+                                        <i class="pi pi-print" /> طباعة جماعية
+                                    </AppButton>
+                                    <AppButton size="sm" @click="approveSelected(3)">
+                                        <i class="pi pi-thumbs-up" /> استلام
+                                    </AppButton>
                                 </div>
                             </div>
 
@@ -304,11 +308,11 @@
                 </div>
                 <div class="shrink-0 px-4 py-4">
                     <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                        <button @click="addCompany = false" type="button" class="inline-flex text-sm bg-white text-black border border-gray-500 hover:bg-gray-100 py-2 px-4 rounded">Cancel</button>
-                        <button type="submit" class="inline-flex text-sm bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded" :disabled="isSavingCompany">
+                        <AppButton variant="secondary" @click="addCompany = false">Cancel</AppButton>
+                        <AppButton type="submit" :disabled="isSavingCompany">
                             <i v-if="isSavingCompany" class="pi pi-spinner pi-spin mr-2"></i>
                             {{ isSavingCompany ? 'Saving...' : 'Save' }}
-                        </button>
+                        </AppButton>
                     </div>
                 </div>
             </div>
@@ -353,8 +357,8 @@
                 </div>
                 <div class="shrink-0 px-4 py-4">
                     <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                        <button @click="editCompany = false" type="button" class="inline-flex text-sm bg-white text-black border border-gray-500 hover:bg-gray-100 py-2 px-4 rounded">Cancel</button>
-                        <button type="submit" class="inline-flex text-sm bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded">Save</button>
+                        <AppButton variant="secondary" @click="editCompany = false">Cancel</AppButton>
+                        <AppButton type="submit">Save</AppButton>
                     </div>
                 </div>
             </div>
@@ -447,7 +451,7 @@
                                     <div class="mb-3">
                                         <label class="block text-sm font-medium inline-flex items-center"><span>ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ø£Ø¬Ù‡Ø²Ø©</span></label>
                                         <select v-model="guest.device" :class="{ 'border-red-500': !fieldValidity.device }" @change="fieldValidity.device = true" name="device" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            <option value="">-- SÃ©lectionnez --</option>
+                                            <option value="">-- Sélectionnez --</option>
                                             <option value="phone">Phone</option>
                                             <option value="laptop">Laptop</option>
                                             <option value="none">None</option>
@@ -503,9 +507,7 @@
                                                     </td>
                                                     <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900"><span class="font-semibold">{{zone.name_en}}</span></td>
                                                     <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                        <div class="relative h-5 w-5">
-                                                            <span class="absolute right-0 bottom-0 h-5 w-5 rounded-full ring ring-white" :style="'background-color:'+zone.color"></span>
-                                                        </div>
+                                                        <ZoneSwatch :zone="zone" size="md" shape="circle" />
                                                     </td>
                                                 </tr>
                                             </tbody>
@@ -516,11 +518,11 @@
                         </div>
                         <div class="shrink-0 px-4 py-4">
                             <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                                <button @click="addEmp=false" type="button" class="inline-flex text-sm bg-white text-black border border-gray-500 hover:bg-gray-100 py-2 px-4 rounded">Cancel</button>
-                                <button type="submit" class="inline-flex text-sm bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded-l-md" :disabled="isSavingEmployee">
+                                <AppButton variant="secondary" @click="addEmp=false">Cancel</AppButton>
+                                <AppButton type="submit" :disabled="isSavingEmployee">
                                     <i v-if="isSavingEmployee" class="pi pi-spinner pi-spin mr-2"></i>
                                     {{ isSavingEmployee ? 'Saving...' : 'Save Employee' }}
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
                     </div>
@@ -640,7 +642,7 @@
                                             <div class="mb-3">
                                                 <label class="block text-sm font-medium inline-flex items-center"><span>ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ø£Ø¬Ù‡Ø²Ø©</span></label>
                                                 <select v-model="guest.device" :class="{ 'border-red-500': !fieldValidity.device }" @change="fieldValidity.device = true" name="device" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                                    <option value="">-- SÃ©lectionnez --</option>
+                                                    <option value="">-- Sélectionnez --</option>
                                                     <option value="phone">Phone</option>
                                                     <option value="laptop">Laptop</option>
                                                     <option value="none">None</option>
@@ -682,9 +684,7 @@
                                                             </td>
                                                             <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900"><span class="font-semibold">{{zone.name_en}}</span></td>
                                                             <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                                <div class="relative h-5 w-5">
-                                                                    <span class="absolute right-0 bottom-0 h-5 w-5 rounded-full ring ring-white" :style="'background-color:'+zone.color"></span>
-                                                                </div>
+                                                                <ZoneSwatch :zone="zone" size="md" shape="circle" />
                                                             </td>
                                                         </tr>
                                                     </tbody>
@@ -696,11 +696,11 @@
 
                                 <div class="shrink-0 px-4 py-4">
                                     <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                                        <button @click="blokGuest=false" type="button" class="inline-flex text-sm bg-white text-black border border-gray-500 hover:bg-gray-100 py-2 px-4 rounded">Cancel</button>
-                                        <button type="submit" class="inline-flex text-sm bg-blue-500 hover:bg-blue-700 text-white py-2 px-4 rounded-l-md" :disabled="isUpdatingEmployee">
+                                        <AppButton variant="secondary" @click="blokGuest=false">Cancel</AppButton>
+                                        <AppButton type="submit" :disabled="isUpdatingEmployee">
                                             <i v-if="isUpdatingEmployee" class="pi pi-spinner pi-spin mr-2"></i>
                                             {{ isUpdatingEmployee ? 'Saving...' : 'Save Employee' }}
-                                        </button>
+                                        </AppButton>
                                     </div>
                                 </div>
 
@@ -710,12 +710,12 @@
                                         <span v-if="guest.fullname_en" class="text-sm text-gray-600"> - {{ guest.fullname_en }}</span>
                                     </h3>
                                     <div class="flex space-x-2">
-                                        <button @click="printFromSidePanel" class="inline-flex items-center px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-lg transition">
-                                            <i class="pi pi-print mr-2"></i>Print Badge
-                                        </button>
-                                        <button @click="blokGuest = false" class="inline-flex items-center px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition">
-                                            <i class="pi pi-times mr-2"></i>Close
-                                        </button>
+                                        <AppButton variant="accent" @click="printFromSidePanel">
+                                            <i class="pi pi-print"></i>Print Badge
+                                        </AppButton>
+                                        <AppButton variant="secondary" @click="blokGuest = false">
+                                            <i class="pi pi-times"></i>Close
+                                        </AppButton>
                                     </div>
                                 </div>
                             </div>
@@ -733,10 +733,10 @@
                                     :placeholder="editCarMode ? 'Edit plate number...' : 'Add new plate number...'"
                                     required />
                                 <div class="flex space-x-1 absolute right-1 top-1 z-10">
-                                    <button v-if="editCarMode" @click="cancelEditCar" type="button" class="select-none rounded bg-gray-500 py-2 px-3 text-center align-middle font-sans text-xs font-bold uppercase text-white shadow-md transition-all hover:shadow-lg">Cancel</button>
-                                    <button type="submit" class="select-none rounded bg-blue-500 py-2 px-4 text-center align-middle font-sans text-xs font-bold uppercase text-white shadow-md transition-all hover:shadow-lg peer-placeholder-shown:pointer-events-none peer-placeholder-shown:bg-blue-gray-500 peer-placeholder-shown:opacity-50 peer-placeholder-shown:shadow-none">
+                                    <AppButton v-if="editCarMode" variant="secondary" size="sm" @click="cancelEditCar">Cancel</AppButton>
+                                    <AppButton type="submit" size="sm">
                                         {{ editCarMode ? 'Update' : 'Add' }} Car
-                                    </button>
+                                    </AppButton>
                                 </div>
                             </form>
                         </div>
@@ -757,14 +757,14 @@
                                         <span class="inline-flex items-center">
                                             <Tag v-if="carItem.active==0" icon="pi pi-exclamation-triangle" severity="warning" value="Disable"></Tag>
                                             <Tag v-if="carItem.active==1" icon="pi pi-check" severity="success" value="Enable"></Tag>
-                                            <button v-if="carItem.active==1" @click="toggleCarStatus(carItem.id, 0)" class="ml-2 text-xs text-gray-500 hover:text-red-600" title="Disable"><i class="pi pi-times"></i></button>
-                                            <button v-if="carItem.active==0" @click="toggleCarStatus(carItem.id, 1)" class="ml-2 text-xs text-gray-500 hover:text-green-600" title="Enable"><i class="pi pi-check"></i></button>
+                                            <AppButton v-if="carItem.active==1" variant="ghost" size="sm" class="!p-1 ml-2 text-gray-500 hover:text-red-600" title="Disable" @click="toggleCarStatus(carItem.id, 0)"><i class="pi pi-times"></i></AppButton>
+                                            <AppButton v-if="carItem.active==0" variant="ghost" size="sm" class="!p-1 ml-2 text-gray-500 hover:text-green-600" title="Enable" @click="toggleCarStatus(carItem.id, 1)"><i class="pi pi-check"></i></AppButton>
                                         </span>
                                     </td>
                                     <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-900">
                                         <div class="flex space-x-2">
-                                            <button @click="editExistingCar(carItem)" class="text-blue-500 hover:text-blue-700" title="Edit"><i class="pi pi-pencil"></i></button>
-                                            <button @click="deleteCar(carItem.id)" class="text-red-500 hover:text-red-700" title="Delete"><i class="pi pi-trash"></i></button>
+                                            <AppButton variant="ghost" size="sm" class="!p-1 text-blue-500 hover:text-blue-700" title="Edit" @click="editExistingCar(carItem)"><i class="pi pi-pencil"></i></AppButton>
+                                            <AppButton variant="ghost" size="sm" class="!p-1 text-red-500 hover:text-red-700" title="Delete" @click="deleteCar(carItem.id)"><i class="pi pi-trash"></i></AppButton>
                                         </div>
                                     </td>
                                 </tr>
@@ -779,7 +779,6 @@
             </div>
         </div>
     </VueSidePanel>
-    <Toast />
 
     <AppLoader :loading="isLoading" variant="overlay" label="جاري التحميل..." />
 </template>
@@ -788,7 +787,6 @@
 import api from '../../api/client';
 import { fetchBases, fetchBase } from '../../api/organization';
 import { fetchNationalities } from '../../api/lookups';
-import Toast from 'primevue/toast';
 import Checkbox from 'primevue/checkbox';
 import OrganizationChart from 'primevue/organizationchart';
 import Tree from 'primevue/tree';
@@ -796,15 +794,16 @@ import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
 import PageContainer from '../../components/ui/PageContainer.vue';
 import AppCard from '../../components/ui/AppCard.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import AppDataGrid from '../../components/ui/AppDataGrid.vue';
 import Dropdown from 'primevue/dropdown';
 import { ref } from 'vue';
-import html2pdf from 'html2pdf.js';
+import { createBadgePrintMixin } from '../../composables/useBadgePrint';
 import Card from 'primevue/card';
-import QRCode from 'qrcode-generator';
 import Chart from 'primevue/chart';
 import Avatar from 'primevue/avatar';
 import Tag from 'primevue/tag';
+import ZoneSwatch from '../../components/zones/ZoneSwatch.vue';
 
 const gridApi = ref();
 
@@ -828,9 +827,34 @@ function customCellImgRenderer(params) {
 
 export default {
     components: {
-        Toast, Checkbox, OrganizationChart, Tree, Button, Dialog,
-        AppDataGrid, Dropdown, Chart, Card, Avatar, Tag, PageContainer, AppCard
+        Checkbox, OrganizationChart, Tree, Button, Dialog,
+        AppDataGrid, Dropdown, Chart, Card, Avatar, Tag, PageContainer, AppCard, AppButton, ZoneSwatch
     },
+    mixins: [
+        createBadgePrintMixin({
+            getGridApi: () => gridApi.value,
+            onAfterBulkPrint(vm) {
+                vm.getEmployees();
+            },
+            onAfterSinglePrint(vm) {
+                vm.performGeneralSearch();
+                vm.$toast.add({
+                    severity: 'success',
+                    summary: 'Success',
+                    detail: 'Badge printed successfully',
+                    life: 3000,
+                });
+            },
+            onSinglePrintError(vm) {
+                vm.$toast.add({
+                    severity: 'error',
+                    summary: 'Error',
+                    detail: 'Failed to print badge',
+                    life: 3000,
+                });
+            },
+        }),
+    ],
     data() {
         return {
             fileInputKey: 0,
@@ -1063,135 +1087,6 @@ export default {
             this.pinnedCompanies = this.pinnedCompanies.filter(p => p.id !== id);
             localStorage.setItem('pinnedCompanies', JSON.stringify(this.pinnedCompanies));
         },
-        
-
-        // ---- Print ----
-        printSingleBadge(employeeId) {
-            this.isLoading = true;
-
-            function generateQRCode(text, size = 300) {
-                const qr = QRCode(0, 'L');
-                qr.addData(text);
-                qr.make();
-                return `<img src="${qr.createDataURL(15)}" alt="QR Code" width="${size}" height="${size}" />`;
-            }
-            function generatePhoto(hussain, size = 1, shape = 'rounded-square') {
-                const photo = hussain ? `/${hussain}` : '/uploads/nopic.png';
-                return `<img src="${photo}" alt="Photo" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`;
-            }
-            function generatePhotot(hussain, size = 1, shape = 'rounded-square') {
-                const photot = hussain ? `/${hussain}` : '/uploads/nopic.png';
-                return `<img src="${photot}" alt="Photot" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`;
-            }
-            function generatePhoto2(hussain, size = 1, shape = 'rounded-square') {
-                const base_photo = hussain ? `/${hussain}` : null;
-                if (!base_photo) return '/uploads/nopic.png';
-                return `<img src="${base_photo}" alt="Photo" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`;
-            }
-            function generatePlateNumbers(plateNumbers) {
-                if (!plateNumbers || plateNumbers.length === 0) return '';
-                return plateNumbers.join(' // ');
-            }
-            function generateZone(zones) {
-                var zoning = '<ul style="list-style:none; padding: 0px 0px 0px 0px;">';
-                zones.forEach(function (item) {
-                    const color = item.color || '';
-                    const needsLine = needsWhiteLine(color);
-                    zoning += `<li style="display: inline-block; margin-left: 10px; width: 25px; height: 20px;"><svg width="25" height="20" viewBox="0 0 25 20"><rect width="25" height="20" fill="${color}"/>${needsLine ? `<line x1="0" y1="20" x2="25" y2="0" stroke="white" stroke-width="3" stroke-linecap="round"/>` : ''}</svg></li>`;
-                });
-                zoning += '</ul>';
-                return zoning;
-            }
-            function needsWhiteLine(color) {
-                if (!color) return false;
-                if (color.startsWith('rgb(')) {
-                    const rgb = color.match(/\d+/g);
-                    if (rgb && rgb.length >= 3) {
-                        const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000;
-                        return brightness > 180;
-                    }
-                    return false;
-                }
-                let normalizedColor = color.trim().toUpperCase();
-                if (!normalizedColor.startsWith('#')) normalizedColor = '#' + normalizedColor;
-                const lineColors = ['#020202', '#87CEEB'];
-                return lineColors.includes(normalizedColor);
-            }
-
-            const pdfConfig = {
-                margin: -9,
-                filename: `badge_${employeeId}.pdf`,
-                image: { type: 'jpeg', quality: 2 },
-                html2canvas: { scale: 5 },
-                jsPDF: { unit: 'mm', format: [54, 94.0], orientation: 'portrait' },
-            };
-
-            api.get('/api/badges/' + employeeId)
-                .then(response => {
-                    var data = response.data;
-                    const replacedHTML = this.replaceTemplateValues(data.badge2.content, {
-                        qrcode: generateQRCode(data.qrcode),
-                        guest_photo_circle: generatePhoto(data.photo, 'circle'),
-                        guest_photo_square: generatePhoto(data.photo, 'square'),
-                        guest_photo_circlet: generatePhotot(data.photot, 'circle'),
-                        guest_photo_squaret: generatePhotot(data.photot, 'square'),
-                        guest_photo_circleb: generatePhoto2(data.base_photo, 'circle'),
-                        guest_photo_squareb: generatePhoto2(data.base_photo, 'square'),
-                        fullname_en: data.fullname_en, fullname_ar: data.fullname_ar,
-                        department: data.department, rank: data.rank,
-                        Job_Arabic: data.Job_Arabic, Job_En: data.Job_En,
-                        military_number: data.military_number, default_base: data.default_base,
-                        zones: generateZone(data.ZoneColor), expiry_date: data.expiry_date,
-                        ranke: data.ranke, plate_numbers: generatePlateNumbers(data.plate_numbers),
-                        idguest: data.idguest || data.id || ''
-                    });
-                    const containerDiv = document.createElement('div');
-                    containerDiv.style.cssText = 'height:94.0mm;padding:6mm;background-image:url("/uploads/012.png");background-color:white;background-position:center center;background-size:cover;background-repeat:no-repeat;';
-                    containerDiv.innerHTML = replacedHTML;
-                    let contentu = containerDiv.outerHTML;
-
-                    return api.post('/api/employees/approved', { 'guests': [employeeId], by: this.userName, 'status': 2 })
-                        .then(() => api.get('/api/badges2/' + employeeId))
-                        .then(response2 => {
-                            var data2 = response2.data;
-                            const replacedHTML2 = this.replaceTemplateValues(data2.badge2.content, {
-                                qrcode: generateQRCode(data2.qrcode),
-                                guest_photo_circle: generatePhoto(data2.photo, 'circle'),
-                                guest_photo_square: generatePhoto(data2.photo, 'square'),
-                                guest_photo_circlet: generatePhotot(data2.photot, 'circle'),
-                                guest_photo_squaret: generatePhotot(data2.photot, 'square'),
-                                guest_photo_circleb: generatePhoto2(data2.base_photo, 'circle'),
-                                guest_photo_squareb: generatePhoto2(data2.base_photo, 'square'),
-                                fullname_en: data2.fullname_en, fullname_ar: data2.fullname_ar,
-                                department: data2.department, rank: data2.rank,
-                                remarks: data2.remarks, Escort: data2.Escort,
-                                device: data2.device, StartTime: data2.StartTime, EndTime: data2.EndTime,
-                                bloodtype: data2.bloodtype, military_number: data2.military_number,
-                                default_base: data2.default_base, zones: generateZone(data2.ZoneColor),
-                                expiry_date: data2.expiry_date, plate_numbers: generatePlateNumbers(data2.plate_numbers),
-                                dep_id: data2.dep_id, dep_name: data2.dep_name, dep3: data2.dep3,
-                                nationality: data2.nationality, nationalitye: data2.nationalitye,
-                                idguest: data.idguest || data.id || ''
-                            });
-                            const containerDiv2 = document.createElement('div');
-                            containerDiv2.style.cssText = 'height:93.0mm;padding:1mm;background-image:url("/uploads/20.png");background-position:center center;background-size:cover;background-repeat:no-repeat;';
-                            containerDiv2.innerHTML = replacedHTML2;
-                            const finalContent = `<div>${contentu}</div><div style="page-break-before: always;">${containerDiv2.outerHTML}</div>`;
-                            html2pdf().from(finalContent).set(pdfConfig).outputPdf().get('pdf').then(function (pdfObj) {
-                                pdfObj.autoPrint();
-                                window.open(pdfObj.output("bloburl"), "F");
-                            });
-                            this.isLoading = false;
-                            this.performGeneralSearch();
-                            this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Badge printed successfully', life: 3000 });
-                        });
-                })
-                .catch(error => {
-                    console.error('Print error:', error);
-                    this.isLoading = false;
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to print badge', life: 3000 });
-                });
-        },
 
         viewEmployeeFromSearch(employeeId) {
             api.get('/api/employees/' + employeeId)
@@ -1278,16 +1173,6 @@ export default {
                 this.perPage = perPage;
             }
             if (this.guest.dep_id) this.infoComp(this.guest.dep_id);
-        },
-
-        replaceTemplateValues(template, values) {
-            for (const key in values) {
-                if (Object.hasOwnProperty.call(values, key)) {
-                    const regex = new RegExp(`{{${key}}}`, 'g');
-                    template = template.replace(regex, values[key]);
-                }
-            }
-            return template;
         },
 
         OpenAddEmployee() {
@@ -1447,86 +1332,6 @@ export default {
                 },
                 reject: () => { }
             });
-        },
-
-        bulkprintCombined() {
-            this.isLoading = true;
-            function generateQRCode(text, size = 300) { const qr = QRCode(0, 'L'); qr.addData(text); qr.make(); return `<img src="${qr.createDataURL(15)}" alt="QR Code" width="${size}" height="${size}" />`; }
-            function generatePhoto(hussain, size = 1, shape = 'rounded-square') { const photo = hussain ? `/${hussain}` : '/uploads/nopic.png'; return `<img src="${photo}" alt="Photo" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`; }
-            function generatePhotot(hussain, size = 1, shape = 'rounded-square') { const photot = hussain ? `/${hussain}` : '/uploads/nopic.png'; return `<img src="${photot}" alt="Photot" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`; }
-            function generatePhoto2(hussain, size = 1, shape = 'rounded-square') { const base_photo = hussain ? `/${hussain}` : null; if (!base_photo) return '/uploads/nopic.png'; return `<img src="${base_photo}" alt="Photo" style="width: ${size}px; height: ${size}px; border-radius: ${shape === 'rounded-square' ? '5%' : '5'};" />`; }
-            function generatePlateNumbers(plateNumbers) { if (!plateNumbers || plateNumbers.length === 0) return ''; return plateNumbers.join(' // '); }
-            function generateZone(zones) {
-                var zoning = '<ul style="list-style:none; padding: 0px 0px 0px 0px;">';
-                zones.forEach(function (item) {
-                    const color = item.color || '';
-                    const needsLine = needsWhiteLine(color);
-                    zoning += `<li style="display: inline-block; margin-left: 10px; width: 25px; height: 20px;"><svg width="25" height="20" viewBox="0 0 25 20"><rect width="25" height="20" fill="${color}"/>${needsLine ? `<line x1="0" y1="20" x2="25" y2="0" stroke="white" stroke-width="3" stroke-linecap="round"/>` : ''}</svg></li>`;
-                });
-                zoning += '</ul>';
-                return zoning;
-            }
-            function needsWhiteLine(color) {
-                if (!color) return false;
-                if (color.startsWith('rgb(')) { const rgb = color.match(/\d+/g); if (rgb && rgb.length >= 3) { const brightness = (parseInt(rgb[0]) * 299 + parseInt(rgb[1]) * 587 + parseInt(rgb[2]) * 114) / 1000; return brightness > 180; } return false; }
-                let normalizedColor = color.trim().toUpperCase();
-                if (!normalizedColor.startsWith('#')) normalizedColor = '#' + normalizedColor;
-                return ['#020202', '#87CEEB'].includes(normalizedColor);
-            }
-
-            const pdfConfig = { margin: -9, filename: 'badge_combined.pdf', image: { type: 'jpeg', quality: 2 }, html2canvas: { scale: 5 }, jsPDF: { unit: 'mm', format: [54, 94.0], orientation: 'portrait' } };
-            let contentu = '';
-            const selectedRows = gridApi.value.getSelectedRows();
-            const guestIds = selectedRows.map(row => row.id);
-
-            const axiosPromises = guestIds.map((guestId) => {
-                return api.get('/api/badges/' + guestId).then(response => {
-                    var data = response.data;
-                    const replacedHTML = this.replaceTemplateValues(data.badge2.content, {
-                        qrcode: generateQRCode(data.qrcode), guest_photo_circle: generatePhoto(data.photo, 'circle'), guest_photo_square: generatePhoto(data.photo, 'square'),
-                        guest_photo_circlet: generatePhotot(data.photot, 'circle'), guest_photo_squaret: generatePhotot(data.photot, 'square'),
-                        guest_photo_circleb: generatePhoto2(data.base_photo, 'circle'), guest_photo_squareb: generatePhoto2(data.base_photo, 'square'),
-                        fullname_en: data.fullname_en, fullname_ar: data.fullname_ar, department: data.department, rank: data.rank,
-                        Job_Arabic: data.Job_Arabic, Job_En: data.Job_En, idguest: data.idguest, default_base: data.default_base,
-                        zones: generateZone(data.ZoneColor), expiry_date: data.expiry_date, ranke: data.ranke, plate_numbers: generatePlateNumbers(data.plate_numbers)
-                    });
-                    const containerDiv = document.createElement('div');
-                    containerDiv.style.cssText = 'height:94.0mm;padding:6mm;background-image:url("/uploads/012.png");background-color:white;background-position:center center;background-size:cover;background-repeat:no-repeat;';
-                    containerDiv.innerHTML = replacedHTML;
-                    contentu += containerDiv.outerHTML;
-                });
-            });
-
-            Promise.all(axiosPromises)
-                .then(() => api.post('/api/employees/approved', { 'guests': guestIds, by: this.userName, 'status': 2 }))
-                .then(response => {
-                    this.getEmployees();
-                    let contentu2 = '';
-                    const axiosPromises2 = guestIds.map((guestId) => {
-                        return api.get('/api/badges2/' + guestId).then(response => {
-                            var data = response.data;
-                            const replacedHTML = this.replaceTemplateValues(data.badge2.content, {
-                                qrcode: generateQRCode(data.qrcode), guest_photo_circle: generatePhoto(data.photo, 'circle'), guest_photo_square: generatePhoto(data.photo, 'square'),
-                                guest_photo_circlet: generatePhotot(data.photot, 'circle'), guest_photo_squaret: generatePhotot(data.photot, 'square'),
-                                guest_photo_circleb: generatePhoto2(data.base_photo, 'circle'), guest_photo_squareb: generatePhoto2(data.base_photo, 'square'),
-                                fullname_en: data.fullname_en, fullname_ar: data.fullname_ar, department: data.department, rank: data.rank,
-                                remarks: data.remarks, Escort: data.Escort, device: data.device, StartTime: data.StartTime, EndTime: data.EndTime,
-                                bloodtype: data.bloodtype, military_number: data.military_number, default_base: data.default_base,
-                                zones: generateZone(data.ZoneColor), expiry_date: data.expiry_date, plate_numbers: generatePlateNumbers(data.plate_numbers),
-                                dep_id: data.dep_id, dep_name: data.dep_name, dep3: data.dep3, nationality: data.nationality, nationalitye: data.nationalitye
-                            });
-                            const containerDiv = document.createElement('div');
-                            containerDiv.style.cssText = 'height:93.0mm;padding:1mm;background-image:url("/uploads/20.png");background-position:center center;background-size:cover;background-repeat:no-repeat;';
-                            containerDiv.innerHTML = replacedHTML;
-                            contentu2 += containerDiv.outerHTML;
-                        });
-                    });
-                    Promise.all(axiosPromises2).then(() => {
-                        const finalContent = `<div>${contentu}</div><div style="page-break-before: always;">${contentu2}</div>`;
-                        html2pdf().from(finalContent).set(pdfConfig).outputPdf().get('pdf').then(function (pdfObj) { pdfObj.autoPrint(); window.open(pdfObj.output("bloburl"), "F"); });
-                        setTimeout(() => { this.isLoading = false; }, 5000);
-                    });
-                });
         },
 
         updateguest(event) {

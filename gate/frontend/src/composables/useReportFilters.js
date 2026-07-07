@@ -19,6 +19,8 @@ export function createDefaultFilters() {
         employeeName: '',
         selectedGender: '',
         selectedType: '',
+        selectedCompany: null,
+        selectedMvTypes: ['Check-In', 'Check-Out'],
     };
 }
 
@@ -65,6 +67,31 @@ function applyEmployeeSearchParams(params, filters) {
 }
 
 export function buildReportParams(filters, preset, pagination = {}) {
+    if (preset.filterMode === 'companyBasic') {
+        return {
+            page: pagination.page ?? 1,
+            per_page: pagination.perPage ?? 25,
+            dep_id: localStorage.getItem('dep_id'),
+            day: filters.date,
+        };
+    }
+
+    if (preset.filterMode === 'companyIssues') {
+        const params = {
+            page: pagination.page ?? 1,
+            per_page: pagination.perPage ?? 25,
+            dep_parent_id: localStorage.getItem('dep_id'),
+            day: filters.date,
+            mvtype: filters.selectedMvTypes,
+        };
+
+        if (filters.selectedCompany && Object.keys(filters.selectedCompany).length > 0) {
+            params.dep_id = Object.keys(filters.selectedCompany)[0];
+        }
+
+        return params;
+    }
+
     const params = {
         page: pagination.page ?? 1,
         per_page: pagination.perPage ?? 55,

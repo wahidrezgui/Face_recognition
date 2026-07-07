@@ -4,34 +4,53 @@
     :description="pageDescription"
   >
     <template #actions>
-      <button
-        type="button"
-        class="rounded-lg bg-brand px-4 py-2 font-semibold text-white transition hover:bg-brand-dark"
-        @click="openAddUserPanel"
-      >
-        <i class="pi pi-plus ms-2" aria-hidden="true" />
+      <AppButton @click="openAddUserPanel">
+        <i class="pi pi-plus" aria-hidden="true" />
         إضافة مستخدم
-      </button>
+      </AppButton>
     </template>
 
-    <AppCard padding="sm">
-      <AppTableFilters @clear="clearFilters">
+    <aside
+      v-if="pendingSsoCount > 0"
+      class="users-sso-banner"
+      role="status"
+      aria-live="polite"
+    >
+      <span class="users-sso-banner__icon" aria-hidden="true">
+        <i class="pi pi-exclamation-circle" />
+      </span>
+      <div class="users-sso-banner__copy">
+        <p class="users-sso-banner__title">{{ pendingSsoCount }} حساب بانتظار تفعيل مرسال</p>
+        <p class="users-sso-banner__hint">افتح المستخدم من الجدول وعيّن الدور والقسم لإكمال الربط.</p>
+      </div>
+    </aside>
+
+    <section class="users-filters-panel">
+      <h2 class="users-filters-panel__title">
+        <i class="pi pi-filter" aria-hidden="true" />
+        البحـث 
+      </h2>
+
+      <AppTableFilters :active="hasActiveFilters" @clear="clearFilters">
         <div class="md:col-span-3">
-          <label class="mb-1 block text-sm font-medium text-slate-700">البحث بالاسم أو البريد</label>
+          <label class="users-filter-label" for="users-filter-name">الاسم أو البريد</label>
           <input
+            id="users-filter-name"
             v-model="filters.name"
             type="search"
-            placeholder="ابحث..."
-            class="flex h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            placeholder="ابحث بالاسم أو البريد…"
+            class="users-filter-input"
           />
         </div>
 
         <div class="md:col-span-3">
-          <label class="mb-1 block text-sm font-medium text-slate-700">القسم</label>
+          <label class="users-filter-label" for="users-filter-department">القسم</label>
           <TreeSelect
+            id="users-filter-department"
             v-model="filters.department"
             :options="departments"
-            placeholder="اختر القسم"
+            :disabled="filterLookupsLoading"
+            :placeholder="filterLookupsLoading ? 'جاري تحميل الأقسام…' : 'اختر القسم'"
             show-clear
             filter
             filter-mode="lenient"
@@ -40,16 +59,18 @@
           >
             <template #value>
               <span v-if="filterDepartmentLabel" class="user-treeselect-value">{{ filterDepartmentLabel }}</span>
-              <span v-else class="user-treeselect-placeholder">اختر القسم</span>
+              <span v-else class="user-treeselect-placeholder">{{ filterLookupsLoading ? 'جاري التحميل…' : 'اختر القسم' }}</span>
             </template>
           </TreeSelect>
         </div>
 
         <div v-if="isScopedView" class="md:col-span-3">
-          <label class="mb-1 block text-sm font-medium text-slate-700">الدور</label>
+          <label class="users-filter-label" for="users-filter-role">الدور</label>
           <select
+            id="users-filter-role"
             v-model="filters.role"
-            class="user-rtl-select h-10 w-full rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            :disabled="filterLookupsLoading"
+            class="users-filter-input users-filter-select"
           >
             <option value="">كل الأدوار</option>
             <option v-for="role in filterRoleOptions" :key="role.id" :value="role.name">
@@ -59,10 +80,12 @@
         </div>
 
         <div v-if="!isScopedView" class="md:col-span-3">
-          <label class="mb-1 block text-sm font-medium text-slate-700">القاعدة</label>
+          <label class="users-filter-label" for="users-filter-base">القاعدة</label>
           <select
+            id="users-filter-base"
             v-model="filters.baseId"
-            class="user-rtl-select h-10 w-full rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            :disabled="filterLookupsLoading"
+            class="users-filter-input users-filter-select"
           >
             <option value="">كل القواعد</option>
             <option v-for="base in bases" :key="base.id" :value="String(base.id)">
@@ -71,11 +94,12 @@
           </select>
         </div>
 
-        <div :class="isScopedView ? 'md:col-span-3' : 'md:col-span-3'">
-          <label class="mb-1 block text-sm font-medium text-slate-700">حالة مرسال</label>
+        <div class="md:col-span-3">
+          <label class="users-filter-label" for="users-filter-sso">حساب مرسال</label>
           <select
+            id="users-filter-sso"
             v-model="filters.ssoStatus"
-            class="user-rtl-select h-10 w-full rounded-lg border border-slate-200 bg-white text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+            class="users-filter-input users-filter-select"
           >
             <option value="">الكل</option>
             <option value="pending">بانتظار التفعيل</option>
@@ -84,22 +108,44 @@
           </select>
         </div>
       </AppTableFilters>
+    </section>
 
-      <AppDataGrid
-        :column-defs="userColumnDefs"
-        :row-data="filteredUsers"
-        :loading="isLoading"
-        loading-label="جاري تحميل المستخدمين…"
-        pagination-mode="client"
-        :per-page="25"
-        :rows-per-page-options="[10, 25, 50, 100]"
-        empty-message="لا يوجد مستخدمون مطابقون. أضف مستخدماً جديداً أو غيّر الفلاتر."
-        row-selection="none"
-        :animate-rows="false"
-        @row-edit="editUser"
-        @row-delete="onRowDelete"
-      />
-    </AppCard>
+    <p class="users-grid-hint" dir="rtl">
+      <span class="users-grid-hint__item">
+        <i class="pi pi-pencil" aria-hidden="true" />
+        استخدم أيقونة التعديل في الجدول لتحديث المستخدم
+      </span>
+      <span class="users-grid-hint__sep" aria-hidden="true">·</span>
+      <span class="users-grid-hint__item">
+        <i class="pi pi-filter" aria-hidden="true" />
+        الفلاتر تُطبَّق فوراً على القائمة
+      </span>
+    </p>
+
+    <div
+      v-if="!isLoading"
+      class="users-results-bar"
+      aria-live="polite"
+    >
+      <span class="users-results-bar__count">{{ gridResultsLabel }}</span>
+      <span v-if="hasActiveFilters" class="users-results-bar__badge">فلاتر مفعّلة</span>
+    </div>
+
+    <AppDataGrid
+      :column-defs="userColumnDefs"
+      :row-data="filteredUsers"
+      :loading="isLoading"
+      loading-label="جاري تحميل المستخدمين…"
+      pagination-mode="client"
+      dom-layout="autoHeight"
+      :per-page="25"
+      :rows-per-page-options="[10, 25, 50, 100]"
+      empty-message="لا يوجد مستخدمون مطابقون. أضف مستخدماً جديداً أو غيّر الفلاتر."
+      row-selection="none"
+      :animate-rows="false"
+      @row-edit="editUser"
+      @row-delete="onRowDelete"
+    />
   </PageContainer>
 
   <VueSidePanel v-model="isPanelOpen" lock-scroll hide-close-btn :width="panelWidth" @closed="resetForm">
@@ -115,9 +161,9 @@
                 {{ isEditing ? 'تحديث بيانات المستخدم' : 'أدخل بيانات المستخدم الجديد' }}
               </p>
             </div>
-            <button type="button" class="text-slate-400 transition hover:text-slate-600" @click="isPanelOpen = false">
+            <AppButton variant="ghost" size="sm" class="!p-1 text-slate-400 hover:text-slate-600" aria-label="إغلاق" @click="isPanelOpen = false">
               <i class="pi pi-times text-xl" aria-hidden="true" />
-            </button>
+            </AppButton>
           </div>
         </div>
 
@@ -257,36 +303,26 @@
 
         <div class="flex-none border-t border-slate-200 bg-slate-50 px-6 py-4">
           <div class="flex justify-end gap-3">
-            <button
-              type="button"
-              class="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-              @click="isPanelOpen = false"
-            >
+            <AppButton variant="secondary" @click="isPanelOpen = false">
               إلغاء
-            </button>
-            <button
-              type="submit"
-              :disabled="isSubmitting"
-              class="rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white hover:bg-brand-dark disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <i v-if="isSubmitting" class="pi pi-spin pi-spinner ms-2" aria-hidden="true" />
+            </AppButton>
+            <AppButton type="submit" :disabled="isSubmitting">
+              <i v-if="isSubmitting" class="pi pi-spin pi-spinner" aria-hidden="true" />
               {{ isSubmitting ? 'جاري الحفظ…' : (isEditing ? 'تحديث' : 'إنشاء') }}
-            </button>
+            </AppButton>
           </div>
         </div>
       </form>
     </div>
   </VueSidePanel>
-  <Toast />
 </template>
 
 <script>
-import { fetchUsers, createUser, updateUser, deleteUser } from '../../api/users';
-import { fetchBases, fetchDepartmentTree, fetchAllDepartments } from '../../api/organization';
+import { fetchUsers, fetchAssignableRoles, createUser, updateUser, deleteUser } from '../../api/users.js';
+import { fetchBases, fetchDepartmentTree, fetchAllDepartments } from '../../api/organization.js';
 import TreeSelect from 'primevue/treeselect';
-import Toast from 'primevue/toast';
 import PageContainer from '../../components/ui/PageContainer.vue';
-import AppCard from '../../components/ui/AppCard.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import AppDataGrid from '../../components/ui/AppDataGrid.vue';
 import {
   buildActionColumn,
@@ -303,29 +339,7 @@ import {
   normalizeDepartmentTree,
   toTreeSelectValue,
 } from '../../lib/departmentTree.js';
-import { getAuthRoleName } from '../../lib/auth-session';
-
-const ROLE_OPTIONS = {
-  superAdmin: [
-    { id: 1, name: 'Super Admin' },
-    { id: 2, name: 'Admin' },
-    { id: 3, name: 'Local Admin' },
-    { id: 4, name: 'Gate Pass Provider' },
-    { id: 5, name: 'Gate Guard' },
-    { id: 6, name: 'Reporting' },
-  ],
-  admin: [
-    { id: 2, name: 'Admin' },
-    { id: 3, name: 'Local Admin' },
-    { id: 4, name: 'Gate Pass Provider' },
-    { id: 5, name: 'Gate Guard' },
-    { id: 6, name: 'Reporting' },
-  ],
-  localAdmin: [
-    { id: 6, name: 'Reporting' },
-    { id: 3, name: 'Local Admin' },
-  ],
-};
+import { getResourceScope, isGlobalScope, roleRequiresDepartment } from '../../lib/auth-roles.js';
 
 const defaultFilters = () => ({
   name: '',
@@ -355,10 +369,9 @@ function formatUserDate(dateString) {
 export default {
   name: 'UserManagement',
   components: {
-    Toast,
     TreeSelect,
     PageContainer,
-    AppCard,
+    AppButton,
     AppDataGrid,
   },
   data() {
@@ -367,11 +380,13 @@ export default {
       isEditing: false,
       isSubmitting: false,
       isLoading: false,
+      filterLookupsLoading: false,
+      filterLookupsLoaded: false,
       users: [],
+      assignableRolesList: [],
       bases: [],
       departments: [],
       departmentsLoaded: false,
-      departmentsLoading: false,
       userColumnDefs: [],
       debouncedNameQuery: '',
       nameFilterTimer: null,
@@ -405,32 +420,8 @@ export default {
     };
   },
   computed: {
-    currentRole() {
-      return getAuthRoleName() || localStorage.getItem('roles') || '';
-    },
-    isSuperAdmin() {
-      return this.currentRole === 'Super Admin';
-    },
-    isSuperAdminUsersPage() {
-      return this.$route.name === 'Allusers';
-    },
-    usesFullBaseCatalog() {
-      return this.isSuperAdmin || this.isSuperAdminUsersPage;
-    },
-    isScopedView() {
-      return !this.isSuperAdmin;
-    },
-    canDelete() {
-      return this.isSuperAdmin;
-    },
     assignableRoles() {
-      if (this.isSuperAdmin) {
-        return ROLE_OPTIONS.superAdmin;
-      }
-      if (this.currentRole === 'Admin') {
-        return ROLE_OPTIONS.admin;
-      }
-      return ROLE_OPTIONS.localAdmin;
+      return this.assignableRolesList;
     },
     filterRoleOptions() {
       return this.assignableRoles;
@@ -440,10 +431,22 @@ export default {
       const currentRole = this.formData.role;
 
       if (currentRole && !options.some((role) => role.name === currentRole)) {
-        options.unshift({ id: 0, name: currentRole });
+        options.unshift({ id: 0, name: currentRole, requires_department: false });
       }
 
       return options;
+    },
+    usersScope() {
+      return getResourceScope('users');
+    },
+    usesFullBaseCatalog() {
+      return isGlobalScope('users');
+    },
+    isScopedView() {
+      return !isGlobalScope('users');
+    },
+    canDelete() {
+      return isGlobalScope('users');
     },
     baseOptionsForForm() {
       const options = this.bases.map((base) => ({
@@ -470,9 +473,6 @@ export default {
     showDepartmentPicker() {
       return true;
     },
-    departmentRequiredRoles() {
-      return ['Admin', 'Local Admin', 'Reporting'];
-    },
     showSsoActivationPanel() {
       return this.isEditing && this.formData.sso_pending && !this.formData.sso_linked;
     },
@@ -481,7 +481,7 @@ export default {
         return true;
       }
 
-      return this.departmentRequiredRoles.includes(this.formData.role);
+      return roleRequiresDepartment(this.formData.role, this.assignableRolesList);
     },
     panelWidth() {
       return window.innerWidth < 640 ? '100%' : '600px';
@@ -497,6 +497,27 @@ export default {
       }
 
       return `${totalLabel} · ${this.pendingSsoCount} بانتظار تفعيل مرسال`;
+    },
+    hasActiveFilters() {
+      const { name, baseId, department, role, ssoStatus } = this.filters;
+
+      return Boolean(
+        name.trim() ||
+        baseId ||
+        department ||
+        role ||
+        ssoStatus,
+      );
+    },
+    gridResultsLabel() {
+      const total = this.users.length;
+      const shown = this.filteredUsers.length;
+
+      if (this.hasActiveFilters) {
+        return `عرض ${shown} من ${total} مستخدم`;
+      }
+
+      return `${total} مستخدم`;
     },
     filteredUsers() {
       let list = this.users;
@@ -551,7 +572,7 @@ export default {
   },
   watch: {
     'formData.role'(newRole) {
-      if (!this.departmentRequiredRoles.includes(newRole) && !this.formData.sso_pending) {
+      if (!roleRequiresDepartment(newRole, this.assignableRolesList) && !this.formData.sso_pending) {
         this.formData.dep_id_tree = null;
         this.formData.dep_id = null;
       }
@@ -648,6 +669,7 @@ export default {
     },
 
     clearFilters() {
+      clearTimeout(this.nameFilterTimer);
       this.filters = defaultFilters();
       this.debouncedNameQuery = '';
       this.filterDeptIds = [];
@@ -805,9 +827,11 @@ export default {
           payload.dep_id = depId;
         } else if (this.isEditing) {
           payload.dep_id = null;
-        } else if (!this.isSuperAdmin && this.depId) {
+        } else if (!isGlobalScope('users') && this.depId) {
           payload.dep_id = parseInt(this.depId, 10);
         }
+
+        payload.default_base = this.normalizeBaseId(payload.default_base) ?? 0;
 
         if (this.isEditing) {
           await updateUser(payload);
@@ -912,37 +936,66 @@ export default {
     },
 
     async ensureDepartmentsLoaded() {
-      if (this.departmentsLoaded || this.departmentsLoading) {
-        if (this.departmentsLoading) {
-          await new Promise((resolve) => {
-            const timer = setInterval(() => {
-              if (!this.departmentsLoading) {
-                clearInterval(timer);
-                resolve();
-              }
-            }, 50);
-          });
-        }
-
+      if (this.departmentsLoaded) {
         return;
       }
 
-      this.departmentsLoading = true;
+      await this.loadFilterLookups();
+    },
+
+    async waitForFilterLookups() {
+      if (!this.filterLookupsLoading) {
+        return;
+      }
+
+      await new Promise((resolve) => {
+        const timer = setInterval(() => {
+          if (!this.filterLookupsLoading) {
+            clearInterval(timer);
+            resolve();
+          }
+        }, 50);
+      });
+    },
+
+    async loadFilterLookups() {
+      if (this.filterLookupsLoaded) {
+        return;
+      }
+
+      if (this.filterLookupsLoading) {
+        await this.waitForFilterLookups();
+        return;
+      }
+
+      this.filterLookupsLoading = true;
 
       try {
-        if (this.isScopedView && this.depId) {
-          const response = await fetchDepartmentTree(this.depId);
-          this.setDepartmentsTree(response.data?.departments ?? []);
-        } else {
-          const response = await fetchAllDepartments();
-          this.setDepartmentsTree(response.data?.departments ?? []);
-        }
+        const basesParams = this.usesFullBaseCatalog
+          ? undefined
+          : (this.depId ? { depId: this.depId } : undefined);
 
+        const [rolesResponse, basesResponse, departmentsResponse] = await Promise.all([
+          fetchAssignableRoles(),
+          fetchBases(basesParams),
+          this.loadDepartmentsForFilter(),
+        ]);
+
+        this.assignableRolesList = rolesResponse.data?.roles ?? [];
+        this.bases = basesResponse.data ?? [];
+        this.setDepartmentsTree(departmentsResponse?.data?.departments ?? []);
         this.departmentsLoaded = true;
+        this.filterLookupsLoaded = true;
       } catch (error) {
-        console.error('Error loading departments:', error);
+        console.error('Error loading user filter lookups:', error);
+        this.$toast.add({
+          severity: 'error',
+          summary: 'خطأ',
+          detail: 'تعذر تحميل خيارات التصفية',
+          life: 3000,
+        });
       } finally {
-        this.departmentsLoading = false;
+        this.filterLookupsLoading = false;
       }
     },
 
@@ -951,39 +1004,21 @@ export default {
 
       try {
         const scopedParams = this.isScopedView && this.depId ? { depId: this.depId } : undefined;
-        const basesParams = this.usesFullBaseCatalog
-          ? undefined
-          : (this.depId ? { depId: this.depId } : undefined);
-
-        const requests = [
-          fetchUsers(scopedParams),
-          fetchBases(basesParams),
-        ];
-
-        if (this.isScopedView && this.depId) {
-          requests.push(this.loadDepartmentsForFilter());
-        } else {
-          requests.push(fetchAllDepartments());
-        }
-
-        const responses = await Promise.all(requests);
-        const [usersResponse, basesResponse, departmentsResponse] = responses;
-
-        this.users = usersResponse.data;
-        this.bases = basesResponse.data;
-        this.setDepartmentsTree(departmentsResponse?.data?.departments ?? []);
-        this.departmentsLoaded = true;
+        const usersResponse = await fetchUsers(scopedParams);
+        this.users = usersResponse.data ?? [];
       } catch (error) {
-        console.error('Error fetching data:', error);
+        console.error('Error fetching users:', error);
         this.$toast.add({
           severity: 'error',
           summary: 'خطأ',
-          detail: 'تعذر تحميل البيانات',
+          detail: 'تعذر تحميل المستخدمين',
           life: 3000,
         });
       } finally {
         this.isLoading = false;
       }
+
+      this.loadFilterLookups();
     },
 
     async loadDepartmentsForFilter() {
@@ -999,6 +1034,162 @@ export default {
 </script>
 
 <style scoped>
+.users-sso-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #fcd34d;
+  background: linear-gradient(135deg, #fffbeb 0%, #fff 100%);
+}
+
+.users-sso-banner__icon {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.users-sso-banner__title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #92400e;
+}
+
+.users-sso-banner__hint {
+  margin: 0.2rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: #a16207;
+}
+
+.users-filters-panel {
+  margin-bottom: 1rem;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding: 1rem 1.25rem;
+}
+
+.users-filters-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.85rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.users-filter-label {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #475569;
+}
+
+.users-filter-input {
+  display: flex;
+  height: 2.5rem;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  padding-inline: 0.75rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.users-filter-input:focus {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-brand) 20%, transparent);
+}
+
+.users-filter-input:disabled {
+  cursor: not-allowed;
+  background: #f8fafc;
+  color: #94a3b8;
+}
+
+.users-filter-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  direction: rtl;
+  text-align: right;
+  padding-inline-end: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%2364748b' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: left 0.75rem center;
+  background-size: 0.875rem;
+}
+
+.users-grid-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.65rem;
+  margin: 0 0 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-radius: 0.65rem;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  font-size: 0.78rem;
+  color: #64748b;
+}
+
+.users-grid-hint__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.users-grid-hint__sep {
+  color: #cbd5e1;
+}
+
+.users-results-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem 0.85rem;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  font-size: 0.8125rem;
+  color: #475569;
+}
+
+.users-results-bar__count {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.users-results-bar__badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #b45309;
+}
+
 .user-rtl-select {
   appearance: none;
   -webkit-appearance: none;

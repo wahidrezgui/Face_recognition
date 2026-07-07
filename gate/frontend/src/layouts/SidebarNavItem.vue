@@ -11,7 +11,7 @@
         <i :class="['pi', icon, 'text-lg shrink-0']" />
         <span
             v-if="!collapsed"
-            class="flex-1 text-start text-sm font-medium"
+            class="flex-1 text-start text-sm"
         >{{ label }}</span>
         
     </router-link>

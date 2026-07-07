@@ -48,6 +48,14 @@ export function approveEmployee(data) {
     return api.post('/api/employees/approve', data);
 }
 
+export function bulkApproveEmployees(data) {
+    return api.post('/api/employees/approve', data);
+}
+
+export function bulkDeleteEmployees(data) {
+    return api.post('/api/employees', data);
+}
+
 export function importEmployees(data) {
     return api.post('/api/employees/import', data);
 }
@@ -84,12 +92,44 @@ export function fetchBadgeInfo(id) {
     return api.get(`/api/badges/${id}`);
 }
 
+export function fetchBadge2(id) {
+    return api.get(`/api/badges2/${id}`);
+}
+
+export function fetchDepartmentBadge(depId) {
+    return api.get(`/api/badges/${depId}`);
+}
+
+export function fetchDepartmentBadgeBack(depId) {
+    return api.get(`/api/badges2/${depId}`);
+}
+
+export async function fetchDepartmentBadgeDesign(depId) {
+    const [frontResponse, backResponse] = await Promise.all([
+        fetchDepartmentBadge(depId),
+        fetchDepartmentBadgeBack(depId),
+    ]);
+
+    return {
+        front: frontResponse.data?.data ?? frontResponse.data,
+        back: backResponse.data?.data ?? backResponse.data,
+    };
+}
+
 export function updateBadge(data) {
     return api.post('/api/badges/update', data);
 }
 
+export function updateBadge2(data) {
+    return api.post('/api/badges2/update', data);
+}
+
 export function fetchBadgePreview(id) {
     return api.get(`/api/badges/${id}/preview`);
+}
+
+export function fetchBadgeBackPreview(id) {
+    return api.get(`/api/badges2/${id}/preview`);
 }
 
 export function fetchCheckTimes(id, params) {

@@ -14,5 +14,7 @@ class Zones extends Model
         'name_en',
         'name_ar',
         'color',
+        'pattern_type',
+        'pattern_color',
     ];
 }

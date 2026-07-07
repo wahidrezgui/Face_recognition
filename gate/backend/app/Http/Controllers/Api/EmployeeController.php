@@ -155,9 +155,9 @@ class EmployeeController extends Controller
         return $this->employees->guestbadge2($id);
     }
 
-    public function checkTimes(int $id)
+    public function checkTimes(int $id, Request $request)
     {
-        return $this->checkTimes->getTimes($id);
+        return $this->checkTimes->getTimes($id, $request);
     }
 
     public function storeCheckTime(Request $request)

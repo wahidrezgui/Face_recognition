@@ -66,7 +66,6 @@
             <div class="flex items-start justify-between">
 
                 <div>
-                <Toast />
                 </div>
 
                 <div class="mt-5 mb-5 sm:mt-0 sm:flex sm:shrink-0 sm:items-center" >
@@ -133,7 +132,7 @@
 <div id="tabPanel-timeline">
 
 <div v-show="activeTab === 10" role="tabpanel">
-    <div class="p-5 flex justify-end" ><button @click="print"><i class="pi pi-print pr-2" ></i> Print</button></div>
+    <div class="p-5 flex justify-end" ><AppButton variant="secondary" size="sm" @click="print"><i class="pi pi-print"></i> Print</AppButton></div>
     <div class="p-5" id="printMe">
         <div class="md:flex no-wrap md:-mx-2 ">
             <div class="w-full md:w-3/12 md:mx-2">
@@ -359,7 +358,7 @@ import api from '../../api/client';
 import { addEmployeeNote } from '../../api/employees';
 import { AgGridVue } from "ag-grid-vue3"; 
 import "ag-grid-community/styles/ag-grid.css"; 
-import "ag-grid-community/styles/ag-theme-material.css";import Toast from 'primevue/toast';
+import "ag-grid-community/styles/ag-theme-material.css";
 import { ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
 import Checkbox from 'primevue/checkbox';
@@ -367,6 +366,7 @@ import Card from 'primevue/card';
 import Avatar from 'primevue/avatar';
 import Paginator from 'primevue/paginator';
 import PageContainer from '../../components/ui/PageContainer.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 
 const gridApi = ref();
 
@@ -403,7 +403,7 @@ function customCellImgRenderer(params) {
 
 export default {
         components: {
-                    AgGridVue, Toast, Dropdown, Checkbox, Card, Avatar, Paginator, PageContainer
+                    AgGridVue, Dropdown, Checkbox, Card, Avatar, Paginator, PageContainer, AppButton
                     },
         data() {
             return {

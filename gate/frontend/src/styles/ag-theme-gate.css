@@ -27,6 +27,10 @@
     --ag-range-selection-border-color: #8a1538;
     --ag-input-focus-border-color: #8a1538;
     --ag-checkbox-checked-color: #8a1538;
+    --ag-checkbox-unchecked-color: #64748b;
+    --ag-checkbox-background-color: #ffffff;
+    --ag-checkbox-border-radius: 4px;
+    --ag-icon-size: 18px;
     --ag-alpine-active-color: #8a1538;
 
     --ag-card-radius: 12px;
@@ -81,6 +85,83 @@
     font-size: 2rem;
     color: #cbd5e1;
     margin-bottom: 0.5rem;
+}
+
+/* Selection checkboxes — visible boxes (icon font not loaded in custom theme) */
+.ag-theme-gate .ag-selection-checkbox,
+.ag-theme-gate .ag-header-select-all {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.ag-theme-gate .ag-cell[col-id='selection'],
+.ag-theme-gate .ag-header-cell[col-id='selection'] {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-inline: 0.35rem;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper {
+    width: 1.125rem;
+    height: 1.125rem;
+    min-width: 1.125rem;
+    min-height: 1.125rem;
+    border: 2px solid #64748b;
+    border-radius: 0.3rem;
+    background-color: #fff;
+    box-sizing: border-box;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper:focus-within,
+.ag-theme-gate .ag-checkbox-input-wrapper:active {
+    outline: none;
+    box-shadow: 0 0 0 2px rgb(138 21 56 / 0.25);
+    border-color: #8a1538;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+    font-size: 0.72rem;
+    font-weight: 800;
+    line-height: 1;
+    pointer-events: none;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper.ag-checked {
+    background-color: #8a1538;
+    border-color: #8a1538;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper.ag-checked::after {
+    content: '✓';
+    color: #fff;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper.ag-indeterminate {
+    background-color: #8a1538;
+    border-color: #8a1538;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper.ag-indeterminate::after {
+    content: '−';
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+.ag-theme-gate .ag-row-selected .ag-checkbox-input-wrapper {
+    border-color: #8a1538;
 }
 
 @media (prefers-reduced-motion: reduce) {

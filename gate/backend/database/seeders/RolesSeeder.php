@@ -16,10 +16,13 @@ class RolesSeeder extends Seeder
             'Local Admin',
             'Gate Guard',
             'Reporting',
+            'Inspector',
         ];
 
         foreach ($roles as $name) {
             Role::firstOrCreate(['name' => $name, 'guard_name' => 'web']);
         }
+
+        $this->call(PermissionsSeeder::class);
     }
 }

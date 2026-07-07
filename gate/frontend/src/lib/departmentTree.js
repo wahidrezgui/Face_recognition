@@ -1,5 +1,5 @@
 export function toTreeSelectValue(depId) {
-  if (depId === null || depId === undefined || depId === '') {
+  if (depId === null || depId === undefined || depId === '' || Number(depId) === 0) {
     return null;
   }
 
@@ -78,7 +78,7 @@ export function collectDescendantDeptIds(nodes, deptId) {
     return [];
   }
 
-  const targetId = String(depId);
+  const targetId = String(deptId);
   const ids = [targetId];
 
   const walk = (children) => {
@@ -111,4 +111,37 @@ export function collectDescendantDeptIds(nodes, deptId) {
   findAndCollect(nodes);
 
   return ids;
+}
+
+export function filterDepartmentTreeExcluding(nodes, excludeIds) {
+  const excluded = new Set((excludeIds || []).map(String));
+
+  function filterNode(node) {
+    const key = String(node.key ?? node.id);
+    if (excluded.has(key)) {
+      return null;
+    }
+
+    const filteredChildren = (node.children || [])
+      .map(filterNode)
+      .filter(Boolean);
+
+    const normalized = {
+      key,
+      label: node.label || node.name_ar || '',
+      icon: node.icon || 'pi pi-server',
+    };
+
+    if (filteredChildren.length > 0) {
+      normalized.children = filteredChildren;
+    }
+
+    return normalized;
+  }
+
+  if (!Array.isArray(nodes)) {
+    return [];
+  }
+
+  return nodes.map(filterNode).filter(Boolean);
 }

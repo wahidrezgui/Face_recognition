@@ -52,6 +52,11 @@ class Employees extends Model
         return $this->hasMany(EmployeeCars::class, 'emp_id', 'id');
     }
 
+    public function badgeLogs()
+    {
+        return $this->hasMany(BadgeLog::class, 'emp_id', 'id');
+    }
+
     public function ranks()
     {
         return $this->belongsTo(Ranks::class, 'rank_id');

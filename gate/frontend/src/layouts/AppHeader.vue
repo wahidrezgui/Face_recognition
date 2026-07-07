@@ -143,10 +143,7 @@ export default {
 
         const pageTitle = computed(() => route.meta?.title || '');
 
-        const homeRoute = computed(() => {
-            const role = localStorage.getItem('roles');
-            return role === 'Super Admin' ? '/dashboard' : '/home';
-        });
+        const homeRoute = computed(() => '/dashboard');
 
         function toggleDropdown() {
             isOpenDropdown.value = !isOpenDropdown.value;

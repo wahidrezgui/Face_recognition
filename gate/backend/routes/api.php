@@ -13,3 +13,4 @@ require __DIR__.'/api/organization.php';
 require __DIR__.'/api/employees.php';
 require __DIR__.'/api/users.php';
 require __DIR__.'/api/reports.php';
+require __DIR__.'/api/role-access.php';

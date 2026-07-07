@@ -4,6 +4,10 @@ export function fetchUsers(params) {
     return api.get('/api/users', { params });
 }
 
+export function fetchAssignableRoles() {
+    return api.get('/api/users/assignable-roles');
+}
+
 export function fetchUser(id) {
     return api.get(`/api/users/${id}`);
 }

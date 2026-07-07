@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Services\Stats\StatsScopeResolver;
 use App\Services\Stats\StatsService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Http\Request;
 
 class StatsController extends Controller
@@ -15,8 +16,13 @@ class StatsController extends Controller
     ) {
     }
 
-    public function all()
+    public function all(Request $request)
     {
+        $user = $request->user();
+        if ($this->scopeResolver->resolveScopeForUser($user) !== 'global') {
+            throw new AuthorizationException('Global dashboard scope required.');
+        }
+
         return $this->stats->allStats();
     }
 
@@ -24,9 +30,19 @@ class StatsController extends Controller
     {
         $user = $request->user();
         $roleScope = $this->scopeResolver->resolveScopeForUser($user);
+
+        if ($roleScope === 'global') {
+            return $this->stats->allStats();
+        }
+
+        $depId = (int) ($user->dep_id ?? $id);
+        if ($depId <= 0) {
+            return response()->json(['message' => 'Department is missing for this account.'], 422);
+        }
+
         $scope = $this->scopeResolver->clampScope($roleScope, $request->query('scope'));
 
-        return $this->stats->stats($id, $scope);
+        return $this->stats->stats($depId, $scope);
     }
 
     public function notification(int $id)
@@ -38,13 +54,28 @@ class StatsController extends Controller
     {
         $user = $request->user();
         $roleScope = $this->scopeResolver->resolveScopeForUser($user);
+
+        if ($roleScope === 'global') {
+            return $this->stats->saReports();
+        }
+
+        $depId = (int) ($user->dep_id ?? $id);
+        if ($depId <= 0) {
+            return response()->json(['message' => 'Department is missing for this account.'], 422);
+        }
+
         $scope = $this->scopeResolver->clampScope($roleScope, $request->query('scope'));
 
-        return $this->stats->reports($id, $scope);
+        return $this->stats->reports($depId, $scope);
     }
 
-    public function saReports()
+    public function saReports(Request $request)
     {
+        $user = $request->user();
+        if ($this->scopeResolver->resolveScopeForUser($user) !== 'global') {
+            throw new AuthorizationException('Global dashboard scope required.');
+        }
+
         return $this->stats->saReports();
     }
 }

@@ -20,6 +20,15 @@
                     <i class="pi pi-list" aria-hidden="true"></i>
                     <span>سجل الحركات</span>
                 </button>
+                <button
+                    type="button"
+                    class="panel-tab"
+                    :class="{ 'panel-tab--active': activeTab === 13 }"
+                    @click="activeTab = 13"
+                >
+                    <i class="pi pi-id-card" aria-hidden="true"></i>
+                    <span>بطاقة الدخول</span>
+                </button>
             </nav>
 
             <div v-show="activeTab === 10" role="tabpanel" class="panel-body">
@@ -120,7 +129,18 @@
                                 </label>
                             </div>
 
-                            <div v-if="guest.notes !== ''" class="notes-display" v-html="guest.notes"></div>
+                            <div v-if="guest.notes !== ''" class="notes-display-wrap">
+                                <div class="notes-display" v-html="guest.notes"></div>
+                                <button
+                                    v-if="allowDeleteNote"
+                                    type="button"
+                                    class="notes-delete-btn"
+                                    @click="$emit('delete-note')"
+                                >
+                                    <i class="pi pi-trash" aria-hidden="true"></i>
+                                    حذف الملاحظة
+                                </button>
+                            </div>
 
                             <form v-else novalidate class="notes-form" @submit.prevent="$emit('add-note')">
                                 <div v-if="withExcuse" class="notes-form__inner">
@@ -297,18 +317,32 @@
                     :default-col-def="gridDefaultColDef"
                 />
             </div>
+
+            <div v-show="activeTab === 13" role="tabpanel" class="panel-body panel-body--log">
+                <header class="movement-log-header">
+                    <div>
+                        <h3 class="movement-log-header__title">بطاقة الدخول</h3>
+                        <p class="movement-log-header__subtitle">
+                            {{ guest.fullname_ar || guest.fullname_en || 'الموظف' }}
+                            <span> · سجل طباعة البطاقة</span>
+                        </p>
+                    </div>
+                </header>
+                <EmployeeBadgeLogTab :logs="guest.badge_logs || []" />
+            </div>
         </div>
     </VueSidePanel>
 </template>
 
 <script>
 import AppDataGrid from '../ui/AppDataGrid.vue';
+import EmployeeBadgeLogTab from '../employees/EmployeeBadgeLogTab.vue';
 import { customMvtypeRenderer } from '../../lib/reports/agGridRenderers.js';
 import { employeeDetailPrintStyles } from '../../lib/employeeDetailPrintStyles.js';
 
 export default {
     name: 'EmployeeDetailPanel',
-    components: { AppDataGrid },
+    components: { AppDataGrid, EmployeeBadgeLogTab },
     props: {
         open: {
             type: Boolean,
@@ -326,8 +360,12 @@ export default {
             type: Boolean,
             default: true,
         },
+        allowDeleteNote: {
+            type: Boolean,
+            default: false,
+        },
     },
-    emits: ['update:open', 'update:noteText', 'update:withExcuse', 'add-note', 'print'],
+    emits: ['update:open', 'update:noteText', 'update:withExcuse', 'add-note', 'delete-note', 'print'],
     data() {
         return {
             activeTab: 10,
@@ -766,13 +804,35 @@ export default {
     accent-color: var(--panel-accent);
 }
 
-.notes-display {
+.notes-display-wrap {
     margin-top: 0.75rem;
+}
+
+.notes-display {
     padding: 0.75rem 0.9rem;
     border-radius: 0.75rem;
     background: #f8fafc;
     border: 1px solid var(--panel-border);
     font-size: 0.875rem;
+}
+
+.notes-delete-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin-top: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    border: none;
+    border-radius: 0.5rem;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.notes-delete-btn:hover {
+    background: #fecaca;
 }
 
 .notes-form__inner {

@@ -75,7 +75,7 @@ export default {
     name: 'AppSidebar',
     components: { SidebarNavItem },
     setup() {
-        const { role } = useAuth();
+        const { user } = useAuth();
         const {
             isOpen,
             isCollapsed,
@@ -83,7 +83,7 @@ export default {
             toggleCollapsed,
         } = useSidebar();
 
-        const visibleItems = computed(() => filterNavItems(role.value));
+        const visibleItems = computed(() => filterNavItems(user.value));
 
         return {
             isOpen,

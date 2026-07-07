@@ -2,13 +2,9 @@
   <div class="min-h-dvh bg-gradient-to-br from-slate-200 via-slate-100 to-sky-100" dir="rtl">
     <header class="border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-sm">
       <div class="mx-auto flex max-w-5xl items-center justify-between gap-3">
-        <button
-          type="button"
-          class="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          @click="goBack"
-        >
+        <AppButton variant="secondary" size="sm" @click="goBack">
           رجوع للبوابة
-        </button>
+        </AppButton>
         <div class="text-center">
           <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">سجل الحركات</p>
           <p class="text-base font-bold text-slate-800">بحث بالسيارة العسكرية</p>
@@ -28,13 +24,9 @@
               placeholder="رقم السيارة العسكرية"
               class="flex-1 rounded-xl border border-slate-200 px-3 py-2.5 text-sm focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-muted"
             >
-            <button
-              type="submit"
-              class="rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-dark disabled:opacity-60"
-              :disabled="loading"
-            >
+            <AppButton type="submit" :disabled="loading">
               بحث
-            </button>
+            </AppButton>
           </div>
 
           <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -134,23 +126,23 @@
           v-if="lastPage > 1"
           class="flex items-center justify-between border-t border-slate-100 px-4 py-3 text-sm"
         >
-          <button
-            type="button"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+          <AppButton
+            variant="secondary"
+            size="sm"
             :disabled="page <= 1 || loading"
             @click="runSearch(page - 1)"
           >
             السابق
-          </button>
+          </AppButton>
           <span class="text-slate-600">صفحة {{ page }} من {{ lastPage }}</span>
-          <button
-            type="button"
-            class="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40"
+          <AppButton
+            variant="secondary"
+            size="sm"
             :disabled="page >= lastPage || loading"
             @click="runSearch(page + 1)"
           >
             التالي
-          </button>
+          </AppButton>
         </div>
       </div>
     </main>
@@ -159,9 +151,11 @@
 
 <script>
 import { searchByPlate } from '../../api/employees';
+import AppButton from '../../components/ui/AppButton.vue';
 
 export default {
   name: 'PlateMovements',
+  components: { AppButton },
   data() {
     return {
       loading: false,

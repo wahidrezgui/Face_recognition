@@ -11,13 +11,9 @@
 
   <header class="gate-kiosk__header shrink-0 border-b border-slate-200/80 bg-white/90 px-4 py-3 backdrop-blur-sm">
     <div class="mx-auto flex w-full max-w-7xl items-center justify-between gap-3">
-      <button
-        type="button"
-        class="rounded-xl border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-        @click="logout"
-      >
+      <AppButton variant="secondary" size="sm" @click="logout">
         خروج
-      </button>
+      </AppButton>
       <div class="text-center">
         <p class="text-[11px] font-semibold uppercase tracking-[0.2em] text-brand">بوابة الدخول</p>
         <p class="text-base font-bold text-slate-800">{{ base || 'Gate' }}</p>
@@ -192,9 +188,13 @@
             ref="plateInput"
             v-model="formData.platenumber"
             type="text"
-            class="w-full rounded-xl border border-slate-200 bg-white py-2.5 px-3 text-base transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-muted"
-            :class="scanFocus === 'plate' ? 'border-brand ring-2 ring-brand-muted' : ''"
-            placeholder="امسح ملصق السيارة أو اكتب الرقم"
+            class="w-full rounded-xl border border-slate-200 py-2.5 px-3 text-base transition focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand-muted"
+            :class="[
+              scanFocus === 'plate' ? 'border-brand ring-2 ring-brand-muted' : '',
+              inputMode === 'barcode' ? 'cursor-pointer bg-slate-50' : 'bg-white'
+            ]"
+            :readonly="inputMode === 'barcode'"
+            :placeholder="inputMode === 'barcode' ? 'امسح ملصق السيارة' : 'اكتب رقم السيارة'"
             autocomplete="off"
             maxlength="20"
             @input="onPlateInput"
@@ -217,7 +217,7 @@
         
       </div>
 
-      <p class="mb-2 text-center text-xs font-medium text-brand">
+      <p v-if="inputMode === 'barcode'" class="mb-2 text-center text-xs font-medium text-brand">
         القارئ يستمع إلى: {{ scanFocus === 'plate' ? 'رقم السيارة' : 'بطاقة السائق' }}
       </p>
 
@@ -274,13 +274,9 @@
             class="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-sm"
             @keyup.enter="goToPlateSearch"
           >
-          <button
-            type="button"
-            class="rounded-xl bg-brand px-3 py-2 text-sm font-medium text-white hover:bg-brand-dark"
-            @click="goToPlateSearch"
-          >
+          <AppButton size="sm" @click="goToPlateSearch">
             بحث
-          </button>
+          </AppButton>
         </div>
       </div>
     </div>
@@ -312,16 +308,11 @@
         <p class="text-sm font-bold">{{ toast.title }}</p>
         <p class="mt-0.5 text-sm leading-relaxed text-slate-600">{{ toast.message }}</p>
       </div>
-      <button
-        type="button"
-        class="shrink-0 rounded-lg p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-        aria-label="إغلاق"
-        @click="hideToast"
-      >
+      <AppButton variant="ghost" size="sm" class="!p-1 shrink-0 text-slate-400 hover:text-slate-600" aria-label="إغلاق" @click="hideToast">
         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
         </svg>
-      </button>
+      </AppButton>
     </div>
   </Transition>
   </div>
@@ -330,6 +321,7 @@
 <script>
 import EmployeeCard from '../../components/gate/EmployeeCard.vue';
 import MilitarySearchPicker from '../../components/gate/MilitarySearchPicker.vue';
+import AppButton from '../../components/ui/AppButton.vue';
 import { useGateCheck } from '../../composables/useGateCheck';
 import { useAuth } from '../../composables/useAuth';
 import { useEmployeeDirectory } from '../../composables/useEmployeeDirectory';
@@ -355,7 +347,7 @@ const SCAN_SUBMIT_DELAY_MS = 400;
 
 export default {
   name: 'GateKiosk',
-  components: { EmployeeCard, MilitarySearchPicker },
+  components: { EmployeeCard, MilitarySearchPicker, AppButton },
   setup() {
     const gate = useGateCheck();
     const { logout } = useAuth();
@@ -527,6 +519,10 @@ export default {
 
     onPlateInput() {
       this.syncPlateFields();
+      if (this.inputMode !== 'barcode') {
+        this.plateManuallyEntered = true;
+        return;
+      }
       if (!this.hwScanLocked) {
         this.plateManuallyEntered = true;
         this.setScanFocus('driver');
@@ -695,6 +691,9 @@ export default {
     },
 
     handleHardwareScannerKeydown(event) {
+      if (this.inputMode !== 'barcode') {
+        return false;
+      }
       if (this.isHardwareScanBlockedTarget(event.target)) {
         return false;
       }
@@ -808,6 +807,7 @@ export default {
     setInputMode(mode) {
       this.inputMode = mode;
       this.resetCardState();
+      this.resetHardwareScan();
       this.militarySearch = '';
       this.filteredGuests = [];
       this.militaryPickerOpen = false;

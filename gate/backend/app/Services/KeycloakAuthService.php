@@ -80,7 +80,7 @@ class KeycloakAuthService
         }
 
         return [
-            'user' => $user->fresh()->load('roles'),
+            'user' => $user->fresh()->load('roles')->withAuthPayload(),
             'claims' => $claims,
             'id_token' => isset($tokenPayload['id_token']) && is_string($tokenPayload['id_token'])
                 ? $tokenPayload['id_token']

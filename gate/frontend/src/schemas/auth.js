@@ -13,6 +13,8 @@ export const userSchema = z.object({
     dep_id: z.number().nullable().optional(),
     default_base: z.number().nullable().optional(),
     roles: z.array(z.object({ name: z.string() })).optional(),
+    permissions: z.array(z.string()).optional(),
+    scopes: z.record(z.enum(['global', 'hierarchy', 'self'])).optional(),
 });
 
 export const loginResponseSchema = z.object({

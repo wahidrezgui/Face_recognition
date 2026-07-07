@@ -23,11 +23,13 @@
                 :overlay-no-rows-template="emptyOverlayTemplate"
                 :context="gridContext"
                 :components="gridComponents"
+                :get-row-class="getRowClass"
                 :pagination="clientPaginationEnabled"
                 :pagination-page-size="clientPageSize"
                 :suppress-pagination-panel="true"
+                :dom-layout="domLayout"
                 @grid-ready="onGridReady"
-                @row-clicked="onRowClicked"
+                @cell-clicked="onCellClicked"
                 @selection-changed="onSelectionChanged"
             />
         </div>
@@ -38,7 +40,7 @@
         >
             <Paginator
                 ref="paginator"
-                :template="paginatorTemplate"
+                :template="paginatorTemplate()"
                 :rows="paginatorPageSize"
                 :total-records="paginatorTotalRecords"
                 dir="rtl"
@@ -154,6 +156,11 @@ export default {
             type: String,
             default: 'min(480px, 60vh)',
         },
+        domLayout: {
+            type: String,
+            default: 'normal',
+            validator: (value) => ['normal', 'autoHeight', 'print'].includes(value),
+        },
         lineHeight: {
             type: String,
             default: '48px',
@@ -182,10 +189,15 @@ export default {
             type: Object,
             default: () => ({}),
         },
+        getRowClass: {
+            type: Function,
+            default: null,
+        },
     },
     emits: [
         'grid-ready',
         'row-clicked',
+        'cell-clicked',
         'selection-changed',
         'page-change',
         'update:per-page',
@@ -195,7 +207,6 @@ export default {
     ],
     data() {
         return {
-            paginatorTemplate: createPaginatorTemplate(),
             gridApi: null,
             clientPageSize: this.perPage,
             clientCurrentPage: 0,
@@ -212,11 +223,16 @@ export default {
             });
         },
         gridStyle() {
-            return {
+            const style = {
                 '--ag-line-height': this.lineHeight,
-                height: this.height,
                 width: '100%',
             };
+
+            if (this.domLayout !== 'autoHeight') {
+                style.height = this.height;
+            }
+
+            return style;
         },
         clientPaginationEnabled() {
             return this.paginationMode === 'client';
@@ -270,11 +286,21 @@ export default {
         },
     },
     methods: {
+        paginatorTemplate() {
+            return createPaginatorTemplate();
+        },
         onGridReady(params) {
             this.gridApi = params.api;
             this.$emit('grid-ready', params);
         },
         onRowClicked(event) {
+            this.$emit('row-clicked', event);
+        },
+        onCellClicked(event) {
+            this.$emit('cell-clicked', event);
+            if (event.column?.getColId?.() === 'selection') {
+                return;
+            }
             this.$emit('row-clicked', event);
         },
         onSelectionChanged(event) {

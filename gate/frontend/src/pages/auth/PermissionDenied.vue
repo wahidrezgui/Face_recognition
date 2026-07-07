@@ -34,7 +34,7 @@ import { useRoute, useRouter } from 'vue-router';
 import AppCard from '../../components/ui/AppCard.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useAuth } from '../../composables/useAuth';
-import { getRedirectPathForRole } from '../../api/auth';
+import { getRedirectPathForUser } from '../../api/auth';
 import { getAuthRoleName, getAuthUser, isAuthenticated } from '../../lib/auth-session';
 
 export default {
@@ -85,7 +85,7 @@ export default {
         function goBack() {
             const user = getAuthUser();
             if (isAuthenticated(user)) {
-                router.push(getRedirectPathForRole(getAuthRoleName(user)));
+                router.push(getRedirectPathForUser(user));
                 return;
             }
             router.push('/');

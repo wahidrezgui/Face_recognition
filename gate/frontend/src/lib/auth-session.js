@@ -1,7 +1,7 @@
-import { queryClient } from '../plugins/query';
 import { fetchMe, syncLegacyStorage } from '../api/auth';
-
 import { queryKeys } from '../lib/query-keys';
+
+import { queryClient } from '../plugins/query';
 
 export const AUTH_QUERY_KEY = queryKeys.auth.me;
 
@@ -11,11 +11,6 @@ export async function ensureAuthUser() {
     // Explicit logout — skip network
     if (cached === null) {
         return null;
-    }
-
-    // Trust user already loaded (e.g. right after login mutation)
-    if (cached != null) {
-        return cached;
     }
 
     try {
@@ -41,6 +36,10 @@ export function getAuthUser() {
 
 export function getAuthRoleName(user = getAuthUser()) {
     return user?.roles?.[0]?.name ?? localStorage.getItem('roles') ?? '';
+}
+
+export function getAuthPermissions(user = getAuthUser()) {
+    return user?.permissions ?? [];
 }
 
 export function userHasRole(requiredRoles, user = getAuthUser()) {

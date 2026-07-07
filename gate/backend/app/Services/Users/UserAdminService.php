@@ -5,22 +5,31 @@ namespace App\Services\Users;
 use App\Models\Bases;
 use App\Models\Departments;
 use App\Models\User;
+use App\Support\Access\AccessCatalog;
+use App\Support\Access\DataScopeResolver;
 use App\Support\Tree\DepartmentTreeService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
+use Spatie\Permission\Models\Role;
 
 class UserAdminService
 {
-    public function __construct(private DepartmentTreeService $departmentTree)
-    {
+    public function __construct(
+        private DepartmentTreeService $departmentTree,
+        private DataScopeResolver $dataScope,
+    ) {
     }
 
     public function users()
     {
+        $actor = auth()->user();
+        $scope = $this->dataScope->resolveForUser($actor, 'users');
+
         $query = User::query()
             ->select([
                 'id',
@@ -35,23 +44,67 @@ class UserAdminService
             ])
             ->with('roles');
 
-        if (isset($_GET['depId'])) {
-            $depId = (int) $_GET['depId'];
-            $departmentIds = $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds($depId);
-            $query->where(function ($builder) use ($departmentIds) {
-                $builder->whereIn('dep_id', $departmentIds)
+        if ($scope === 'global') {
+            if (isset($_GET['depId'])) {
+                $depId = (int) $_GET['depId'];
+                $departmentIds = $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds($depId);
+                $query->where(function ($builder) use ($departmentIds) {
+                    $builder->whereIn('dep_id', $departmentIds)
+                        ->orWhere(function ($pending) {
+                            $pending->whereNull('keycloak_sub')
+                                ->whereNotNull('keycloak_pending_sub');
+                        });
+                });
+                $emptyBase = '';
+            } else {
+                $query->latest('id');
+                $emptyBase = '-';
+            }
+        } else {
+            $allowedIds = $this->dataScope->resolveDepartmentIds($actor, 'users');
+            if ($allowedIds === []) {
+                return response()->json([]);
+            }
+
+            $filterIds = $allowedIds;
+            if (isset($_GET['depId'])) {
+                $requested = (int) $_GET['depId'];
+                $requestedIds = $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds($requested);
+                $filterIds = array_values(array_intersect($allowedIds, $requestedIds));
+            }
+
+            $query->where(function ($builder) use ($filterIds) {
+                $builder->whereIn('dep_id', $filterIds)
                     ->orWhere(function ($pending) {
                         $pending->whereNull('keycloak_sub')
                             ->whereNotNull('keycloak_pending_sub');
                     });
             });
             $emptyBase = '';
-        } else {
-            $query->latest('id');
-            $emptyBase = '-';
         }
 
         return response()->json($this->mapUsersForList($query->get(), $emptyBase));
+    }
+
+    public function assignableRoles(): JsonResponse
+    {
+        $actor = auth()->user();
+        $names = AccessCatalog::assignableRoleNamesForActor($actor);
+
+        $roles = Role::query()
+            ->where('guard_name', AccessCatalog::GUARD)
+            ->whereIn('name', $names)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Role $role) => [
+                'id' => $role->id,
+                'name' => $role->name,
+                'requires_department' => AccessCatalog::roleRequiresDepartment($role->name),
+            ])
+            ->values()
+            ->all();
+
+        return response()->json(['roles' => $roles]);
     }
 
     private function mapUsersForList(Collection $users, string $emptyBase): array
@@ -93,6 +146,8 @@ class UserAdminService
             return response()->json(['message' => 'User not found'], 404);
         }
 
+        $this->assertUserInScope($user);
+
         return response()->json([
             'id' => $user->id,
             'firstname' => $user->firstname,
@@ -114,19 +169,27 @@ class UserAdminService
     {
         $input = $request->all();
         $input['password'] = Hash::make($request->passwd);
+        $input['default_base'] = $this->normalizeDefaultBase($request->input('default_base'));
         if ($request->has('dep_id')) {
             $input['dep_id'] = $request->dep_id;
         } else {
             $input['dep_id'] = $request->depid;
         }
 
+        if (isset($input['dep_id'])) {
+            $this->dataScope->assertDepartmentInScope(auth()->user(), 'users', (int) $input['dep_id']);
+        }
+
         $user = User::create($input);
 
-        if ($request->has('role')) {
-            $user->assignRole($request->role);
-        } else {
-            $user->assignRole('Admin');
+        if (! $request->filled('role')) {
+            throw ValidationException::withMessages([
+                'role' => ['اختر الدور'],
+            ]);
         }
+
+        $this->assertRoleAssignable($request->role);
+        $user->assignRole($request->role);
 
         return response()->json(['status' => 'success']);
     }
@@ -139,6 +202,8 @@ class UserAdminService
             return response()->json(['message' => 'المستخدم غير موجود'], 404);
         }
 
+        $this->assertUserInScope($item);
+
         $activateSso = $request->boolean('activate_sso');
 
         if ($activateSso) {
@@ -149,11 +214,15 @@ class UserAdminService
             'firstname' => $request->input('firstname', $item->firstname),
             'lastname' => $request->input('lastname', $item->lastname),
             'email' => $request->input('email', $item->email),
-            'default_base' => $request->input('default_base', $item->default_base),
+            'default_base' => $request->has('default_base')
+                ? $this->normalizeDefaultBase($request->input('default_base'))
+                : (int) ($item->default_base ?? 0),
         ];
 
         if ($request->has('dep_id')) {
-            $updates['dep_id'] = $request->input('dep_id');
+            $depId = (int) $request->input('dep_id');
+            $this->dataScope->assertDepartmentInScope(auth()->user(), 'users', $depId);
+            $updates['dep_id'] = $depId;
         }
 
         if ($request->filled('passwd')) {
@@ -177,6 +246,7 @@ class UserAdminService
             $item->update($updates);
 
             if ($request->filled('role')) {
+                $this->assertRoleAssignable($request->role);
                 $currentRole = $item->roles->first();
                 if ($currentRole) {
                     $item->removeRole($currentRole);
@@ -191,6 +261,18 @@ class UserAdminService
             'sso_linked' => $activateSso || filled($item->fresh()->keycloak_sub),
             'sso_pending' => ! $activateSso && filled($item->fresh()->keycloak_pending_sub),
         ]);
+    }
+
+    /** Store 0 when no base is selected — the column is NOT NULL in MySQL. */
+    private function normalizeDefaultBase(mixed $value): int
+    {
+        if ($value === null || $value === '' || $value === false) {
+            return 0;
+        }
+
+        $parsed = (int) $value;
+
+        return $parsed > 0 ? $parsed : 0;
     }
 
     private function assertCanActivateSso(Request $request, User $user): void
@@ -222,9 +304,52 @@ class UserAdminService
 
     public function deleteUser(Request $request)
     {
-        User::find($request->id)?->delete();
+        $actor = auth()->user();
+        if ($this->dataScope->resolveForUser($actor, 'users') !== 'global') {
+            throw new AuthorizationException('Only global user scope may delete users.');
+        }
+
+        $target = User::find($request->id);
+        if ($target) {
+            $this->assertUserInScope($target);
+            $target->delete();
+        }
 
         return response()->json(['status' => 'success']);
+    }
+
+    private function assertUserInScope(User $target): void
+    {
+        $actor = auth()->user();
+        if (! $actor) {
+            return;
+        }
+
+        if ($this->dataScope->resolveForUser($actor, 'users') === 'global') {
+            return;
+        }
+
+        if ((int) $target->dep_id <= 0) {
+            return;
+        }
+
+        $this->dataScope->assertDepartmentInScope($actor, 'users', (int) $target->dep_id);
+    }
+
+    public function assertRoleAssignable(string $roleName): void
+    {
+        $actor = auth()->user();
+        if (! $actor || ! AccessCatalog::actorCanAssignRole($actor, $roleName)) {
+            throw ValidationException::withMessages([
+                'role' => ['لا يمكنك تعيين هذا الدور'],
+            ]);
+        }
+
+        if (! Role::query()->where('guard_name', AccessCatalog::GUARD)->where('name', $roleName)->exists()) {
+            throw ValidationException::withMessages([
+                'role' => ['الدور غير موجود'],
+            ]);
+        }
     }
 
     public function getUsername()

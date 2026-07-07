@@ -9,7 +9,7 @@
 
 <script>
 import { useAuth } from '../../composables/useAuth';
-import { getRedirectPathForRole } from '../../api/auth';
+import { getRedirectPathForUser } from '../../api/auth';
 import { isAuthenticated } from '../../lib/auth-session';
 
 export default {
@@ -26,7 +26,7 @@ export default {
         const roleName = user?.roles?.[0]?.name;
 
         if (roleName) {
-          this.$router.replace(getRedirectPathForRole(roleName));
+          this.$router.replace(getRedirectPathForUser(user));
           return;
         }
 

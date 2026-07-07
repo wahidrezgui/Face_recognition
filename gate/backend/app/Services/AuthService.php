@@ -24,7 +24,7 @@ class AuthService
 
         return [
             'status' => 'success',
-            'user' => $user->load('roles'),
+            'user' => $user->load('roles')->withAuthPayload(),
             'http_status' => 200,
         ];
     }

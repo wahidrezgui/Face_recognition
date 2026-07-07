@@ -41,7 +41,8 @@ Run after each refactor phase before merging.
 
 ## Badge editor
 
-- [ ] Badge template page loads TinyMCE editor
+- [ ] Badge template page loads (Konva canvas editor for visual design)
+- [ ] Legacy HTML templates open in CodeMirror editor when applicable
 - [ ] Save badge template
 
 ## Admin

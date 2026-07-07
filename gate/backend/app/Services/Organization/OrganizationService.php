@@ -13,8 +13,10 @@ use App\Models\DepartmentBases;
 use App\Models\Employees;
 use App\Models\CompaniesTimes;
 use App\Models\User;
+use App\Support\Access\AccessCatalog;
 use App\Support\Tree\DepartmentTreeService;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\ValidationException;
 
 class OrganizationService
 {
@@ -59,21 +61,20 @@ class OrganizationService
 
 
         public function newDepartments(Request $request){
-            $input = $request->all();
-            $dep=Departments::create($input);
-            $id=$dep->id;
+            $validated = $request->validate([
+                'name_en' => 'required|string|max:255',
+                'name_ar' => 'nullable|string|max:255',
+                'parent_id' => 'nullable|integer',
+                'selectedBases' => 'nullable|array',
+                'selectedBases.*' => 'integer',
+            ]);
 
-            //create default user
-            $user = User::create([
-                'firstname' => $request->firstname,
-                'lastname'  => $request->lastname ?? $request->latname,
-                'email'      => $request->email,
-                'password'   => Hash::make($request->password),
-                'dep_id' =>$id,
-                'default_base'=>0
-              ]);
-              if($request->parent_id==0){$user->assignRole('Admin');}else{$user->assignRole('Reporting');}
-              
+            $dep = Departments::create([
+                'name_en' => $validated['name_en'],
+                'name_ar' => $validated['name_ar'] ?? '',
+                'parent_id' => (int) ($validated['parent_id'] ?? 0),
+            ]);
+            $id = $dep->id;
 
             //create default badge
             DB::table('badges')->insert([
@@ -95,49 +96,37 @@ class OrganizationService
               'updated_at'=>date('Y-m-d H:i:s'),
                 ]);
 
+            $this->syncDepartmentBases($id, $validated['selectedBases'] ?? []);
+
+            return response()->json(['id' => $id]);
         }
 
 
         public function editDepartments(Request $request){
-            $input = $request->all();
-            $item = Departments::find($request->id);
-            $item->update($input);
+            $validated = $request->validate([
+                'id' => 'required|integer',
+                'name_en' => 'required|string|max:255',
+                'name_ar' => 'nullable|string|max:255',
+                'parent_id' => 'nullable|integer',
+                'selectedBases' => 'nullable|array',
+                'selectedBases.*' => 'integer',
+            ]);
 
-            $data = $request->user;
-            if($data['id']==0)
-            {
-                    //create default user
-                    $user = User::create([
-                    'firstname' => $data['firstname'],
-                    'lastname'  => $data['lastname'],
-                    'email'      => $data['email'],
-                    'password'   => Hash::make($data['password']),
-                    'dep_id' =>$request->id,
-                    'default_base'=>0
-                    ]);
-                    $user->assignRole('Reporting');
-            }
-            else
-            {
-                if($data['password']!=''){
-                    DB::table('users')->where('id', $data['id'])->update([
-                        'firstname' => $data['firstname'],
-                        'lastname'  => $data['lastname'],
-                        'email'      => $data['email'],
-                        'password'   => Hash::make($data['password']),
-                    ]);
-                }
-                else
-                {
-                    DB::table('users')->where('id', $data['id'])->update([
-                        'firstname' => $data['firstname'],
-                        'lastname'  => $data['lastname'],
-                        'email'      => $data['email'],
-                    ]);
-                }
-                
+            $item = Departments::find($validated['id']);
+
+            if (! $item) {
+                return response()->json(['message' => 'Department not found'], 404);
             }
 
+            $item->update([
+                'name_en' => $validated['name_en'],
+                'name_ar' => $validated['name_ar'] ?? '',
+                'parent_id' => (int) ($validated['parent_id'] ?? 0),
+            ]);
+
+            $this->syncDepartmentBases((int) $validated['id'], $validated['selectedBases'] ?? []);
+
+            return response()->json(['id' => (int) $validated['id']]);
         }
 
 
@@ -590,34 +579,32 @@ class OrganizationService
     }
 
     public function compInfo($id){
-        $info=Departments::find($id);
-        $time=CompaniesTimes::where('dep_id',$id)->get()->first();
-        if($time){
-            $info['start_time']=$time->start_time;
-            $info['end_time']=$time->end_time;
+        $info = Departments::find($id);
+        if (!$info) {
+            return response()->json(['message' => 'Company not found'], 404);
         }
-        else
-        {
-            $info['start_time']='';
-            $info['end_time']='';
+
+        $time = CompaniesTimes::where('dep_id', $id)->get()->first();
+        if ($time) {
+            $info['start_time'] = $time->start_time;
+            $info['end_time'] = $time->end_time;
+        } else {
+            $info['start_time'] = '';
+            $info['end_time'] = '';
         }
-        
+
         return response()->json($info);
     }
 
 
         public function assignbase(Request $request){
+            $validated = $request->validate([
+                'dep_id' => 'required|integer',
+                'selectedBases' => 'nullable|array',
+                'selectedBases.*' => 'integer',
+            ]);
 
-            DepartmentBases::where('dep_id',$request->dep_id)->delete();
-            foreach($request->selectedBases as $item)
-            {
-              DB::table('department_bases')->insert([
-                'dep_id' => $request->dep_id,
-                'base_id' =>$item,
-                'created_at' =>date('Y-m-d H:i:s'),
-                'updated_at' =>date('Y-m-d H:i:s'),
-              ]);
-            }
+            $this->syncDepartmentBases((int) $validated['dep_id'], $validated['selectedBases'] ?? []);
         }
     ################################################### Static Data
 
@@ -719,16 +706,15 @@ class OrganizationService
 
 
     public function newZone(Request $request){
-        $input = $request->all();
-        Zones::create($input);
-
+        $validated = \App\Support\Zone\ZoneStyleSupport::validatePayload($request->all());
+        Zones::create($validated);
     }
 
 
     public function editZone(Request $request){
-        $input = $request->all();
-        $item = Zones::find($request->id);
-        $item->update($input);
+        $validated = \App\Support\Zone\ZoneStyleSupport::validatePayload($request->all(), requireId: true);
+        $item = Zones::findOrFail($validated['id']);
+        $item->update($validated);
     }
 
 
@@ -762,4 +748,96 @@ class OrganizationService
         return response()->json(['departments' => $departments]);
     }
 
+    public function storeBase(Request $request)
+    {
+        $this->newBase($request);
+
+        return response()->json(['message' => 'تم الحفظ']);
+    }
+
+    public function updateBase(Request $request)
+    {
+        $this->editBase($request);
+
+        return response()->json(['message' => 'تم التحديث']);
+    }
+
+    public function destroyBase(Request $request)
+    {
+        $this->deleteBase($request);
+
+        return response()->json(['message' => 'تم الحذف']);
+    }
+
+    public function storeGate(Request $request)
+    {
+        $this->newGate($request);
+
+        return response()->json(['message' => 'تم الحفظ']);
+    }
+
+    public function updateGate(Request $request)
+    {
+        $this->editGate($request);
+
+        return response()->json(['message' => 'تم التحديث']);
+    }
+
+    public function destroyGate(Request $request)
+    {
+        $this->deleteGate($request);
+
+        return response()->json(['message' => 'تم الحذف']);
+    }
+
+    public function storeZone(Request $request)
+    {
+        $this->newZone($request);
+
+        return response()->json(['message' => 'تم الحفظ']);
+    }
+
+    public function updateZone(Request $request)
+    {
+        $this->editZone($request);
+
+        return response()->json(['message' => 'تم التحديث']);
+    }
+
+    public function destroyZone(Request $request)
+    {
+        $this->deleteZone($request);
+
+        return response()->json(['message' => 'تم الحذف']);
+    }
+
+    private function syncDepartmentBases(int $depId, $selectedBases): void
+    {
+        DepartmentBases::where('dep_id', $depId)->delete();
+
+        foreach ((array) $selectedBases as $baseId) {
+            DB::table('department_bases')->insert([
+                'dep_id' => $depId,
+                'base_id' => (int) $baseId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        }
+    }
+
+    private function assertAssignableRole(string $roleName): void
+    {
+        if ($roleName === '') {
+            throw ValidationException::withMessages([
+                'role' => ['اختر الدور'],
+            ]);
+        }
+
+        $actor = auth()->user();
+        if (! $actor || ! AccessCatalog::actorCanAssignRole($actor, $roleName)) {
+            throw ValidationException::withMessages([
+                'role' => ['لا يمكنك تعيين هذا الدور'],
+            ]);
+        }
+    }
 }

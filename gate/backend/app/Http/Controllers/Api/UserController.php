@@ -36,4 +36,9 @@ class UserController extends Controller
     {
         return $this->users->deleteUser($request);
     }
+
+    public function assignableRoles()
+    {
+        return $this->users->assignableRoles();
+    }
 }
