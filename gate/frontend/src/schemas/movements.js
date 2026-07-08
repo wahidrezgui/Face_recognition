@@ -37,7 +37,7 @@ export const movementCheckResponseSchema = z.object({
 });
 
 export const movementSubmitPayloadSchema = z.object({
-    client_request_id: z.string().uuid().optional(),
+    client_request_id: z.string().uuid(),
     emp_id: z.number(),
     mvtype: z.enum(['Check-In', 'Check-Out']),
     base_id: z.union([z.number(), z.string()]),
@@ -52,6 +52,7 @@ export const movementSubmitPayloadSchema = z.object({
 export const movementSubmitResponseSchema = z.object({
     success: z.boolean(),
     queued: z.boolean().optional(),
+    duplicate: z.boolean().optional(),
 });
 
 export const offlineMovementSchema = movementSubmitPayloadSchema.extend({
@@ -68,5 +69,4 @@ export const movementRecordSchema = z.object({
     mvtime: z.string().optional(),
     createdby_id: z.number().nullable().optional(),
     operator_name: z.string().nullable().optional(),
-    created_byname: z.string().nullable().optional(),
 });

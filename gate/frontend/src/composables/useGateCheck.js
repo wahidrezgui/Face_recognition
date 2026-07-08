@@ -3,6 +3,7 @@ import { useMutation, useQueryClient } from '@tanstack/vue-query';
 import { checkMovement, checkManual, submitMovement } from '../api/movements';
 import { countPendingMovements, isOnline, onConnectivityChange } from '../lib/offline-queue';
 import { syncPendingMovements } from '../lib/sync-movements';
+import { createRequestId } from '../lib/uuid';
 
 export function useGateCheck() {
     const queryClient = useQueryClient();
@@ -53,8 +54,16 @@ export function useGateCheck() {
         },
 
         async checkManualEntry(payload) {
-            const response = await checkManual(payload);
-            return response.data;
+            gate.isSubmitting = true;
+            try {
+                const response = await checkManual({
+                    ...payload,
+                    client_request_id: payload.client_request_id ?? createRequestId(),
+                });
+                return response.data;
+            } finally {
+                gate.isSubmitting = false;
+            }
         },
 
         async submit(payload) {

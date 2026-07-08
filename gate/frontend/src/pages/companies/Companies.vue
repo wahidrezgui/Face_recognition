@@ -4,24 +4,8 @@
         description="إدارة موظفي الشركات والتصاريح"
         dir="rtl"
     >
-        <!-- Presence chart -->
-        <AppCard
-            class="mb-6"
-            title="الحضور — آخر 7 أيام"
-            subtitle="عدد الدخول والخروج اليومي للموظفين"
-            padding="lg"
-        >
-            <Chart
-                v-if="chartPresence.datasets[0].data.length"
-                type="bar"
-                :data="chartPresence"
-                :options="PresenceOptions"
-            />
-            <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات حضور لهذه الفترة.</p>
-        </AppCard>
-
         <!-- General Search -->
-        <AppCard class="mb-6" title="بحث عام عن الموظفين" subtitle="ابحث في جميع الشركات دون تحديد شركة" padding="md">
+        <AppCard class="mb-4" title="بحث عام عن موظفي الشركات" subtitle="يبحث فقط في موظفي الشركات — لا يشمل العسكريين" padding="md">
             <div class="relative">
                 <input
                     type="search"
@@ -29,24 +13,25 @@
                     @keyup.enter="performGeneralSearch"
                     @input="handleGeneralSearchInput"
                     class="h-11 w-full rounded-xl border border-slate-200 bg-white py-2.5 pe-10 ps-10 text-sm text-slate-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                    placeholder="الاسم، الرقم العسكري، البطاقة الشخصية، الوظيفة..."
+                    placeholder="الاسم، البطاقة الشخصية، الوظيفة، الشركة..."
                     dir="rtl"
                 />
                 <i class="pi pi-search absolute end-3 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                <button
+                <AppButton
                     v-if="generalSearchQuery"
-                    type="button"
-                    class="absolute start-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    variant="ghost"
+                    size="sm"
+                    class="!absolute start-3 top-1/2 !h-8 !w-8 !-translate-y-1/2 !p-0 text-slate-400 hover:text-slate-600"
                     aria-label="مسح البحث"
                     @click="clearGeneralSearch"
                 >
                     <i class="pi pi-times" />
-                </button>
+                </AppButton>
             </div>
         </AppCard>
 
         <!-- Search results panel -->
-        <AppCard v-if="showGeneralSearchResults" class="mb-6" padding="md">
+        <AppCard v-if="showGeneralSearchResults" class="search-results-container mb-4" padding="md">
                 <div class="mb-4 flex items-center justify-between">
                     <h3 class="text-lg font-bold text-slate-900">
                         نتائج البحث ({{ generalSearchResults.length }} موظف)
@@ -83,12 +68,13 @@
                 </div>
         </AppCard>
 
-        <div class="w-full grid grid-cols-1 gap-4">
-            <div id="tabPanel-timeline">
-                <div class="mt-2 grid w-full grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
-
-                    <!-- Company list -->
-                    <AppCard class="flex flex-col" padding="none" style="max-height: calc(100vh - 200px);">
+        <div class="companies-workspace flex flex-col gap-4 lg:flex-row lg:items-start">
+            <!-- Company sidebar — narrow picker, main area for employees -->
+            <aside
+                class="companies-sidebar w-full shrink-0 lg:w-72 xl:w-80"
+                aria-label="قائمة الشركات"
+            >
+                <AppCard class="flex flex-col lg:sticky lg:top-4" padding="none" style="max-height: calc(100vh - 7rem);">
 
                         <!-- Header -->
                         <div class="flex flex-shrink-0 items-center justify-between border-b border-slate-100 px-4 pb-2 pt-4">
@@ -110,9 +96,16 @@
                                     dir="rtl"
                                 />
                                 <i class="pi pi-search absolute end-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400" />
-                                <button v-if="companySearch" type="button" @click="companySearch=''; onCompanySearchInput()" class="absolute start-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+                                <AppButton
+                                    v-if="companySearch"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="!absolute start-2.5 top-1/2 !h-7 !w-7 !-translate-y-1/2 !p-0 text-slate-400 hover:text-slate-600"
+                                    aria-label="مسح البحث"
+                                    @click="companySearch = ''; onCompanySearchInput()"
+                                >
                                     <i class="pi pi-times text-xs" />
-                                </button>
+                                </AppButton>
                             </div>
                         </div>
 
@@ -134,7 +127,7 @@
                             >
                                 <i class="pi pi-building flex-shrink-0 text-xs text-slate-300" />
                                 <span class="flex-1 truncate">{{ comp.name_ar || comp.name_en }}</span>
-                                <span class="max-w-[80px] truncate text-xs font-normal text-slate-400">{{ comp.name_en }}</span>
+                                <span class="hidden max-w-[5rem] truncate text-xs font-normal text-slate-400 xl:inline">{{ comp.name_en }}</span>
                                 <div class="flex flex-shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
                                     <AppButton variant="ghost" size="sm" class="!p-1 text-brand" @click.stop="editDep(comp.id)" title="تعديل"><i class="pi pi-pencil text-xs" /></AppButton>
                                     <AppButton variant="ghost" size="sm" class="!p-1 text-emerald-600 hover:text-emerald-700" @click.stop="infoComp(comp.id)" title="عرض"><i class="pi pi-eye text-xs" /></AppButton>
@@ -167,12 +160,15 @@
                                     @click="companyPage--"
                                     :disabled="companyPage === 1"
                                 >‹</AppButton>
-                                <span
-                                    v-for="p in visiblePageNumbers" :key="p"
+                                <AppButton
+                                    v-for="p in visiblePageNumbers"
+                                    :key="p"
+                                    variant="ghost"
+                                    size="sm"
+                                    class="!h-7 !w-7 !p-0 text-xs"
+                                    :class="p === companyPage ? '!border-brand !bg-brand !font-bold !text-white' : 'border border-slate-200 text-slate-600 hover:border-brand hover:bg-brand-muted'"
                                     @click="companyPage = p"
-                                    class="flex h-7 w-7 cursor-pointer items-center justify-center rounded-lg border text-xs"
-                                    :class="p === companyPage ? 'border-brand bg-brand font-bold text-white' : 'border-slate-200 text-slate-600 hover:border-brand hover:bg-brand-muted'"
-                                >{{ p }}</span>
+                                >{{ p }}</AppButton>
                                 <AppButton
                                     variant="secondary"
                                     size="sm"
@@ -190,69 +186,81 @@
                             </div>
                         </div>
                     </AppCard>
+            </aside>
 
-                    <AppCard class="2xl:col-span-2" padding="md">
+            <section class="companies-main min-w-0 flex-1">
+                    <AppCard class="h-full" padding="md">
                         <div v-if="viewDetail">
-                            <div class="mb-4 flex items-center justify-between">
-                                <div>
-                                    <h3 class="text-xl font-bold text-slate-900">{{ info ? (info.name_ar || info.name_en) : 'اختر شركة' }}</h3>
+                            <div class="companies-main-header mb-4 flex flex-wrap items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h3 class="truncate text-xl font-bold text-slate-900">{{ info ? (info.name_ar || info.name_en) : 'اختر شركة' }}</h3>
                                     <span class="text-sm text-slate-500">تاريخ الإنشاء: {{ info?.created_at ? formatDate(info.created_at) : '' }}</span>
                                 </div>
+                                <AppButton v-if="canMutate" class="shrink-0" @click="openCreatePanel">
+                                    <i class="pi pi-user-plus" aria-hidden="true" />
+                                    إضافة موظف
+                                </AppButton>
                             </div>
 
-                            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                                <div class="h-10 w-full min-w-[200px] max-w-[24rem]">
-                                    <form class="relative flex">
-                                        <input
-                                            type="search"
-                                            id="filter-text-box"
-                                            v-on:input="onFilterTextBoxChanged()"
-                                            class="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-                                            :placeholder="employeeQuickFilterPlaceholder"
-                                            dir="rtl"
-                                        />
-                                    </form>
-                                </div>
+                            <EmployeeDatabaseFilters
+                                v-model:military-number="military_number"
+                                v-model:fullname-ar="fullname_ar"
+                                v-model:plate-number="plate_number"
+                                v-model:status-id="filter_status_id"
+                                v-model:base-id="filter_base_id"
+                                v-model:zone-id="filter_zone_id"
+                                :bases="bases"
+                                :has-active-filters="hasActiveFilters"
+                                :selected-count="selectedCount"
+                                :bulk-actions="bulkActions"
+                                :read-only="!canMutate"
+                                @reset-filter="resetFilter"
+                                @clear-selection="clearSelection"
+                                @delete-selected="deleteSelected"
+                                @approve="approveSelected"
+                                @bulk-print="confirmBulkPrint"
+                            />
 
-                                <div class="flex flex-wrap items-center gap-2" v-if="toolbar">
-                                    <AppButton @click="OpenAddEmployee">
-                                        <i class="pi pi-user-plus" /> إضافة موظف
-                                    </AppButton>
-                                </div>
+                            <p class="emp-grid-hint" dir="rtl">
+                                <span class="emp-grid-hint__item">
+                                    <i class="pi pi-eye" aria-hidden="true" />
+                                    انقر على أي صف لعرض تفاصيل الموظف
+                                </span>
+                                <template v-if="canMutate">
+                                    <span class="emp-grid-hint__sep" aria-hidden="true">·</span>
+                                    <span class="emp-grid-hint__item">
+                                        <i class="pi pi-check-square" aria-hidden="true" />
+                                        حدّد المربعات للإجراءات الجماعية
+                                    </span>
+                                </template>
+                            </p>
 
-                                <div class="flex flex-wrap items-center gap-2" v-if="toolbar2">
-                                    <AppButton variant="danger" size="sm" @click="approveSelected(5)">
-                                        <i class="pi pi-times" /> رفض
-                                    </AppButton>
-                                    <AppButton variant="danger" size="sm" @click="deleteSelected">
-                                        <i class="pi pi-trash" /> حذف
-                                    </AppButton>
-                                    <AppButton size="sm" class="!bg-emerald-600 hover:!bg-emerald-700" @click="approveSelected(1)">
-                                        <i class="pi pi-check" /> اعتماد
-                                    </AppButton>
-                                    <AppButton variant="accent" size="sm" @click="bulkprintCombined">
-                                        <i class="pi pi-print" /> طباعة جماعية
-                                    </AppButton>
-                                    <AppButton size="sm" @click="approveSelected(3)">
-                                        <i class="pi pi-thumbs-up" /> استلام
-                                    </AppButton>
-                                </div>
-                            </div>
+                            <p
+                                v-if="!listLoading"
+                                class="emp-results-bar"
+                                dir="rtl"
+                                aria-live="polite"
+                            >
+                                <span class="emp-results-bar__count">{{ gridResultsLabel }}</span>
+                                <span v-if="hasActiveFilters" class="emp-results-bar__badge">فلاتر مفعّلة</span>
+                            </p>
 
                             <AppDataGrid
                                 ref="agGrid"
-                                class="mt-4"
+                                class="companies-employee-grid mt-4 w-full"
                                 :column-defs="mergedColumnDefs"
                                 :row-data="RawData"
                                 :per-page="perPage"
                                 :total-rows="totalRows"
+                                :get-row-class="detailRowClass"
+                                :row-selection="canMutate ? 'multiple' : 'none'"
                                 pagination-mode="server"
-                                height="calc(100vh - 250px)"
+                                dom-layout="autoHeight"
                                 line-height="56px"
                                 loading-label="جاري تحميل الموظفين…"
                                 empty-message="لا يوجد موظفون في هذه الشركة."
                                 @grid-ready="onGridReady"
-                                @row-clicked="OnClicked"
+                                @row-clicked="openEmployeeDetail"
                                 @selection-changed="onSelectionChanged"
                                 @page-change="onPageChange"
                                 @update:per-page="perPage = $event"
@@ -264,8 +272,7 @@
                             <p class="text-sm">اختر شركة من القائمة لعرض موظفيها</p>
                         </div>
                     </AppCard>
-                </div>
-            </div>
+            </section>
         </div>
     </PageContainer>
 
@@ -365,476 +372,124 @@
         </form>
     </Dialog>
 
-    <!-- ===== ADD EMPLOYEE SIDE PANEL ===== -->
-    <VueSidePanel v-model="addEmp" lock-scroll no-close="true" width="500px">
-        <div>
-            <form novalidate="" id="formguest" @submit.prevent="createguest">
-                <div class="flex h-full flex-col bg-white dark:bg-neutral-900">
-                    <div class="flex min-h-0 flex-1 flex-col py-6">
-                        <div class="px-4 sm:px-6">
-                            <div class="flex items-start justify-between">
-                                <div class="space-y-1">
-                                    <h2 class="text-lg font-medium text-neutral-700">Add Employee</h2>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="relative mt-8 flex-1 px-4 sm:px-6">
-                            <div class="grid grid-cols-12 gap-x-4">
-                                <div class="col-span-12 grid grid-cols-2 gap-4">
-                                    <Avatar icon="pi pi-user" class="mr-2" size="xlarge" shape="circle" />
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Ø§Ù„ØµÙˆØ±Ø©</span></label>
-                                        <input type="file" placeholder="Ø§Ù„ØµÙˆØ±Ø©" name="photo" @change="handleFileChange('photo')" class="flex h-12 w-full items-center justify-center rounded-md border bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-2">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Gender</span></label>
-                                        <Dropdown v-model="guest.gender_id" :options="gender" optionLabel="name_en" optionValue="id" placeholder="Gender" class="w-full md:w-14rem border border-dark-200" />
-                                    </div>
-                                </div>
-                                <div class="col-span-5">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Full Name</span></label>
-                                        <input type="text" v-model="guest.fullname_en" :class="{ 'border-red-500': !fieldValidity.fullname_en }" @input="fieldValidity.fullname_en = true" placeholder="Full Name" name="fullname_en" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-5">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Ø§Ù„Ø§Ø³Ù… Ø§Ù„ÙƒØ§Ù…Ù„</span></label>
-                                        <input type="text" v-model="guest.fullname_ar" :class="{ 'border-red-500': !fieldValidity.fullname_ar }" @input="fieldValidity.fullname_ar = true" placeholder="Ø§Ù„Ø§Ø³Ù… Ø§Ù„ÙƒØ§Ù…Ù„" name="fullname_ar" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Phone Number</span></label>
-                                        <input type="text" placeholder="Phone Number" name="phone_number" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Job_Arabic</span></label>
-                                        <input type="text" v-model="guest.Job_Arabic" :class="{ 'border-red-500': !fieldValidity.Job_Arabic }" @input="fieldValidity.Job_Arabic = true" placeholder="Job_Arabic" name="Job_Arabic" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Job_En</span></label>
-                                        <input type="text" v-model="guest.Job_En" :class="{ 'border-red-500': !fieldValidity.Job_En }" @input="fieldValidity.Job_En = true" placeholder="Job_En" name="Job_En" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>StartTime</span></label>
-                                        <input type="time" v-model="guest.StartTime" :class="{ 'border-red-500': !fieldValidity.StartTime }" @input="fieldValidity.StartTime = true" placeholder="StartTime" name="StartTime" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>EndTime</span></label>
-                                        <input type="time" v-model="guest.EndTime" :class="{ 'border-red-500': !fieldValidity.EndTime }" @input="fieldValidity.EndTime = true" placeholder="EndTime" name="EndTime" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-5">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Ù…Ù„Ø§Ø­Ø¸Ø§Øª</span></label>
-                                        <input type="text" v-model="guest.remarks" :class="{ 'border-red-500': !fieldValidity.remarks }" @input="fieldValidity.remarks = true" placeholder="Ù…Ù„Ø§Ø­Ø¸Ø§Øª" name="remarks" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Escort</span></label>
-                                        <input type="text" v-model="guest.Escort" :class="{ 'border-red-500': !fieldValidity.Escort }" @input="fieldValidity.Escort = true" placeholder="Escort" name="Escort" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ø£Ø¬Ù‡Ø²Ø©</span></label>
-                                        <select v-model="guest.device" :class="{ 'border-red-500': !fieldValidity.device }" @change="fieldValidity.device = true" name="device" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            <option value="">-- Sélectionnez --</option>
-                                            <option value="phone">Phone</option>
-                                            <option value="laptop">Laptop</option>
-                                            <option value="none">None</option>
-                                            <option value="phone + laptop">Phone + Laptop</option>
-                                            <option value="phone + camera">phone + camera</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>QID Number</span></label>
-                                        <input type="text" v-model="guest.qid" :class="{ 'border-red-500': !fieldValidity.qid }" @input="fieldValidity.qid = true" placeholder="QID Number" name="qid" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Nationality</span></label>
-                                        <Dropdown v-model="guest.nationality_id" :options="filteredNationalities" optionLabel="name_ar" optionValue="id" placeholder="Nationality" class="w-full md:w-14rem border border-dark-200" filter filterPlaceholder="Search nationality..." />
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <div class="mb-3">
-                                        <label class="block text-sm font-medium inline-flex items-center"><span>Expiry Date</span></label>
-                                        <input type="date" v-model="guest.expiry_date" :class="{ 'border-red-500': !fieldValidity.expiry_date }" @input="fieldValidity.expiry_date = true" placeholder="Expiry Date" name="expiry_date" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                    </div>
-                                </div>
-                                <div class="col-span-6">
-                                    <input type="hidden" name="created_by" :value="userName">
-                                    <input type="hidden" name="dep_parent_id" :value="guest.dep_id">
-                                    <input type="hidden" name="dep_id" :value="guest.dep_id">
-                                    <input type="hidden" name="rank_id" :value="guest.rank_id">
-                                    <input type="hidden" name="is_employee" value="1">
-                                </div>
-                            </div>
-                        </div>
-                        <hr/>
-                        <div class="flex justify-between px-8 py-4">
-                            <h2 class="py-4 text-lg font-medium">Restriction</h2>
-                            <Dropdown v-model="guest.default_base" :options="bases" optionLabel="name_en" optionValue="id" placeholder="Default Base" class="w-full md:w-14rem border border-dark-200" />
-                        </div>
-                        <div class="relative mb-5 flex-1 px-4 sm:px-6">
-                            <div class="grid grid-cols-2 gap-4">
-                                <Card v-for="base in bases" :key="base.id" class="bg-white text-gray-700 border shadow-md rounded-md">
-                                    <template #title>
-                                        <div><label class="ml-2">{{base.name_ar}}</label></div>
-                                    </template>
-                                    <template #content>
-                                        <table class="min-w-full divide-y divide-gray-200">
-                                            <tbody class="bg-white">
-                                                <tr v-for="zone in base.zones" :key="zone.id">
-                                                    <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                        <Checkbox v-model="guest.selectedZones" name="zoning[]" :inputId="zone.id" :value="zone.id" class="border-2 w-6 h-6 text-gray-600 rounded-lg transition-colors duration-200" />
-                                                    </td>
-                                                    <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900"><span class="font-semibold">{{zone.name_en}}</span></td>
-                                                    <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                        <ZoneSwatch :zone="zone" size="md" shape="circle" />
-                                                    </td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </template>
-                                </Card>
-                            </div>
-                        </div>
-                        <div class="shrink-0 px-4 py-4">
-                            <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                                <AppButton variant="secondary" @click="addEmp=false">Cancel</AppButton>
-                                <AppButton type="submit" :disabled="isSavingEmployee">
-                                    <i v-if="isSavingEmployee" class="pi pi-spinner pi-spin mr-2"></i>
-                                    {{ isSavingEmployee ? 'Saving...' : 'Save Employee' }}
-                                </AppButton>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </VueSidePanel>
+    <EmployeeDetailPanel
+        v-model:open="addg"
+        mode="create"
+        :active-tab="10"
+        :guest="guest"
+        :car="car"
+        :gender="gender"
+        :nationalities="nationalities"
+        :departments="departments"
+        :ranks="ranks"
+        :bases="bases"
+        :user-name="userName"
+        :dep-id="depId"
+        :field-validity="fieldValidity"
+        lock-department
+        company-guest
+        @create="createguest"
+        @file-change="handleFileChange"
+    />
 
-    <!-- ===== EDIT EMPLOYEE SIDE PANEL ===== -->
-    <VueSidePanel v-model="blokGuest" lock-scroll no-close="true" width="600px">
-        <div>
-            <div class="flex items-center bg-neutral-200 justify-left">
-                <div role="tablist" aria-orientation="horizontal" class="overflow-y-hidden -mb-px flex grow snap-x snap-mandatory overflow-x-auto px-4 scrollbar-thin scrollbar-track-neutral-200 scrollbar-thumb-neutral-300 sm:space-x-4 sm:grow-0">
-                    <button @click="activeTab = 10" :class="activeTab === 10 ? 'text-green-500 border-green-500' : ''" class="border-primary-500 text-primary-600 group inline-flex min-w-full shrink-0 snap-start snap-always items-center justify-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium focus:outline-none sm:min-w-0" type="button">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" aria-hidden="true" class="text-primary-500 -ml-0.5 mr-1.5 h-5 w-5">
-                            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25H12"></path>
-                        </svg>
-                        <span>Personal Info</span>
-                    </button>
-                    <button @click="activeTab = 12" :class="activeTab === 12 ? 'text-green-500 border-green-500' : ''" class="border-transparent group inline-flex min-w-full shrink-0 snap-start snap-always items-center justify-center whitespace-nowrap border-b-2 py-4 px-1 text-sm font-medium focus:outline-none sm:min-w-0" type="button">
-                        <i class="pi pi-car pr-2"></i><span>Ø§Ù„Ø³ÙŠØ§Ø±Ø§Øª</span>
-                    </button>
-                    <!-- Activity Log Tab Removed -->
-                </div>
-            </div>
-
-            <div id="tabPanel-timeline">
-                <!-- Personal Info Tab -->
-                <div v-show="activeTab === 10" role="tabpanel">
-                    <form novalidate="" id="formeditguest" @submit.prevent="updateguest">
-                        <div class="flex h-full flex-col bg-white">
-                            <div class="flex min-h-0 flex-1 flex-col py-6">
-                                <div class="relative mt-8 flex-1 px-4 sm:px-6">
-                                    <div class="grid grid-cols-12 gap-x-4">
-                                        <div class="col-span-12 grid grid-cols-2 gap-4">
-                                            <img v-if="guest.photo == null" src="/uploads/nopic.png" class="object-cover w-20 h-20 rounded-full mb-2" />
-                                            <img v-else :src="'/'+guest.photo" class="object-cover w-20 h-20 rounded-full mb-2" />
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Photo</span></label>
-                                        <input 
-    :key="fileInputKey"
-    type="file" 
-    name="photo" 
-    @change="handleEditFileChange" 
-    class="flex h-12 w-full items-center justify-center rounded-md border bg-white/0 p-3 text-sm outline-none">        
-                                            </div>
-                                        </div>
-                                        <div class="col-span-2">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Gender</span></label>
-                                                <Dropdown v-model="guest.gender_id" :options="gender" optionLabel="name_en" optionValue="id" placeholder="Gender" @change="onGenderChange" class="w-full md:w-14rem border border-dark-200" />
-                                            </div>
-                                        </div>
-                                        <div class="col-span-5">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Full Name</span></label>
-                                                <input type="text" placeholder="Full Name" name="fullname_en" v-model="guest.fullname_en" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-5">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Ø§Ù„Ø§Ø³Ù… Ø§Ù„ÙƒØ§Ù…Ù„</span></label>
-                                                <input type="text" placeholder="" name="fullname_ar" v-model="guest.fullname_ar" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Job_Arabic</span></label>
-                                                <input type="text" placeholder="Job_Arabic" name="Job_Arabic" v-model="guest.Job_Arabic" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Job_En</span></label>
-                                                <input type="text" placeholder="Job_En" name="Job_En" v-model="guest.Job_En" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>StartTime</span></label>
-                                                <input type="time" placeholder="StartTime" name="StartTime" v-model="guest.StartTime" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>EndTime</span></label>
-                                                <input type="time" placeholder="EndTime" name="EndTime" v-model="guest.EndTime" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-
-                                        <div class="col-span-12">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Ù…Ù„Ø§Ø­Ø¸Ø§Øª</span></label>
-                                                <input type="text" placeholder="Ù…Ù„Ø§Ø­Ø¸Ø§Øª" name="remarks" v-model="guest.remarks" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Escort</span></label>
-                                                <input type="text" placeholder="Escort" name="Escort" v-model="guest.Escort" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>QID Number</span></label>
-                                                <input type="text" placeholder="QID Number" name="qid" v-model="guest.qid" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Nationality</span></label>
-                                                <Dropdown v-model="guest.nationality_id" :options="filteredNationalities" optionLabel="name_ar" optionValue="id" placeholder="Nationality" class="w-full md:w-14rem border border-dark-200" filter filterPlaceholder="Search nationality..." />
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>ØµÙ„Ø§Ø­ÙŠØ© Ø§Ù„Ø£Ø¬Ù‡Ø²Ø©</span></label>
-                                                <select v-model="guest.device" :class="{ 'border-red-500': !fieldValidity.device }" @change="fieldValidity.device = true" name="device" class="flex h-12 w-full items-center justify-center rounded-md border hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                                    <option value="">-- Sélectionnez --</option>
-                                                    <option value="phone">Phone</option>
-                                                    <option value="laptop">Laptop</option>
-                                                    <option value="none">None</option>
-                                                    <option value="phone + laptop">Phone + Laptop</option>
-                                                    <option value="phone + camera">Phone + camera</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <div class="mb-3">
-                                                <label class="block text-sm font-medium inline-flex items-center"><span>Expiry Date</span></label>
-                                                <input type="date" placeholder="Expiry Date" name="expiry_date" v-model="guest.expiry_date" class="flex h-12 w-full items-center justify-center rounded-md border border-slate-300 hover:border-indigo-300 bg-white/0 p-3 text-sm outline-none">
-                                            </div>
-                                        </div>
-                                        <div class="col-span-6">
-                                            <input type="hidden" name="created_by" :value="userName">
-                                            <input type="hidden" name="id" :value="guest.id">
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <hr/>
-                                <div class="flex justify-between px-8 py-4">
-                                    <h2 class="py-4 text-lg font-medium">Restriction</h2>
-                                    <Dropdown v-model="guest.default_base" :options="bases" optionLabel="name_en" optionValue="id" placeholder="Default Base" class="w-full md:w-14rem border border-dark-200" />
-                                </div>
-                                <div class="relative mb-5 flex-1 px-4 sm:px-6">
-                                    <div class="grid grid-cols-2 gap-4">
-                                        <Card v-for="base in bases" :key="base.id" class="bg-white text-gray-700 border shadow-md rounded-md">
-                                            <template #title>
-                                                <div><label class="ml-2">{{base.name_ar}}</label></div>
-                                            </template>
-                                            <template #content>
-                                                <table class="min-w-full divide-y divide-gray-200">
-                                                    <tbody class="bg-white">
-                                                        <tr v-for="zone in base.zones" :key="zone.id">
-                                                            <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                                <Checkbox v-model="guest.selectedZones" name="zoning[]" :inputId="zone.id" :value="zone.id" class="border-2 w-6 h-6 text-gray-600 rounded-lg transition-colors duration-200" />
-                                                            </td>
-                                                            <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900"><span class="font-semibold">{{zone.name_en}}</span></td>
-                                                            <td class="p-2 whitespace-nowrap text-sm font-normal text-gray-900">
-                                                                <ZoneSwatch :zone="zone" size="md" shape="circle" />
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-                                            </template>
-                                        </Card>
-                                    </div>
-                                </div>
-
-                                <div class="shrink-0 px-4 py-4">
-                                    <div class="flex flex-wrap justify-end space-x-3 sm:flex-nowrap">
-                                        <AppButton variant="secondary" @click="blokGuest=false">Cancel</AppButton>
-                                        <AppButton type="submit" :disabled="isUpdatingEmployee">
-                                            <i v-if="isUpdatingEmployee" class="pi pi-spinner pi-spin mr-2"></i>
-                                            {{ isUpdatingEmployee ? 'Saving...' : 'Save Employee' }}
-                                        </AppButton>
-                                    </div>
-                                </div>
-
-                                <div class="bg-gray-100 p-4 flex justify-between items-center">
-                                    <h3 class="text-lg font-semibold text-gray-800">
-                                        Employee Details
-                                        <span v-if="guest.fullname_en" class="text-sm text-gray-600"> - {{ guest.fullname_en }}</span>
-                                    </h3>
-                                    <div class="flex space-x-2">
-                                        <AppButton variant="accent" @click="printFromSidePanel">
-                                            <i class="pi pi-print"></i>Print Badge
-                                        </AppButton>
-                                        <AppButton variant="secondary" @click="blokGuest = false">
-                                            <i class="pi pi-times"></i>Close
-                                        </AppButton>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-
-                <!-- Cars Tab -->
-                <div v-show="activeTab === 12" role="tabpanel">
-                    <div class="align-middle inline-block min-w-full">
-                        <div class="p-5">
-                            <form class="relative flex" novalidate="" @submit.prevent="editCarMode ? updateCar() : addCar()">
-                                <input type="text" v-model="car.plate_number"
-                                    class="peer h-full w-full rounded-[7px] border border-gray-200 bg-white px-3 py-2.5 pr-32 font-sans text-sm font-normal text-blue-gray-700 outline outline-0 transition-all placeholder-shown:border focus:border-1 focus:border-t-transparent focus:outline-0"
-                                    :placeholder="editCarMode ? 'Edit plate number...' : 'Add new plate number...'"
-                                    required />
-                                <div class="flex space-x-1 absolute right-1 top-1 z-10">
-                                    <AppButton v-if="editCarMode" variant="secondary" size="sm" @click="cancelEditCar">Cancel</AppButton>
-                                    <AppButton type="submit" size="sm">
-                                        {{ editCarMode ? 'Update' : 'Add' }} Car
-                                    </AppButton>
-                                </div>
-                            </form>
-                        </div>
-                        <table class="min-w-full divide-y divide-gray-200">
-                            <thead class="bg-gray-50">
-                                <tr>
-                                    <th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                    <th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Plate Number</th>
-                                    <th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                                    <th class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr v-for="carItem in guest.cars" :key="carItem.id" class="bg-white hover:bg-gray-50">
-                                    <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-500"><i class="pi pi-car"></i></td>
-                                    <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-900"><span class="font-semibold">{{ carItem.plate_number }}</span></td>
-                                    <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-900">
-                                        <span class="inline-flex items-center">
-                                            <Tag v-if="carItem.active==0" icon="pi pi-exclamation-triangle" severity="warning" value="Disable"></Tag>
-                                            <Tag v-if="carItem.active==1" icon="pi pi-check" severity="success" value="Enable"></Tag>
-                                            <AppButton v-if="carItem.active==1" variant="ghost" size="sm" class="!p-1 ml-2 text-gray-500 hover:text-red-600" title="Disable" @click="toggleCarStatus(carItem.id, 0)"><i class="pi pi-times"></i></AppButton>
-                                            <AppButton v-if="carItem.active==0" variant="ghost" size="sm" class="!p-1 ml-2 text-gray-500 hover:text-green-600" title="Enable" @click="toggleCarStatus(carItem.id, 1)"><i class="pi pi-check"></i></AppButton>
-                                        </span>
-                                    </td>
-                                    <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-900">
-                                        <div class="flex space-x-2">
-                                            <AppButton variant="ghost" size="sm" class="!p-1 text-blue-500 hover:text-blue-700" title="Edit" @click="editExistingCar(carItem)"><i class="pi pi-pencil"></i></AppButton>
-                                            <AppButton variant="ghost" size="sm" class="!p-1 text-red-500 hover:text-red-700" title="Delete" @click="deleteCar(carItem.id)"><i class="pi pi-trash"></i></AppButton>
-                                        </div>
-                                    </td>
-                                </tr>
-                            </tbody>
-                        </table>
-                        <div v-if="!guest.cars || guest.cars.length === 0" class="text-center py-8 text-gray-500">
-                            <i class="pi pi-car text-3xl mb-2"></i>
-                            <p>No cars registered for this employee.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </VueSidePanel>
+    <EmployeeDetailPanel
+        v-model:open="blokGuest"
+        v-model:active-tab="activeTab"
+        mode="edit"
+        :guest="guest"
+        :car="car"
+        :gender="gender"
+        :nationalities="nationalities"
+        :departments="departments"
+        :ranks="ranks"
+        :bases="bases"
+        :user-name="userName"
+        :dep-id="depId"
+        :read-only="!canMutate"
+        show-print-button
+        :can-print="canMutate"
+        lock-department
+        company-guest
+        @save="updateguest"
+        @file-change="handleFileChange"
+        @add-car="addCar"
+        @delete-car="delCar"
+        @print="printFromSidePanel"
+    />
 
     <AppLoader :loading="isLoading" variant="overlay" label="جاري التحميل..." />
 </template>
 
 <script>
 import api from '../../api/client';
-import { fetchBases, fetchBase } from '../../api/organization';
-import { fetchNationalities } from '../../api/lookups';
-import Checkbox from 'primevue/checkbox';
-import OrganizationChart from 'primevue/organizationchart';
-import Tree from 'primevue/tree';
+import { updateEmployee, createEmployee } from '../../api/employees';
+import { fetchBases } from '../../api/organization';
+import { fetchRanks, fetchNationalities } from '../../api/lookups';
 import Dialog from 'primevue/dialog';
-import Button from 'primevue/button';
 import PageContainer from '../../components/ui/PageContainer.vue';
 import AppCard from '../../components/ui/AppCard.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import AppDataGrid from '../../components/ui/AppDataGrid.vue';
-import Dropdown from 'primevue/dropdown';
+import EmployeeDatabaseFilters from '../../components/employees/EmployeeDatabaseFilters.vue';
+import EmployeeDetailPanel from '../../components/employees/EmployeeDetailPanel.vue';
+import {
+    EMPLOYEE_GENDER_OPTIONS,
+    buildEmployeeBulkConfirm,
+    buildEmployeeGridColumns,
+    resolveEmployeeBulkActions,
+    emptyGuest,
+    applyEmployeePhotoFile,
+    revokeEmployeePhotoPreview,
+    employeeStatusCellRenderer,
+    employeePhotoCellRenderer,
+    employeeCountLabelFromTotal,
+    buildEmployeeSaveFormData,
+    treeSelectValue,
+    resolveEmployeePhotoFile,
+} from '../../lib/employees/employeeFormUi';
+import {
+    appendZoningToFormData,
+    applyEmployeeListResponse,
+    buildEmployeeListParams,
+    hasEmployeeFilters,
+    resetCreateFieldValidity,
+    validateCreateGuest,
+} from '../../composables/useEmployeesPage';
+import { canWriteResource } from '../../lib/auth-roles';
+import { useAuth } from '../../composables/useAuth';
 import { ref } from 'vue';
 import { createBadgePrintMixin } from '../../composables/useBadgePrint';
-import Card from 'primevue/card';
-import Chart from 'primevue/chart';
-import Avatar from 'primevue/avatar';
-import Tag from 'primevue/tag';
-import ZoneSwatch from '../../components/zones/ZoneSwatch.vue';
 
 const gridApi = ref();
 
-function customCellRenderer(params) {
-    var cellValue = params.value;
-    var formattedValue = '';
-    if (cellValue === 0) { formattedValue = '<span class="bg-orange-200 text-orange-600 py-1 px-3 rounded text-xs">Pending</span>'; }
-    if (cellValue === 1) { formattedValue = '<span class="bg-green-200 text-green-600 py-1 px-3 rounded text-xs">Approved</span>'; }
-    if (cellValue === 2) { formattedValue = '<span class="bg-blue-200 text-blue-600 py-1 px-3 rounded text-xs">Printed</span>'; }
-    if (cellValue === 3) { formattedValue = '<span class="bg-green-500 text-green-200 py-1 px-3 rounded text-xs">Collected</span>'; }
-    return formattedValue;
-}
-
 function customCellImgRenderer(params) {
-    var cellValue = params.value;
-    var formattedValue = '';
-    if (cellValue != null) { formattedValue = '<img src="' + cellValue + '" class="object-cover w-8 h-8 rounded-full mt-2" />'; }
-    else { formattedValue = '<img src="/uploads/nopic.png" class="object-cover w-8 h-8 rounded-full mt-2" />'; }
-    return formattedValue;
+    const cellValue = params.value;
+    if (cellValue != null) {
+        return `<img src="${cellValue}" class="object-cover w-8 h-8 rounded-full mt-2" alt="" />`;
+    }
+    return '<img src="/uploads/nopic.png" class="object-cover w-8 h-8 rounded-full mt-2" alt="" />';
 }
 
 export default {
+    name: 'Companies',
     components: {
-        Checkbox, OrganizationChart, Tree, Button, Dialog,
-        AppDataGrid, Dropdown, Chart, Card, Avatar, Tag, PageContainer, AppCard, AppButton, ZoneSwatch
+        Dialog,
+        AppDataGrid,
+        EmployeeDatabaseFilters,
+        EmployeeDetailPanel,
+        PageContainer,
+        AppCard,
+        AppButton,
+    },
+    setup() {
+        const { user: authUser } = useAuth();
+        return { authUser };
     },
     mixins: [
         createBadgePrintMixin({
             getGridApi: () => gridApi.value,
             onAfterBulkPrint(vm) {
-                vm.getEmployees();
+                vm.loadCompanyEmployees();
             },
             onAfterSinglePrint(vm) {
                 vm.performGeneralSearch();
@@ -857,8 +512,6 @@ export default {
     ],
     data() {
         return {
-            fileInputKey: 0,
-            agGridKey: '',
             departments: [],
             depId: localStorage.getItem('dep_id'),
             userName: localStorage.getItem('user_name'),
@@ -880,59 +533,23 @@ export default {
                 plate_number: '',
                 active: 1,
                 emp_id: null,
-                id: null
+                id: null,
             },
-            editCarMode: false,
-            guest: {
-                fullname_en: '',
-                fullname_ar: '',
-                qrcode: '',
-                phone_number: '',
-                expiry_date: '',
-                Job_Arabic: '',
-                Job_En: '',
-                StartTime: '',
-                EndTime: '',
-                Escort: '',
-                device: '',
-                qid: '',
-                gender_id: null,
-                nationality_id: null,
-                default_base: 0,
-                dep_id: null,
-                rank_id: 109,
-                selectedZones: [],
-                idguest: '',
-                photo: null,
-                remarks: '',
-                logs: [],
-                cars: [],
-                military_number: ''
-            },
-            guestBackup: null, // For preserving form data during dropdown changes
-            fieldValidity: {
-                fullname_ar: true,
-                fullname_en: true,
-                qid: true,
-                Job_Arabic: true,
-                Job_En: true,
-                StartTime: true,
-                EndTime: true,
-                Escort: true,
-                device: true,
-                expiry_date: true,
-                name_en: true,
-                military_number: true,
-                remarks: true
-            },
+            filter_base_id: '',
+            filter_zone_id: '',
+            filter_status_id: '',
+            military_number: '',
+            fullname_ar: '',
+            plate_number: '',
+            guest: emptyGuest(),
+            fieldValidity: { ...resetCreateFieldValidity(), name_en: true },
             currentPage: 1,
-            perPage: 125,
+            perPage: 25,
             totalRows: 0,
-            q: '',
-            isfiltered: false,
-            addEmp: false,
-            gender: [{ id: 1, name_en: 'Male' }, { id: 2, name_en: 'Female' }],
+            addg: false,
+            gender: EMPLOYEE_GENDER_OPTIONS,
             bases: [],
+            ranks: [],
             nationalities: [],
             addCompany: false,
             editCompany: false,
@@ -941,24 +558,16 @@ export default {
             RawData: [],
             viewDetail: false,
             isLoading: false,
-            toolbar: true,
-            toolbar2: false,
+            listLoading: false,
             blokGuest: false,
-            dataimport: false,
-            editguest: false,
             activeTab: 10,
-            chartPresence: {
-                labels: [],
-                datasets: [
-                    { label: 'دخول', backgroundColor: '', borderColor: '', data: [] },
-                    { label: 'خروج', backgroundColor: '', borderColor: '', data: [] },
-                ],
-            },
-            PresenceOptions: null,
+            activeDetailId: null,
+            selectedCount: 0,
+            selectedRows: [],
+            pendingEmployeePhotoFile: null,
             currentCompanyId: null,
             isSavingCompany: false,
-            isSavingEmployee: false,
-            isUpdatingEmployee: false,
+            filterTimer: null,
 
             // General search
             generalSearchQuery: '',
@@ -971,47 +580,89 @@ export default {
             searchGridApi: null,
             debounceTimer: null,
 
-            // Company list â€” Option 7 Variant C
+            // Company list
             companySearch: '',
             companyPage: 1,
             companyPageSize: 10,
             pinnedCompanies: JSON.parse(localStorage.getItem('pinnedCompanies') || '[]'),
-            
         };
     },
     mounted() {
         this.fetchData();
-        this.PresenceOptions = this.setPresenceOptions();
+        this.fetchLookups();
         window.vueApp = this;
     },
+    beforeUnmount() {
+        clearTimeout(this.filterTimer);
+    },
+    watch: {
+        military_number() { this.scheduleFilter(); },
+        fullname_ar() { this.scheduleFilter(); },
+        plate_number() { this.scheduleFilter(); },
+        filter_status_id() { this.scheduleFilter(); },
+        filter_base_id() { this.scheduleFilter(); },
+        filter_zone_id() { this.scheduleFilter(); },
+        blokGuest(open) {
+            if (!open) {
+                this.activeDetailId = null;
+                this.clearPendingEmployeePhoto();
+            }
+        },
+        addg(open) {
+            if (!open) {
+                this.clearPendingEmployeePhoto();
+            }
+        },
+    },
     computed: {
-        mergedColumnDefs() {
-            const modifiedColumnDefs = this.ColumnsDef.map((column) => {
-                const col = { ...column };
-                if (col.field === 'photo' || col.headerName === 'Photo') {
-                    col.headerName = 'الصورة';
-                }
-                if (col.field === 'expiry_date') {
-                    col.valueFormatter = (params) => this.formatDate(params.value, { dateOnly: true });
-                }
-                return col;
+        canMutate() {
+            return canWriteResource('companies', this.authUser);
+        },
+        hasActiveFilters() {
+            return hasEmployeeFilters({
+                militaryNumber: this.military_number,
+                fullnameAr: this.fullname_ar,
+                plateNumber: this.plate_number,
+                filterBaseId: this.filter_base_id,
+                filterZoneId: this.filter_zone_id,
+                filterStatusId: this.filter_status_id,
             });
-            const columnIndex = modifiedColumnDefs.findIndex((column) => column.headerName === 'Status');
-            if (columnIndex !== -1) { modifiedColumnDefs[columnIndex].cellRenderer = customCellRenderer; }
-            const colIndex = modifiedColumnDefs.findIndex((column) => column.field === 'photo');
-            if (colIndex !== -1) { modifiedColumnDefs[colIndex].cellRenderer = customCellImgRenderer; }
+        },
+        gridResultsLabel() {
+            return employeeCountLabelFromTotal(this.totalRows);
+        },
+        bulkActions() {
+            return resolveEmployeeBulkActions({
+                filterStatusId: this.filter_status_id,
+                selectedRows: this.selectedRows,
+            });
+        },
+        mergedColumnDefs() {
+            let modifiedColumnDefs = buildEmployeeGridColumns(this.ColumnsDef)
+                .filter((column) => column.field !== 'department');
+
+            if (!this.canMutate) {
+                modifiedColumnDefs = modifiedColumnDefs.filter((column) => column.colId !== 'selection');
+            }
+
+            const statusIndex = modifiedColumnDefs.findIndex((column) => column.headerName === 'الحالة');
+            if (statusIndex !== -1) {
+                modifiedColumnDefs[statusIndex].cellRenderer = employeeStatusCellRenderer;
+            }
+
+            const photoIndex = modifiedColumnDefs.findIndex((column) => column.headerName === 'الصورة');
+            if (photoIndex !== -1) {
+                modifiedColumnDefs[photoIndex].cellRenderer = employeePhotoCellRenderer;
+            }
+
             return modifiedColumnDefs;
         },
-
-        employeeQuickFilterPlaceholder() {
-            const skipFields = new Set(['photo', 'actions', '__actions']);
-            const labels = this.mergedColumnDefs
-                .filter((col) => col.field && !skipFields.has(col.field) && col.headerName)
-                .map((col) => col.headerName);
-            if (!labels.length) {
-                return 'بحث…';
-            }
-            return `بحث بـ ${labels.join('، ')}…`;
+        detailRowClass() {
+            return (params) => (
+                params.data?.id === this.activeDetailId && this.blokGuest
+                    ? 'emp-row-detail'
+                    : ''
+            );
         },
 
         searchColumnDefs() {
@@ -1059,22 +710,171 @@ export default {
             if (current >= total - 2) return [total - 4, total - 3, total - 2, total - 1, total];
             return [current - 2, current - 1, current, current + 1, current + 2];
         },
-        // Add filter for nationalities dropdown
-        filteredNationalities() {
-            return this.nationalities;
-        },
     },
     methods: {
-        // ---- Preserve form data during dropdown changes ----
-        onGenderChange() {
-            // Form data is preserved automatically when using proper v-model binding
-            // This method ensures reactivity is maintained
-            this.$forceUpdate();
+        scheduleFilter() {
+            if (!this.currentCompanyId) {
+                return;
+            }
+            clearTimeout(this.filterTimer);
+            this.filterTimer = setTimeout(() => this.filter(), 300);
+        },
+        employeeListParams() {
+            return buildEmployeeListParams({
+                depId: this.currentCompanyId,
+                currentPage: this.currentPage,
+                perPage: this.perPage,
+                militaryNumber: this.military_number,
+                fullnameAr: this.fullname_ar,
+                plateNumber: this.plate_number,
+                filterBaseId: this.filter_base_id,
+                filterZoneId: this.filter_zone_id,
+                filterStatusId: this.filter_status_id,
+                companyOnly: true,
+            });
+        },
+        applyListPayload(payload) {
+            const result = applyEmployeeListResponse(payload, this.filter_status_id);
+            this.ColumnsDef = result.columns;
+            this.RawData = result.rows;
+            this.totalRows = result.totalRows;
+            this.$nextTick(() => {
+                gridApi.value?.refreshCells({ force: true });
+            });
+        },
+        loadCompanyEmployees() {
+            if (!this.currentCompanyId) {
+                return Promise.resolve();
+            }
+
+            this.listLoading = true;
+            return api.get('/api/employees', { params: this.employeeListParams() })
+                .then((response) => {
+                    this.applyListPayload(response.data);
+                })
+                .catch((error) => {
+                    console.error('Error loading company employees:', error);
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحميل الموظفين', life: 3000 });
+                })
+                .finally(() => {
+                    this.listLoading = false;
+                });
+        },
+        async fetchLookups() {
+            try {
+                const [basesRes, ranksRes, nationalitiesRes] = await Promise.all([
+                    fetchBases(),
+                    fetchRanks(),
+                    fetchNationalities(),
+                ]);
+                this.bases = basesRes.data;
+                this.ranks = ranksRes.data;
+                this.nationalities = nationalitiesRes.data;
+            } catch (error) {
+                console.error('Error loading lookups:', error);
+            }
+        },
+        loadGuestDetail(id) {
+            return api.get(`/api/employees/${id}`).then((response) => {
+                revokeEmployeePhotoPreview(this.guest);
+                const guest = response.data[0];
+                this.guest = guest;
+                this.guest.dep_id = this.currentCompanyId;
+                this.guest.rank_id = { [guest.rank_id]: true };
+                this.guest.photoPreview = null;
+                return guest;
+            });
+        },
+        clearPendingEmployeePhoto() {
+            revokeEmployeePhotoPreview(this.guest);
+            this.pendingEmployeePhotoFile = null;
+        },
+        handleFileChange(event) {
+            const file = applyEmployeePhotoFile(this.guest, event);
+            if (!file) {
+                this.pendingEmployeePhotoFile = null;
+                this.$toast.add({
+                    severity: 'warn',
+                    summary: 'تنبيه',
+                    detail: 'يرجى اختيار ملف صورة صالح',
+                    life: 3000,
+                });
+                return;
+            }
+            this.pendingEmployeePhotoFile = file;
+        },
+        openCreatePanel() {
+            if (!this.currentCompanyId) {
+                this.$toast.add({ severity: 'warn', summary: 'تنبيه', detail: 'اختر شركة أولاً', life: 3000 });
+                return;
+            }
+            this.clearPendingEmployeePhoto();
+            this.guest = emptyGuest();
+            this.guest.dep_id = this.currentCompanyId;
+            this.fieldValidity = resetCreateFieldValidity();
+            this.addg = true;
+        },
+        openEmployeeDetail(event) {
+            if (!event?.data?.id) {
+                return;
+            }
+            this.closeGeneralSearch();
+            const id = event.data.id;
+            this.clearPendingEmployeePhoto();
+            this.activeTab = 10;
+            this.activeDetailId = id;
+            this.car.emp_id = id;
+            this.loadGuestDetail(id);
+            this.blokGuest = true;
+        },
+        resetFilter() {
+            clearTimeout(this.filterTimer);
+            this.military_number = '';
+            this.fullname_ar = '';
+            this.plate_number = '';
+            this.filter_base_id = '';
+            this.filter_zone_id = '';
+            this.filter_status_id = '';
+            this.currentPage = 1;
+            this.loadCompanyEmployees();
+        },
+        filter() {
+            this.currentPage = 1;
+            this.loadCompanyEmployees();
+        },
+        onSelectionChanged(event) {
+            const selectedRows = event.api.getSelectedRows();
+            this.selectedRows = selectedRows;
+            this.selectedCount = selectedRows.length;
+        },
+        clearSelection() {
+            gridApi.value?.deselectAll();
+            this.selectedRows = [];
+            this.selectedCount = 0;
+        },
+        getSelectedEmployeeIds() {
+            return (gridApi.value?.getSelectedRows() ?? []).map((row) => row.id);
+        },
+        confirmBulkPrint() {
+            const count = this.getSelectedEmployeeIds().length;
+            if (!count) {
+                return;
+            }
+            const dialog = buildEmployeeBulkConfirm('print', count);
+            this.$confirm.require({
+                title: dialog.title,
+                header: dialog.title,
+                message: dialog.message,
+                confirmLabel: dialog.confirmLabel,
+                cancelLabel: 'إلغاء',
+                acceptClass: 'p-button-success',
+                confirmVariant: dialog.confirmVariant,
+                accept: () => this.bulkprintCombined(),
+            });
         },
 
-        // ---- Company list helpers ----
         onCompanySearchInput() {
-            this.companyPage = 1; // reset to page 1 on search
+            this.companyPage = 1;
         },
         pinCompany(comp) {
             if (!this.pinnedCompanies.find(p => p.id === comp.id)) {
@@ -1089,82 +889,36 @@ export default {
         },
 
         viewEmployeeFromSearch(employeeId) {
-            api.get('/api/employees/' + employeeId)
-                .then(response => {
-                    const employee = response.data;
-                    this.guest.dep_id = employee.dep_id;
+            api.get(`/api/employees/${employeeId}`)
+                .then((response) => {
+                    const employee = response.data[0] ?? response.data;
                     this.currentCompanyId = employee.dep_id;
-                    return api.get('/api/guests/' + employeeId);
+                    return this.infoComp(employee.dep_id);
                 })
-                .then(response => {
-                    this.guest = response.data[0];
-                    this.guest.dep_id = this.currentCompanyId;
-                    this.infoComp(this.guest.dep_id);
-                    setTimeout(() => {
-                        if (gridApi.value) {
-                            gridApi.value.forEachNode((node) => {
-                                if (node.data && node.data.id === employeeId) {
-                                    node.setSelected(true);
-                                    gridApi.value.ensureNodeVisible(node);
-                                }
-                            });
-                        }
-                    }, 500);
+                .then(() => {
                     this.closeGeneralSearch();
-                    this.blokGuest = true;
+                    this.openEmployeeDetail({ data: { id: employeeId } });
+                    this.$nextTick(() => {
+                        gridApi.value?.forEachNode((node) => {
+                            if (node.data?.id === employeeId) {
+                                node.setSelected(true);
+                                gridApi.value.ensureNodeVisible(node);
+                            }
+                        });
+                    });
                 })
-                .catch(error => {
+                .catch((error) => {
                     console.error('Error fetching employee:', error);
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to load employee details', life: 3000 });
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحميل بيانات الموظف', life: 3000 });
                 });
         },
 
         printFromSidePanel() {
-            if (this.guest && this.guest.id) {
-                api.get('/api/guests/' + this.guest.id)
-                    .then(response => {
-                        this.guest = response.data[0];
-                        this.printSingleBadge(this.guest.id);
-                    })
-                    .catch(error => {
-                        console.error('error refreshing guest data:', error);
-                        this.printSingleBadge(this.guest.id);
-                    });
+            if (this.guest?.id) {
+                this.printSingleBadge(this.guest.id);
             } else {
-                this.$toast.add({ severity: 'warn', summary: 'Warning', detail: 'No employee selected to print', life: 3000 });
+                this.$toast.add({ severity: 'warn', summary: 'تنبيه', detail: 'لم يتم اختيار موظف للطباعة', life: 3000 });
             }
-        },
-
-        setPresenceOptions() {
-            const documentStyle = getComputedStyle(document.documentElement);
-            const textColor = documentStyle.getPropertyValue('--text-color');
-            const textColorSecondary = documentStyle.getPropertyValue('--text-color-secondary');
-            const surfaceBorder = documentStyle.getPropertyValue('--surface-border');
-            return {
-                maintainAspectRatio: true, aspectRatio: 5,
-                plugins: { legend: { labels: { color: textColor } } },
-                scales: {
-                    x: { ticks: { color: textColorSecondary, font: { weight: 500 } }, grid: { display: false, drawBorder: false } },
-                    y: { ticks: { color: textColorSecondary }, grid: { color: surfaceBorder, drawBorder: false } }
-                }
-            };
-        },
-
-        getEmployees() {
-            api.get('/api/employees', { params: { dep_id: this.depId, page: this.currentPage, per_page: this.perPage } })
-                .then(response => {
-                    const gridData = response.data.data[this.agGridKey];
-                    if (gridData) {
-                        this.step = gridData.id;
-                        this.ColumnsDef = response.data.columns;
-                        this.RawDataStatus = response.data.data;
-                        if (gridData.guests && gridData.guests.data) {
-                            this.RawData = gridData.guests.data;
-                            this.totalRows = gridData.pagination.total;
-                        } else { this.RawData = []; }
-                    } else { this.RawData = []; }
-                })
-                .catch(error => console.error('Error fetching employees:', error));
         },
 
         onPageChange({ page, perPage }) {
@@ -1172,20 +926,7 @@ export default {
             if (perPage) {
                 this.perPage = perPage;
             }
-            if (this.guest.dep_id) this.infoComp(this.guest.dep_id);
-        },
-
-        OpenAddEmployee() {
-            if (!this.guest.dep_id && !this.currentCompanyId) {
-                this.$toast.add({ severity: 'warn', summary: 'Warning', detail: 'Please select a company first', life: 3000 });
-                return;
-            }
-            if (this.currentCompanyId && !this.guest.dep_id) this.guest.dep_id = this.currentCompanyId;
-            this.addEmp = !this.addEmp;
-            if (this.addEmp) {
-                this.resetGuestForm();
-                this.guest.dep_id = this.currentCompanyId || this.guest.dep_id;
-            }
+            this.loadCompanyEmployees();
         },
 
         OpenAddCompany() {
@@ -1197,42 +938,36 @@ export default {
                 this.fieldValidity.name_en = false;
                 return;
             }
-            
-            // Prevent multiple submissions
             if (this.isSavingCompany) return;
             this.isSavingCompany = true;
-            
+
             api.post('/api/companies', this.formDataDep)
-                .then(response => {
+                .then(() => {
                     this.fetchData();
                     this.addCompany = false;
-                    this.isSavingCompany = false;
-                    this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Company created successfully', life: 3000 });
+                    this.$toast.add({ severity: 'success', summary: 'تم', detail: 'تم إنشاء الشركة', life: 3000 });
                 })
-                .catch(error => {
+                .catch((error) => {
                     console.error('API error:', error);
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر إنشاء الشركة', life: 3000 });
+                })
+                .finally(() => {
                     this.isSavingCompany = false;
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to create company', life: 3000 });
                 });
         },
 
-        editNode(node) { console.log('Edit node:', node); },
-
         infoComp(id) {
             this.viewDetail = true;
-            this.guest.dep_id = id;
             this.currentCompanyId = id;
-            this.toolbar = true;
-            this.toolbar2 = false;
-            api.get('/api/companies/' + id + '/info', { params: { dep_id: id, page: this.currentPage, per_page: this.perPage } })
-                .then(response => {
-                    this.info = response.data.info;
-                    this.ColumnsDef = response.data.columns;
-                    const guests = response.data.guests;
-                    this.RawData = guests?.data?.data ?? [];
-                    this.totalRows = guests?.pagination?.total ?? 0;
+            this.currentPage = 1;
+            this.clearSelection();
+
+            return api.get(`/api/companies/${id}/summary`)
+                .then((response) => {
+                    this.info = response.data;
                 })
-                .catch(error => {
+                .then(() => this.loadCompanyEmployees())
+                .catch((error) => {
                     console.error('Error loading company info:', error);
                     this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحميل بيانات الشركة', life: 3000 });
                 });
@@ -1252,10 +987,39 @@ export default {
                 .catch(error => console.error('API error:', error));
         },
 
-        onFilterTextBoxChanged() {
-            if (gridApi.value) {
-                gridApi.value.setQuickFilter(document.getElementById('filter-text-box').value);
+        fetchData() {
+            const parentId = this.depId;
+            if (!parentId) {
+                this.departments = [];
+                return;
             }
+
+            api.get(`/api/companies/${parentId}`)
+                .then((response) => {
+                    this.departments = response.data.companies ?? [];
+                })
+                .catch((error) => {
+                    console.error(error);
+                    this.departments = [];
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحميل قائمة الشركات', life: 3000 });
+                });
+        },
+
+        onGridReady(params) {
+            gridApi.value = params.api;
+        },
+
+        deleteDepartment(i) {
+            this.$confirm.require({
+                message: 'Do you want to delete this record?', header: 'Delete Confirmation', icon: 'pi pi-info-circle', acceptClass: 'p-button-danger',
+                accept: () => {
+                    api.post('/api/departments/delete', { id: i }).then(response => {
+                        this.fetchData();
+                        this.$toast.add({ severity: 'info', summary: 'Confirmed', detail: 'Deleted Successfully', life: 3000 });
+                    });
+                },
+                reject: () => { }
+            });
         },
 
         formatDate(value, { dateOnly = false } = {}) {
@@ -1272,287 +1036,213 @@ export default {
             }
         },
 
-        fetchData() {
-            const parentId = this.depId;
-            if (!parentId) {
-                this.departments = [];
+        updateguest() {
+            const formElement = document.getElementById('formeditguest');
+            const photoFile = resolveEmployeePhotoFile(
+                this.guest,
+                formElement,
+                this.pendingEmployeePhotoFile,
+            );
+            const hadNewPhoto = Boolean(this.guest.photoPreview?.startsWith('blob:') || photoFile);
+
+            if (hadNewPhoto && !photoFile) {
+                this.$toast.add({
+                    severity: 'error',
+                    summary: 'خطأ',
+                    detail: 'تعذر إرفاق الصورة. يرجى إعادة اختيارها ثم الحفظ.',
+                    life: 4000,
+                });
                 return;
             }
 
-            api.get('/api/companies/' + parentId)
-                .then(response => {
-                    this.departments = response.data.companies ?? [];
-                })
-                .catch(error => {
-                    console.error(error);
-                    this.departments = [];
-                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحميل قائمة الشركات', life: 3000 });
-                });
-
-            fetchBases().then(response => { this.bases = response.data; });
-            fetchNationalities().then(response => { this.nationalities = response.data; });
-
-            api.get('/api/companies/' + parentId + '/check-in-out')
-                .then(response => {
-                    const presence = response.data?.presence;
-                    if (!presence) {
-                        return;
-                    }
-                    this.chartPresence = {
-                        labels: presence.dayIn ?? [],
-                        datasets: [
-                            {
-                                label: 'دخول',
-                                backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--green-600'),
-                                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--green-600'),
-                                data: presence.nbIn ?? [],
-                            },
-                            {
-                                label: 'خروج',
-                                backgroundColor: getComputedStyle(document.documentElement).getPropertyValue('--red-600'),
-                                borderColor: getComputedStyle(document.documentElement).getPropertyValue('--red-600'),
-                                data: presence.nbOut ?? [],
-                            },
-                        ],
-                    };
-                })
-                .catch(error => console.error(error));
-        },
-
-        onGridReady(params) { gridApi.value = params.api; },
-
-        deleteDepartment(i) {
-            this.$confirm.require({
-                message: 'Do you want to delete this record?', header: 'Delete Confirmation', icon: 'pi pi-info-circle', acceptClass: 'p-button-danger',
-                accept: () => {
-                    api.post('/api/departments/delete', { id: i }).then(response => {
-                        this.fetchData();
-                        this.$toast.add({ severity: 'info', summary: 'Confirmed', detail: 'Deleted Successfully', life: 3000 });
-                    });
+            const formData = buildEmployeeSaveFormData(
+                formElement,
+                this.guest,
+                {
+                    gender_id: this.guest.gender_id,
+                    dep_id: this.currentCompanyId,
+                    nationality_id: this.guest.nationality_id,
+                    rank_id: treeSelectValue(this.guest.rank_id),
+                    default_base: this.guest.default_base,
+                    id: this.guest.id,
+                    dep_parent_id: this.depId,
                 },
-                reject: () => { }
-            });
-        },
+                photoFile,
+            );
+            appendZoningToFormData(formData, this.guest.selectedZones);
 
-        updateguest(event) {
-            if (event) event.preventDefault();
-            
-            // Prevent multiple submissions
-            if (this.isUpdatingEmployee) return;
-            this.isUpdatingEmployee = true;
-            
-            const formData = new FormData(document.getElementById('formeditguest'));
-            formData.append('gender_id', this.guest.gender_id);
-            formData.append('nationality_id', this.guest.nationality_id);
-            formData.append('default_base', this.guest.default_base);
-            if (this.guest.selectedZones && Array.isArray(this.guest.selectedZones)) {
-                formData.delete('zoning[]');
-                this.guest.selectedZones.forEach(zoneId => { formData.append('zoning[]', zoneId); });
-            }
-            
-            api.post('/api/employees', formData)
-                .then(response => {
-                    this.isUpdatingEmployee = false;
-                    this.blokGuest = false;
-                    this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Employee updated successfully', life: 2000 });
-                    this.refreshListSafely();
-                    if (response.data.employee) { this.updateEmployeeInList(response.data.employee); }
+            this.isLoading = true;
+            updateEmployee(formData)
+                .then((response) => {
+                    if (hadNewPhoto && !response.data?.photo_uploaded) {
+                        throw new Error('photo_upload_failed');
+                    }
+                    if (response.data?.photo) {
+                        this.guest.photo = response.data.photo;
+                    }
+                    this.clearPendingEmployeePhoto();
+                    return this.loadCompanyEmployees();
                 })
-                .catch(error => {
-                    console.error('Update error:', error);
-                    this.isUpdatingEmployee = false;
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update employee', life: 3000 });
+                .then(() => {
+                    this.blokGuest = false;
+                    this.$toast.add({ severity: 'success', summary: 'تم', detail: 'تم حفظ التعديلات', life: 3000 });
+                })
+                .catch((error) => {
+                    const detail = error.message === 'photo_upload_failed'
+                        ? 'تعذر رفع الصورة. تحقق من حجم الملف وحاول مرة أخرى.'
+                        : (error.response?.data?.message || 'تعذر حفظ التعديلات');
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail, life: 4000 });
+                })
+                .finally(() => {
+                    this.isLoading = false;
                 });
         },
 
-        refreshListSafely() {
-            if (this.guest.dep_id) { this.infoComp(this.guest.dep_id); }
-            else if (this.info?.id) { this.infoComp(this.info.id); }
-            else if (this.currentCompanyId) { this.infoComp(this.currentCompanyId); }
-            else { this.fetchData(); }
-        },
-
-        updateEmployeeInList(updatedEmployee) {
-            const index = this.RawData.findIndex(emp => emp.id == updatedEmployee.id);
-            if (index !== -1) {
-                this.RawData[index] = { ...this.RawData[index], ...updatedEmployee };
-                this.RawData = [...this.RawData];
-                if (gridApi.value) {
-                    const rowNode = gridApi.value.getRowNode(String(updatedEmployee.id));
-                    if (rowNode) rowNode.setData(this.RawData[index]);
-                    gridApi.value.refreshCells();
-                }
-            } else {
-                setTimeout(() => { this.infoComp(this.guest.dep_id); }, 500);
-            }
-        },
-
-        editExistingCar(carItem) {
-            this.car = { id: carItem.id, plate_number: carItem.plate_number, active: carItem.active, emp_id: carItem.emp_id };
-            this.editCarMode = true;
-        },
-        cancelEditCar() {
-            this.car = { plate_number: '', active: 1, emp_id: this.guest.id, id: null };
-            this.editCarMode = false;
-        },
-        updateCar() {
-            if (!this.car.plate_number.trim()) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Plate number is required', life: 3000 }); return; }
-            api.post('/api/employees/cars', this.car)
-                .then(response => { this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Car updated successfully', life: 3000 }); this.refreshCarList(); this.cancelEditCar(); })
-                .catch(error => { console.error('Update car error:', error); this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update car', life: 3000 }); });
-        },
         addCar() {
-            if (!this.car.plate_number.trim()) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Plate number is required', life: 3000 }); return; }
+            if (!this.car.plate_number?.trim()) {
+                this.$toast.add({ severity: 'warn', summary: 'حقل مطلوب', detail: 'رقم اللوحة', life: 3000 });
+                return;
+            }
             this.car.emp_id = this.guest.id;
             api.post('/api/employees/cars', this.car)
-                .then(response => { this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Car added successfully', life: 3000 }); this.refreshCarList(); this.car = { plate_number: '', active: 1, emp_id: this.guest.id, id: null }; })
-                .catch(error => { console.error('Add car error:', error); this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to add car', life: 3000 }); });
+                .then(() => {
+                    this.car.plate_number = '';
+                    this.loadGuestDetail(this.guest.id);
+                })
+                .catch(() => {
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر إضافة السيارة', life: 3000 });
+                });
         },
-        toggleCarStatus(carId, status) {
-            const car = this.guest.cars.find(c => c.id === carId);
-            if (!car) return;
-            api.post('/api/employees/cars', { id: carId, active: status, plate_number: car.plate_number, emp_id: car.emp_id })
-                .then(response => { this.$toast.add({ severity: 'success', summary: 'Success', detail: status === 1 ? 'Car enabled successfully' : 'Car disabled successfully', life: 3000 }); this.refreshCarList(); })
-                .catch(error => { console.error('Toggle car status error:', error); this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to update car status', life: 3000 }); });
-        },
-        deleteCar(carId) {
-            this.$confirm.require({
-                message: 'Are you sure you want to delete this car?', header: 'Delete Confirmation', icon: 'pi pi-exclamation-triangle', acceptClass: 'p-button-danger',
-                accept: () => {
-                    api.post('/api/employees/cars', { id: carId })
-                        .then(response => { this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Car deleted successfully', life: 3000 }); this.refreshCarList(); })
-                        .catch(error => { console.error('Delete car error:', error); this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Failed to delete car', life: 3000 }); });
-                },
-                reject: () => { }
-            });
-        },
-        refreshCarList() {
-            if (this.guest.id) {
-                api.get('/api/guests/' + this.guest.id)
-                    .then(response => { this.guest.cars = response.data[0].cars || []; })
-                    .catch(error => console.error('Error refreshing car list:', error));
+        delCar(id) {
+            if (!id) {
+                return;
             }
+            this.$confirm.require({
+                message: 'هل تريد حذف هذه السيارة؟',
+                header: 'تأكيد الحذف',
+                icon: 'pi pi-info-circle',
+                acceptClass: 'p-button-danger',
+                accept: () => {
+                    api.post('/api/employees/cars/delete', { id })
+                        .then((response) => {
+                            if (response.data.status === 'success') {
+                                this.loadGuestDetail(this.guest.id);
+                                this.$toast.add({ severity: 'info', summary: 'تم', detail: 'تم الحذف بنجاح', life: 3000 });
+                            }
+                        })
+                        .catch(() => {
+                            this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'حدث خطأ أثناء الحذف', life: 3000 });
+                        });
+                },
+            });
         },
 
         createguest() {
-            if (!this.guest.fullname_ar || this.guest.fullname_ar.trim() === '') { this.fieldValidity.fullname_ar = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Arabic full name is required', life: 3000 }); return; }
-            if (!this.guest.fullname_en || this.guest.fullname_en.trim() === '') { this.fieldValidity.fullname_en = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'English full name is required', life: 3000 }); return; }
-            if (!this.guest.qid || this.guest.qid.trim() === '') { this.fieldValidity.qid = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'QID is required', life: 3000 }); return; }
-            if (!this.guest.expiry_date || this.guest.expiry_date.trim() === '') { this.fieldValidity.expiry_date = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Expiry date is required', life: 3000 }); return; }
-            if (!this.guest.Job_Arabic || this.guest.Job_Arabic.trim() === '') { this.fieldValidity.Job_Arabic = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Arabic job title is required', life: 3000 }); return; }
-            if (!this.guest.Job_En || this.guest.Job_En.trim() === '') { this.fieldValidity.Job_En = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'English job title is required', life: 3000 }); return; }
-            if (!this.guest.StartTime) { this.fieldValidity.StartTime = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Start time is required', life: 3000 }); return; }
-            if (!this.guest.EndTime) { this.fieldValidity.EndTime = false; this.$toast.add({ severity: 'error', summary: 'Error', detail: 'End time is required', life: 3000 }); return; }
-            if (this.guest.Escort !== null && this.guest.Escort !== undefined && this.guest.Escort.trim() === '') this.guest.Escort = null;
-            if (this.guest.device === '') this.guest.device = null;
-            if (this.guest.remarks !== null && this.guest.remarks !== undefined && this.guest.remarks.trim() === '') this.guest.remarks = null;
-            if (this.guest.military_number !== null && this.guest.military_number !== undefined && this.guest.military_number.trim() === '') this.guest.military_number = null;
-            if (this.guest.default_base == 0) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Select Default Base', life: 3000 }); return; }
-            if (!this.guest.dep_id) { this.$toast.add({ severity: 'error', summary: 'Error', detail: 'Please select a company first', life: 3000 }); return; }
-
-            // Prevent multiple submissions
-            if (this.isSavingEmployee) return;
-            this.isSavingEmployee = true;
-            
-            const formData = new FormData(document.getElementById('formguest'));
-            formData.append('gender_id', this.guest.gender_id);
-            formData.append('nationality_id', this.guest.nationality_id);
-            formData.append('default_base', this.guest.default_base);
-            formData.append('dep_id', this.guest.dep_id);
-            if (this.guest.selectedZones && Array.isArray(this.guest.selectedZones)) {
-                formData.delete('zoning[]');
-                this.guest.selectedZones.forEach(zoneId => { formData.append('zoning[]', zoneId); });
+            if (!validateCreateGuest(this.guest, this.fieldValidity)) {
+                return;
             }
+            if (!this.currentCompanyId) {
+                this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'اختر شركة أولاً', life: 3000 });
+                return;
+            }
+            if (this.guest.default_base === 0) {
+                this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'اختر القاعدة الافتراضية', life: 3000 });
+                return;
+            }
+
+            const formElement = document.getElementById('formguest');
+            const photoFile = resolveEmployeePhotoFile(
+                this.guest,
+                formElement,
+                this.pendingEmployeePhotoFile,
+            );
+            const formData = buildEmployeeSaveFormData(
+                formElement,
+                this.guest,
+                {
+                    gender_id: this.guest.gender_id,
+                    dep_id: this.currentCompanyId,
+                    nationality_id: this.guest.nationality_id,
+                    rank_id: treeSelectValue(this.guest.rank_id),
+                    default_base: this.guest.default_base,
+                },
+                photoFile,
+            );
+            formData.set('is_employee', '1');
+            appendZoningToFormData(formData, this.guest.selectedZones);
+
             this.isLoading = true;
-            api.post('/api/employees', formData)
-                .then(response => {
-                    this.isSavingEmployee = false;
-                    this.$toast.add({ severity: 'success', summary: 'Success', detail: 'Employee created successfully', life: 3000 });
-                    this.infoComp(this.guest.dep_id);
-                    this.addEmp = false;
-                    this.resetGuestForm();
+            createEmployee(formData)
+                .then(() => {
+                    this.clearPendingEmployeePhoto();
+                    return this.loadCompanyEmployees();
                 })
-                .catch(error => {
-                    console.error('Create employee error:', error);
-                    this.isSavingEmployee = false;
-                    let errorMessage = 'Failed to create employee';
-                    if (error.response?.data?.message) errorMessage = error.response.data.message;
-                    else if (error.response?.data?.errors) errorMessage = Object.values(error.response.data.errors).join(', ');
-                    this.$toast.add({ severity: 'error', summary: 'Error', detail: errorMessage, life: 3000 });
+                .then(() => {
+                    this.addg = false;
+                    this.$toast.add({ severity: 'success', summary: 'تم', detail: 'تم تسجيل الموظف', life: 3000 });
                 })
-                .finally(() => { this.isLoading = false; });
-        },
-
-        onSelectionChanged(event) {
-            var selectedRows = event.api.getSelectedRows();
-            let checkedState = selectedRows.length > 0;
-            this.toolbar = !checkedState;
-            this.toolbar2 = checkedState;
-        },
-
-        OnClicked(event) {
-            this.closeGeneralSearch();
-            var id = event.data.id;
-            this.editguest = false;
-            this.activeTab = 10;
-            this.car.emp_id = event.data.id;
-            this.currentCompanyId = event.data.dep_id;
-            
-            // Store the current employee's photo before loading new one
-            const currentPhoto = this.guest.photo;
-            api.get('/api/guests/' + id).then(response => {
-    this.guest = response.data[0];
-    this.guest.dep_id = this.currentCompanyId;
-
-    // âŒ remove this (not needed and causing confusion)
-    // if (!this.guest.photo && currentPhoto) {
-    //     this.guest.photo = null;
-    // }
-
-    // âœ… ADD THIS LINE (important)
-    this.fileInputKey++;
-
-    // backup
-    this.guestBackup = JSON.parse(JSON.stringify(this.guest));
-});
-            this.blokGuest = true;
+                .catch(() => {
+                    this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'يرجى تعبئة جميع الحقول الإلزامية', life: 3000 });
+                })
+                .finally(() => {
+                    this.isLoading = false;
+                });
         },
 
         deleteSelected() {
+            const count = this.getSelectedEmployeeIds().length;
+            if (!count) {
+                return;
+            }
+            const dialog = buildEmployeeBulkConfirm('delete', count);
             this.$confirm.require({
-                message: 'Do you want to delete this record?', header: 'Delete Confirmation', icon: 'pi pi-info-circle', acceptClass: 'p-button-danger',
+                title: dialog.title,
+                header: dialog.title,
+                message: dialog.message,
+                confirmLabel: dialog.confirmLabel,
+                cancelLabel: 'إلغاء',
+                acceptClass: 'p-button-danger',
+                confirmVariant: dialog.confirmVariant,
                 accept: () => {
-                    const selectedRows = gridApi.value.getSelectedRows();
-                    const guestIds = selectedRows.map(row => row.id);
-                    api.post('/api/employees', { 'guests': guestIds }).then(response => { this.infoComp(this.guest.dep_id); });
-                    this.$toast.add({ severity: 'info', summary: 'Confirmed', detail: 'Deleted Successfully', life: 3000 });
+                    const guestIds = this.getSelectedEmployeeIds();
+                    api.post('/api/employees/delete', { guests: guestIds })
+                        .then(() => {
+                            this.clearSelection();
+                            this.loadCompanyEmployees();
+                            this.$toast.add({ severity: 'success', summary: 'تم الحذف', detail: `تم حذف ${count} موظف بنجاح`, life: 3000 });
+                        });
                 },
-                reject: () => { }
             });
         },
 
         approveSelected(status) {
+            const count = this.getSelectedEmployeeIds().length;
+            if (!count) {
+                return;
+            }
+            const action = status === 0 ? 'unapprove' : (status === 3 ? 'collect' : 'approve');
+            const dialog = buildEmployeeBulkConfirm(action, count);
             this.$confirm.require({
-                message: 'Are you sure you want to proceed?', header: 'Approved Confirmation', icon: 'pi pi-exclamation-triangle', acceptClass: 'p-button-success',
+                title: dialog.title,
+                header: dialog.title,
+                message: dialog.message,
+                confirmLabel: dialog.confirmLabel,
+                cancelLabel: 'إلغاء',
+                acceptClass: 'p-button-success',
+                confirmVariant: dialog.confirmVariant,
                 accept: () => {
-                    const selectedRows = gridApi.value.getSelectedRows();
-                    const guestIds = selectedRows.map(row => row.id);
-                    api.post('/api/employees/approved', { guests: guestIds, by: this.userName, 'status': status }).then(response => { this.infoComp(this.guest.dep_id); });
-                    this.$toast.add({ severity: 'info', summary: 'Confirmed', detail: 'Approved Successfully', life: 3000 });
+                    const guestIds = this.getSelectedEmployeeIds();
+                    api.post('/api/employees/approve', { guests: guestIds, by: this.userName, status })
+                        .then(() => {
+                            this.clearSelection();
+                            this.loadCompanyEmployees();
+                            this.$toast.add({ severity: 'success', summary: 'تم التنفيذ', detail: dialog.message, life: 3000 });
+                        })
+                        .catch(() => {
+                            this.$toast.add({ severity: 'error', summary: 'خطأ', detail: 'تعذر تحديث حالة الموظفين', life: 3000 });
+                        });
                 },
-                reject: () => { }
             });
-        },
-
-        resetGuestForm() {
-            this.guest = {
-                fullname_en: '', fullname_ar: '', qrcode: '', phone_number: null, expiry_date: null,
-                Job_Arabic: null, Job_En: null, StartTime: null, EndTime: null, Escort: null,
-                device: null, qid: null, gender_id: null, nationality_id: null, default_base: 0,
-                dep_id: null, rank_id: 109, selectedZones: null, idguest: '', photo: null,
-                remarks: null, logs: [], cars: []
-            };
-            Object.keys(this.fieldValidity).forEach(key => { this.fieldValidity[key] = true; });
         },
 
         handleGeneralSearchInput() {
@@ -1566,7 +1256,14 @@ export default {
             if (!this.generalSearchQuery.trim()) return;
             this.isGeneralSearchLoading = true;
             this.showGeneralSearchResults = true;
-            api.get('/api/employees/search', { params: { query: this.generalSearchQuery, page: this.searchCurrentPage, per_page: this.searchPerPage } })
+            api.get('/api/employees/search', {
+                params: {
+                    query: this.generalSearchQuery,
+                    page: this.searchCurrentPage,
+                    per_page: this.searchPerPage,
+                    scope: 'company',
+                },
+            })
                 .then(response => {
                     this.generalSearchResults = response.data.data;
                     this.searchTotalRows = response.data.total;
@@ -1606,16 +1303,68 @@ export default {
             this.generalSearchResults = [];
             this.searchCurrentPage = 1;
         },
-        handleFileChange(field) { console.log('File changed for field:', field); },
-        
-        // Handle file change for edit panel - ensures proper photo handling
-        handleEditFileChange(event) {
-            const file = event.target.files[0];
-            if (file) {
-                // The file will be handled by the form submission
-                console.log('New photo selected for editing');
-            }
-        }
     }
 };
 </script>
+
+<style scoped>
+.emp-grid-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin: 0.75rem 0 0.5rem;
+    font-size: 0.8125rem;
+    color: #64748b;
+}
+
+.emp-grid-hint__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.emp-grid-hint__sep {
+    color: #cbd5e1;
+}
+
+.emp-results-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.emp-results-bar__count {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.emp-results-bar__badge {
+    border-radius: 9999px;
+    background: #fef3c7;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #b45309;
+}
+
+.companies-workspace {
+    width: 100%;
+}
+
+.companies-main {
+    min-width: 0;
+}
+
+.companies-employee-grid :deep(.app-data-grid),
+.companies-employee-grid :deep(.gate-data-grid) {
+    width: 100%;
+}
+
+.companies-main-header h3 {
+    max-width: 100%;
+}
+</style>

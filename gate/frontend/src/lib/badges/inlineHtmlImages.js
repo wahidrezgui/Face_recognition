@@ -181,8 +181,12 @@ export async function inlineDomImages(root) {
             img.setAttribute('src', dataUrl);
             img.removeAttribute('crossorigin');
         } catch (error) {
-            console.warn('Badge print: removing unloadable image', src, error);
-            img.remove();
+            console.warn('Badge print: could not inline image', src, error);
+            if (img.getAttribute('aria-hidden') === 'true') {
+                img.remove();
+            } else {
+                img.setAttribute('src', TRANSPARENT_PIXEL);
+            }
         }
     }));
 }

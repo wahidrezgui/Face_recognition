@@ -26,10 +26,10 @@
 
     --ag-range-selection-border-color: #8a1538;
     --ag-input-focus-border-color: #8a1538;
-    --ag-checkbox-checked-color: #8a1538;
-    --ag-checkbox-unchecked-color: #64748b;
-    --ag-checkbox-background-color: #ffffff;
-    --ag-checkbox-border-radius: 4px;
+    --ag-checkbox-checked-color: var(--color-brand);
+    --ag-checkbox-unchecked-color: var(--app-check-border);
+    --ag-checkbox-background-color: var(--app-check-bg);
+    --ag-checkbox-border-radius: var(--app-check-radius);
     --ag-icon-size: 18px;
     --ag-alpine-active-color: #8a1538;
 
@@ -106,23 +106,31 @@
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper {
-    width: 1.125rem;
-    height: 1.125rem;
-    min-width: 1.125rem;
-    min-height: 1.125rem;
-    border: 2px solid #64748b;
-    border-radius: 0.3rem;
-    background-color: #fff;
+    width: var(--app-check-size);
+    height: var(--app-check-size);
+    min-width: var(--app-check-size);
+    min-height: var(--app-check-size);
+    border: 2px solid var(--app-check-border);
+    border-radius: var(--app-check-radius);
+    background-color: var(--app-check-bg);
     box-sizing: border-box;
     position: relative;
     flex-shrink: 0;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.ag-theme-gate .ag-checkbox-input-wrapper:hover {
+    border-color: var(--app-check-border-hover);
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper:focus-within,
 .ag-theme-gate .ag-checkbox-input-wrapper:active {
     outline: none;
-    box-shadow: 0 0 0 2px rgb(138 21 56 / 0.25);
-    border-color: #8a1538;
+    box-shadow: var(--app-check-focus-ring);
+    border-color: var(--app-check-checked-border);
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper::after {
@@ -140,8 +148,8 @@
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper.ag-checked {
-    background-color: #8a1538;
-    border-color: #8a1538;
+    background-color: var(--app-check-checked-bg);
+    border-color: var(--app-check-checked-border);
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper.ag-checked::after {
@@ -150,8 +158,8 @@
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper.ag-indeterminate {
-    background-color: #8a1538;
-    border-color: #8a1538;
+    background-color: var(--app-check-checked-bg);
+    border-color: var(--app-check-checked-border);
 }
 
 .ag-theme-gate .ag-checkbox-input-wrapper.ag-indeterminate::after {
@@ -161,7 +169,7 @@
 }
 
 .ag-theme-gate .ag-row-selected .ag-checkbox-input-wrapper {
-    border-color: #8a1538;
+    border-color: var(--app-check-checked-border);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -26,6 +26,10 @@ class EmployeeSearchService
 
         $builder = Employees::query()->where('active', 1);
 
+        if ($scope === 'company') {
+            $builder->whereHas('department', fn ($q) => $q->where('is_company', 1));
+        }
+
         if ($scope === 'military') {
             $builder->where(function ($q) use ($query) {
                 $q->where('military_number', 'LIKE', "%{$query}%")

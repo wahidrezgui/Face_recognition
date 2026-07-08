@@ -12,6 +12,16 @@
     --sidebar-width-collapsed: 4.5rem;
     --header-height: 4rem;
     --radius-card: 1rem;
+
+    /* Checkboxes — shared across PrimeVue, native inputs, and tables */
+    --app-check-size: 1.25rem;
+    --app-check-radius: 0.375rem;
+    --app-check-border: #94a3b8;
+    --app-check-border-hover: #64748b;
+    --app-check-bg: #ffffff;
+    --app-check-checked-bg: var(--color-brand);
+    --app-check-checked-border: var(--color-brand);
+    --app-check-focus-ring: 0 0 0 3px rgb(138 21 56 / 0.22);
 }
 
 /* App shell: sidebar fixed on physical right, main content inset beside it */

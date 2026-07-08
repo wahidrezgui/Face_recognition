@@ -1,21 +1,138 @@
-import html2pdf from 'html2pdf.js';
 import {
     bulkApproveEmployees,
     fetchBadgeBackPreview,
     fetchBadgePreview,
+    fetchBulkBadgePreview,
 } from '../../api/employees';
 import { buildBadgeTemplateValues } from './badgeTemplateHelpers';
 import {
-    createBadgeContainerOuterHtml,
     extractBadgeDimensions,
-    getBadgeContainerStyle,
     renderBadgeHtml,
 } from './badgeRenderCore';
-import { inlineDomImages, inlineHtmlImages, removeBrokenImages } from './inlineHtmlImages';
+import { inlineHtmlImages, resolveAssetUrl } from './inlineHtmlImages';
 
-const HTML2CANVAS_DEFAULTS = { useCORS: true, allowTaint: false, logging: false };
+function assertPrintableHtml(html) {
+    if (!html?.trim()) {
+        throw new Error('Badge print: empty HTML');
+    }
+
+    const text = html.replace(/<[^>]+>/g, '').replace(/\s+/g, '').trim();
+    const hasVisual = /<(img|svg|table|strong|center)\b/i.test(html);
+    if (!text && !hasVisual) {
+        throw new Error('Badge print: template rendered without visible content');
+    }
+}
+
+function assertBadgeTemplate(data, side) {
+    const record = data?.badge2;
+    const template = record?.content ?? data?.content ?? '';
+    if (!String(template).trim()) {
+        throw new Error(`Badge print: missing ${side} template for this employee`);
+    }
+}
+
+function absolutizeHtmlAssetUrls(html) {
+    return html
+        .replace(/src=["'](?!https?:|data:|blob:)([^"']+)["']/gi, (_, path) => {
+            const normalized = path.startsWith('/') ? path : `/${path}`;
+            return `src="${resolveAssetUrl(normalized)}"`;
+        })
+        .replace(/url\(\s*["']?(?!https?:|data:|blob:)([^"')]+)["']?\s*\)/gi, (_, path) => {
+            const normalized = path.startsWith('/') ? path : `/${path}`;
+            return `url("${resolveAssetUrl(normalized)}")`;
+        });
+}
+
+async function preparePrintableBadgeHtml(html, { inlineImages = false } = {}) {
+    if (inlineImages) {
+        const inlined = await inlineHtmlImages(html);
+        return absolutizeHtmlAssetUrls(inlined);
+    }
+
+    return absolutizeHtmlAssetUrls(html);
+}
+
+function waitForImages(root, timeoutMs = 2000) {
+    const images = [...root.querySelectorAll('img')];
+    if (images.length === 0) {
+        return Promise.resolve();
+    }
+
+    return Promise.all(images.map((img) => new Promise((resolve) => {
+        if (img.complete && img.naturalWidth > 0) {
+            resolve();
+            return;
+        }
+
+        const done = () => resolve();
+        img.addEventListener('load', done, { once: true });
+        img.addEventListener('error', done, { once: true });
+        setTimeout(done, timeoutMs);
+    })));
+}
+
+function getPageSizeMm(pdfConfig = {}) {
+    const format = pdfConfig.jsPDF?.format ?? [90, 140];
+    const widthMm = Array.isArray(format) ? Number(format[0]) || 90 : 90;
+    const heightMm = Array.isArray(format) ? Number(format[1]) || 140 : 140;
+    return { widthMm, heightMm };
+}
+
+async function printPreparedHtml(preparedHtml, pdfConfig = {}) {
+    const { widthMm, heightMm } = getPageSizeMm(pdfConfig);
+    const origin = window.location.origin;
+
+    const frame = document.createElement('iframe');
+    frame.setAttribute('aria-hidden', 'true');
+    frame.style.cssText = `position:fixed;left:-10000px;top:0;width:${widthMm}mm;height:${heightMm}mm;border:0;`;
+    document.body.appendChild(frame);
+
+    const doc = frame.contentDocument || frame.contentWindow?.document;
+    if (!doc) {
+        frame.remove();
+        throw new Error('Badge print: could not create print frame');
+    }
+
+    doc.open();
+    doc.write(`<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="utf-8" />
+<base href="${origin}/" />
+<title>Badge</title>
+<style>
+@page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
+html, body { margin: 0; padding: 0; background: #fff; }
+body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+img { max-width: 100%; height: auto; }
+table { border-collapse: collapse; }
+</style>
+</head>
+<body>${preparedHtml}</body>
+</html>`);
+    doc.close();
+
+    await new Promise((resolve) => { setTimeout(resolve, 150); });
+    await waitForImages(doc.body);
+
+    const printWindow = frame.contentWindow;
+    if (!printWindow) {
+        frame.remove();
+        throw new Error('Badge print: print frame unavailable');
+    }
+
+    printWindow.focus();
+    printWindow.print();
+
+    // Do not wait for the user to close the print dialog — that kept the UI loader stuck.
+    setTimeout(() => {
+        frame.remove();
+    }, 2000);
+}
 
 function renderBadgeSideHtml(data, side, options = {}) {
+    assertBadgeTemplate(data, side);
+
     const record = data?.badge2;
     const template = record?.content ?? data.content ?? '';
     const dimensions = extractBadgeDimensions(record);
@@ -58,88 +175,84 @@ async function fetchBadgeSide(guestId, side) {
     return data;
 }
 
+function pickGuestBadgePayload(sideMap, guestId) {
+    if (!sideMap) {
+        return null;
+    }
+
+    return sideMap[String(guestId)] ?? sideMap[guestId] ?? null;
+}
+
+async function loadBulkBadgePreview(guestIds, sides) {
+    if (guestIds.length === 0) {
+        return {};
+    }
+
+    if (guestIds.length === 1) {
+        const guestId = guestIds[0];
+        const payload = {};
+        if (sides.includes('front')) {
+            payload.front = { [String(guestId)]: await fetchBadgeSide(guestId, 'front') };
+        }
+        if (sides.includes('back')) {
+            payload.back = { [String(guestId)]: await fetchBadgeSide(guestId, 'back') };
+        }
+        return payload;
+    }
+
+    const { data } = await fetchBulkBadgePreview({ guestIds, sides });
+    return data ?? {};
+}
+
 export async function buildCombinedBadgeHtml(guestIds, options = {}) {
-    let frontHtml = '';
-    let backHtml = '';
+    const { front = {}, back = {} } = await loadBulkBadgePreview(guestIds, ['front', 'back']);
 
-    await Promise.all(guestIds.map(async (guestId) => {
-        const frontData = await fetchBadgeSide(guestId, 'front');
-        frontHtml += renderBadgeSideHtml(frontData, 'front', options);
-    }));
+    const frontHtml = guestIds
+        .map((guestId) => {
+            const frontData = pickGuestBadgePayload(front, guestId);
+            return frontData ? renderBadgeSideHtml(frontData, 'front', options) : '';
+        })
+        .join('');
 
-    await Promise.all(guestIds.map(async (guestId) => {
-        const backData = await fetchBadgeSide(guestId, 'back');
-        backHtml += renderBadgeSideHtml(backData, 'back', options);
-    }));
+    const backHtml = guestIds
+        .map((guestId) => {
+            const backData = pickGuestBadgePayload(back, guestId);
+            return backData ? renderBadgeSideHtml(backData, 'back', options) : '';
+        })
+        .join('');
 
     return `<div>${frontHtml}</div><div style="page-break-before: always;">${backHtml}</div>`;
 }
 
 export async function buildFrontBadgeHtml(guestIds, options = {}) {
-    let html = '';
-    await Promise.all(guestIds.map(async (guestId) => {
-        const data = await fetchBadgeSide(guestId, 'front');
-        html += renderBadgeSideHtml(data, 'front', options);
-    }));
-    return html;
+    const { front = {} } = await loadBulkBadgePreview(guestIds, ['front']);
+
+    return guestIds
+        .map((guestId) => {
+            const data = pickGuestBadgePayload(front, guestId);
+            return data ? renderBadgeSideHtml(data, 'front', options) : '';
+        })
+        .join('');
 }
 
 export async function buildBackBadgeHtml(guestIds, options = {}) {
-    let html = '';
-    await Promise.all(guestIds.map(async (guestId) => {
-        const data = await fetchBadgeSide(guestId, 'back');
-        html += renderBadgeSideHtml(data, 'back', {
-            ...options,
-            backContainerStyle: options.backContainerStyle ?? 'compact',
-        });
-    }));
-    return html;
+    const { back = {} } = await loadBulkBadgePreview(guestIds, ['back']);
+
+    return guestIds
+        .map((guestId) => {
+            const data = pickGuestBadgePayload(back, guestId);
+            return data ? renderBadgeSideHtml(data, 'back', {
+                ...options,
+                backContainerStyle: options.backContainerStyle ?? 'compact',
+            }) : '';
+        })
+        .join('');
 }
 
 export async function printHtmlAsPdf(html, pdfConfig) {
-    const inlined = await inlineHtmlImages(html);
-    const host = document.createElement('div');
-    host.style.position = 'fixed';
-    host.style.left = '-10000px';
-    host.style.top = '0';
-    host.style.width = '0';
-    host.style.height = '0';
-    host.style.overflow = 'hidden';
-    host.innerHTML = inlined;
-    document.body.appendChild(host);
-
-    try {
-        await inlineDomImages(host);
-        await waitForImages(host);
-        removeBrokenImages(host);
-        const pdfObj = await html2pdf().from(host).set({
-            ...pdfConfig,
-            html2canvas: { ...HTML2CANVAS_DEFAULTS, ...pdfConfig?.html2canvas },
-        }).outputPdf().get('pdf');
-        pdfObj.autoPrint();
-        window.open(pdfObj.output('bloburl'), 'F');
-    } finally {
-        host.remove();
-    }
-}
-
-function waitForImages(root, timeoutMs = 4000) {
-    const images = [...root.querySelectorAll('img')];
-    if (images.length === 0) {
-        return Promise.resolve();
-    }
-
-    return Promise.all(images.map((img) => new Promise((resolve) => {
-        if (img.complete) {
-            resolve();
-            return;
-        }
-
-        const done = () => resolve();
-        img.addEventListener('load', done, { once: true });
-        img.addEventListener('error', done, { once: true });
-        setTimeout(done, timeoutMs);
-    })));
+    const prepared = await preparePrintableBadgeHtml(html);
+    assertPrintableHtml(prepared);
+    await printPreparedHtml(prepared, pdfConfig);
 }
 
 export async function openBadgePdf(html, pdfConfig) {
@@ -153,20 +266,22 @@ export async function printCombinedBadges(guestIds, {
     frontPlateSeparator,
     onRefresh,
 } = {}) {
+    if (!guestIds?.length) {
+        throw new Error('Badge print: no employees selected');
+    }
+
     const html = await buildCombinedBadgeHtml(guestIds, { plateSeparator, frontPlateSeparator });
     const pdfFormat = await resolvePdfFormat(guestIds, 'front', [54, 94.0]);
+
+    await openBadgePdf(html, {
+        filename: 'badge_combined.pdf',
+        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
+    });
+
     if (markPrinted) {
         await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
         await onRefresh?.(guestIds);
     }
-
-    await openBadgePdf(html, {
-        margin: -9,
-        filename: 'badge_combined.pdf',
-        image: { type: 'jpeg', quality: 2 },
-        html2canvas: { scale: 5 },
-        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
-    });
 }
 
 export async function printFrontBadges(guestIds, {
@@ -175,20 +290,22 @@ export async function printFrontBadges(guestIds, {
     plateSeparator = ' (2) ',
     onRefresh,
 } = {}) {
+    if (!guestIds?.length) {
+        throw new Error('Badge print: no employees selected');
+    }
+
     const html = await buildFrontBadgeHtml(guestIds, { plateSeparator });
     const pdfFormat = await resolvePdfFormat(guestIds, 'front', [54, 94.0]);
+
+    await openBadgePdf(html, {
+        filename: 'badge2.pdf',
+        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
+    });
+
     if (markPrinted) {
         await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
         await onRefresh?.(guestIds);
     }
-
-    await openBadgePdf(html, {
-        margin: -9,
-        filename: 'badge2.pdf',
-        image: { type: 'jpeg', quality: 2 },
-        html2canvas: { scale: 5 },
-        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
-    });
 }
 
 export async function printBackBadges(guestIds, {
@@ -197,20 +314,22 @@ export async function printBackBadges(guestIds, {
     plateSeparator = ' // ',
     onRefresh,
 } = {}) {
+    if (!guestIds?.length) {
+        throw new Error('Badge print: no employees selected');
+    }
+
     const html = await buildBackBadgeHtml(guestIds, { plateSeparator, backContainerStyle: 'compact' });
     const pdfFormat = await resolvePdfFormat(guestIds, 'back', [54, 86.0]);
+
+    await openBadgePdf(html, {
+        filename: 'badge2.pdf',
+        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
+    });
+
     if (markPrinted) {
         await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
         await onRefresh?.(guestIds);
     }
-
-    await openBadgePdf(html, {
-        margin: 0,
-        filename: 'badge2.pdf',
-        image: { type: 'jpeg', quality: 2 },
-        html2canvas: { scale: 5 },
-        jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
-    });
 }
 
 export async function printSingleCombinedBadge(employeeId, {
@@ -218,14 +337,12 @@ export async function printSingleCombinedBadge(employeeId, {
     markPrinted = true,
     plateSeparator = ' // ',
 } = {}) {
-    const frontData = await fetchBadgeSide(employeeId, 'front');
+    const [frontData, backData] = await Promise.all([
+        fetchBadgeSide(employeeId, 'front'),
+        fetchBadgeSide(employeeId, 'back'),
+    ]);
+
     const frontHtml = renderBadgeSideHtml(frontData, 'front', { plateSeparator });
-
-    if (markPrinted) {
-        await bulkApproveEmployees({ guests: [employeeId], by: userName, status: 2 });
-    }
-
-    const backData = await fetchBadgeSide(employeeId, 'back');
     const backHtml = renderBadgeSideHtml(backData, 'back', { plateSeparator });
     const html = `<div>${frontHtml}</div><div style="page-break-before: always;">${backHtml}</div>`;
     const pdfFormat = pdfFormatFromDimensions(
@@ -234,12 +351,13 @@ export async function printSingleCombinedBadge(employeeId, {
     );
 
     await openBadgePdf(html, {
-        margin: -9,
         filename: `badge_${employeeId}.pdf`,
-        image: { type: 'jpeg', quality: 2 },
-        html2canvas: { scale: 5 },
         jsPDF: { unit: 'mm', format: pdfFormat, orientation: 'portrait' },
     });
+
+    if (markPrinted) {
+        await bulkApproveEmployees({ guests: [employeeId], by: userName, status: 2 });
+    }
 }
 
 export {

@@ -21,6 +21,27 @@ export function generateQRCode(text, { size = 300, dataUrlScale = 15 } = {}) {
 
 const DEFAULT_PHOTO_PX = 80;
 
+function normalizeUploadPath(path) {
+    if (!path) {
+        return '/uploads/nopic.png';
+    }
+
+    const value = String(path).trim();
+    if (value.startsWith('data:') || value.startsWith('blob:') || /^https?:\/\//i.test(value)) {
+        return value;
+    }
+
+    if (value.startsWith('/')) {
+        return value;
+    }
+
+    if (value.startsWith('uploads/')) {
+        return `/${value}`;
+    }
+
+    return `/uploads/${value}`;
+}
+
 function resolvePhotoSizeAndShape(sizeOrShape, shape = 'rounded-square') {
     if (typeof sizeOrShape === 'string') {
         const shapeMap = {
@@ -46,14 +67,14 @@ function resolvePhotoSizeAndShape(sizeOrShape, shape = 'rounded-square') {
 
 export function generatePhoto(path, sizeOrShape = DEFAULT_PHOTO_PX, shape = 'rounded-square') {
     const resolved = resolvePhotoSizeAndShape(sizeOrShape, shape);
-    const photo = path ? `/${path}` : '/uploads/nopic.png';
+    const photo = normalizeUploadPath(path);
     const radius = resolved.shape === 'rounded-square' ? '5%' : '50%';
     return `<img src="${photo}" alt="Photo" style="width: ${resolved.size}px; height: ${resolved.size}px; border-radius: ${radius}; object-fit: cover;" />`;
 }
 
 export function generatePhotot(path, sizeOrShape = DEFAULT_PHOTO_PX, shape = 'rounded-square') {
     const resolved = resolvePhotoSizeAndShape(sizeOrShape, shape);
-    const photo = path ? `/${path}` : '/uploads/nopic.png';
+    const photo = normalizeUploadPath(path);
     const radius = resolved.shape === 'rounded-square' ? '5%' : '50%';
     return `<img src="${photo}" alt="Photot" style="width: ${resolved.size}px; height: ${resolved.size}px; border-radius: ${radius}; object-fit: cover;" />`;
 }
@@ -63,12 +84,13 @@ export function generatePhoto2(path, sizeOrShape = DEFAULT_PHOTO_PX, shape = 'ro
     if (!path) {
         return '/uploads/nopic.png';
     }
+    const photo = normalizeUploadPath(path);
     const radius = resolved.shape === 'rounded-square' ? '5%' : '50%';
-    return `<img src="/${path}" alt="Photo" style="width: ${resolved.size}px; height: ${resolved.size}px; border-radius: ${radius}; object-fit: cover;" />`;
+    return `<img src="${photo}" alt="Photo" style="width: ${resolved.size}px; height: ${resolved.size}px; border-radius: ${radius}; object-fit: cover;" />`;
 }
 
 export function generatePreviewPhoto(pic, shape = 'circle') {
-    const photo = pic ? `/uploads/${pic}` : '/uploads/nopic.png';
+    const photo = normalizeUploadPath(pic);
     const shapeClass = shape === 'circle' ? 'rounded-circle' : 'rounded-square';
     return `<img src="${photo}" alt="Photo" class="${shapeClass}" />`;
 }

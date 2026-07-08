@@ -255,7 +255,18 @@ export function createReportPageActions(state, { getReportGrid, printHtml }) {
       return;
     }
 
-    const formattedDate = formatNoteDay(state.note.day);
+    const formattedDate = formatNoteDay(state.note.day) || state.filters.date;
+
+    if (!formattedDate || !/^\d{4}-\d{2}-\d{2}$/.test(formattedDate)) {
+      const toast = useToast();
+      toast.add({
+        severity: 'error',
+        summary: 'خطأ',
+        detail: 'تعذر تحديد تاريخ الملاحظة',
+        life: 3000,
+      });
+      return;
+    }
 
     deleteEmployeeNote({
       emp_id: state.note.emp_id,
@@ -264,6 +275,14 @@ export function createReportPageActions(state, { getReportGrid, printHtml }) {
     }).then(() => {
       state.guest.notes = '';
       getEmployees();
+    }).catch(() => {
+      const toast = useToast();
+      toast.add({
+        severity: 'error',
+        summary: 'خطأ',
+        detail: 'تعذر حذف الملاحظة',
+        life: 3000,
+      });
     });
   }
 

@@ -251,6 +251,7 @@
             :checked="checked"
             :show-submit="shouldShowSubmitButton"
             :manual-mode="inputMode === 'military'"
+            :submitting="registrationInFlight || gate.isSubmitting"
             :mvdate="formDataManuel.mvdate"
             :mvtime="formDataManuel.mvtime"
             :max-date="getCurrentDate()"
@@ -408,6 +409,7 @@ export default {
       hwScanIntent: null,
       lastKeyAt: 0,
       hwScanTimer: null,
+      registrationInFlight: false,
       toast: {
         visible: false,
         title: '',
@@ -1042,6 +1044,11 @@ export default {
 
     onScannerKeyup(e) {
       unlockGateAudio();
+      if (this.inputMode === 'barcode') {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+          return;
+        }
+      }
       if (e.key === 'Enter' || e.keyCode === 13) {
         this.formData.qrcode = this.scannerBuffer.trim();
         this.scannerBuffer = '';
@@ -1057,7 +1064,14 @@ export default {
 
     async processBarcodeScan() {
       if (!this.formData.qrcode) return;
-      await this.check(true);
+      if (this.registrationInFlight || this.gate.isSubmitting) return;
+
+      this.registrationInFlight = true;
+      try {
+        await this.check(true);
+      } finally {
+        this.registrationInFlight = false;
+      }
       this.$nextTick(() => this.focusDriverScan());
     },
 
@@ -1137,6 +1151,7 @@ export default {
     },
 
     async submitManual(mvtype) {
+      if (this.registrationInFlight || this.gate.isSubmitting) return;
       if (!this.validatePlateBeforeSubmit()) return;
       if (mvtype) {
         this.formData.mvtype = mvtype;

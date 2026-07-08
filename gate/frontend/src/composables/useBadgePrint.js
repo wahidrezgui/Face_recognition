@@ -10,10 +10,8 @@ function getSelectedGuestIds(getGridApi) {
     return selectedRows.map((row) => row.id);
 }
 
-function finishLoading(vm, delayMs = 5000) {
-    setTimeout(() => {
-        vm.isLoading = false;
-    }, delayMs);
+function clearPrintLoading(vm) {
+    vm.isLoading = false;
 }
 
 export function createBadgePrintMixin({
@@ -37,8 +35,14 @@ export function createBadgePrintMixin({
                     });
                 } catch (error) {
                     console.error('Badge print error:', error);
+                    this.$toast?.add({
+                        severity: 'error',
+                        summary: 'خطأ في الطباعة',
+                        detail: error?.message || 'تعذر طباعة البطاقة',
+                        life: 5000,
+                    });
                 } finally {
-                    finishLoading(this);
+                    clearPrintLoading(this);
                 }
             },
 
@@ -54,8 +58,14 @@ export function createBadgePrintMixin({
                     });
                 } catch (error) {
                     console.error('Badge print error:', error);
+                    this.$toast?.add({
+                        severity: 'error',
+                        summary: 'خطأ في الطباعة',
+                        detail: error?.message || 'تعذر طباعة البطاقة',
+                        life: 5000,
+                    });
                 } finally {
-                    finishLoading(this);
+                    clearPrintLoading(this);
                 }
             },
 
@@ -70,8 +80,14 @@ export function createBadgePrintMixin({
                     });
                 } catch (error) {
                     console.error('Badge print error:', error);
+                    this.$toast?.add({
+                        severity: 'error',
+                        summary: 'خطأ في الطباعة',
+                        detail: error?.message || 'تعذر طباعة البطاقة',
+                        life: 5000,
+                    });
                 } finally {
-                    finishLoading(this);
+                    clearPrintLoading(this);
                 }
             },
 
@@ -85,9 +101,15 @@ export function createBadgePrintMixin({
                     onAfterSinglePrint?.(this, employeeId);
                 } catch (error) {
                     console.error('Print error:', error);
+                    this.$toast?.add({
+                        severity: 'error',
+                        summary: 'خطأ في الطباعة',
+                        detail: error?.message || 'تعذر طباعة البطاقة',
+                        life: 5000,
+                    });
                     onSinglePrintError?.(this, error);
                 } finally {
-                    this.isLoading = false;
+                    clearPrintLoading(this);
                 }
             },
         },

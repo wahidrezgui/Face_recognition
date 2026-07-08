@@ -3,6 +3,7 @@
 namespace App\Services\Movements;
 
 use App\Support\EmployeeGateAlerts;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use App\Models\Employees;
@@ -34,6 +35,78 @@ class MovementCheckService
     private function createdbyIdRules(): array
     {
         return ['createdby_id' => ['nullable', 'integer', 'exists:users,id']];
+    }
+
+    private function clientRequestIdRules(): array
+    {
+        return ['client_request_id' => ['required', 'uuid']];
+    }
+
+    /**
+     * @return array{movement: ?Movements, duplicate: bool}
+     */
+    private function createMovement(array $attrs): array
+    {
+        if (! empty($attrs['client_request_id'])) {
+            $existing = Movements::where('client_request_id', $attrs['client_request_id'])->first();
+            if ($existing) {
+                return ['movement' => $existing, 'duplicate' => true];
+            }
+        }
+
+        $empId = $attrs['emp_id'] ?? null;
+        if (! $empId) {
+            throw new \InvalidArgumentException('emp_id is required');
+        }
+
+        try {
+            $movement = DB::transaction(function () use ($attrs, $empId) {
+                $movement = Movements::create($attrs);
+                DB::table('employees')->where('id', $empId)->update(['updated_at' => now()]);
+
+                return $movement;
+            });
+
+            return ['movement' => $movement, 'duplicate' => false];
+        } catch (QueryException $e) {
+            if (! $this->isDuplicateKeyException($e)) {
+                throw $e;
+            }
+
+            return ['movement' => $this->findExistingMovement($attrs), 'duplicate' => true];
+        }
+    }
+
+    private function findExistingMovement(array $attrs): ?Movements
+    {
+        if (! empty($attrs['client_request_id'])) {
+            $byClient = Movements::where('client_request_id', $attrs['client_request_id'])->first();
+            if ($byClient) {
+                return $byClient;
+            }
+        }
+
+        if (
+            ! empty($attrs['emp_id'])
+            && ! empty($attrs['mvtype'])
+            && ! empty($attrs['mvdate'])
+            && ! empty($attrs['mvtime'])
+        ) {
+            return Movements::where('emp_id', $attrs['emp_id'])
+                ->where('mvtype', $attrs['mvtype'])
+                ->where('mvdate', $attrs['mvdate'])
+                ->where('mvtime', $attrs['mvtime'])
+                ->first();
+        }
+
+        return null;
+    }
+
+    private function isDuplicateKeyException(QueryException $e): bool
+    {
+        $errorCode = $e->errorInfo[1] ?? null;
+
+        return $errorCode === 1062 || (string) $e->getCode() === '23000';
     }
 
 public function check(Request $request){
@@ -122,14 +195,15 @@ public function checkManuel(Request $request){
         'mvdate' => ['required', 'date'],
         'mvtime' => ['required', 'string'],
         'platenumber' => ['nullable', 'string', 'max:'.self::PLATE_NUMBER_MAX_LENGTH],
-    ], $this->createdbyIdRules()), $this->movementValidationMessages());
+    ], $this->createdbyIdRules(), $this->clientRequestIdRules()), $this->movementValidationMessages());
 
     $mvtime = $validated['mvtime'];
     if (preg_match('/^\d{2}:\d{2}$/', $mvtime)) {
         $mvtime .= ':00';
     }
 
-    Movements::create([
+    $result = $this->createMovement([
+        'client_request_id' => $validated['client_request_id'],
         'emp_id' => $validated['empl_id'],
         'gate_id' => $validated['gate_id'],
         'base_id' => $validated['base_id'],
@@ -141,9 +215,9 @@ public function checkManuel(Request $request){
         'createdby_id' => $this->resolveCreatedbyId($request, $validated['createdby_id'] ?? null),
     ]);
 
-    DB::table('employees')->where('id', $validated['empl_id'])->update([
-        'updated_at' => now(),
-    ]);
+    if ($result['duplicate']) {
+        return response()->json(['success' => true, 'duplicate' => true]);
+    }
 
     return response()->json(['success' => true]);
 }
@@ -152,14 +226,6 @@ public function checkManuel(Request $request){
 
 
     public function checkSubmit(Request $request){
-
-        if ($request->filled('client_request_id')) {
-            $existing = Movements::where('client_request_id', $request->client_request_id)->first();
-            if ($existing) {
-                return response()->json(['success' => true, 'duplicate' => true]);
-            }
-        }
-
         $validated = $request->validate(array_merge([
             'emp_id' => ['required', 'integer', 'exists:employees,id'],
             'mvtype' => ['required', 'in:Check-In,Check-Out'],
@@ -167,22 +233,23 @@ public function checkManuel(Request $request){
             'gate_id' => ['required', 'integer', 'exists:gates,id'],
             'platenumber' => ['nullable', 'string', 'max:'.self::PLATE_NUMBER_MAX_LENGTH],
             'qrcode' => ['nullable', 'string'],
-            'client_request_id' => ['nullable', 'uuid'],
             'mvdate' => ['nullable', 'date'],
             'mvtime' => ['nullable', 'string'],
-        ], $this->createdbyIdRules()), $this->movementValidationMessages());
+        ], $this->createdbyIdRules(), $this->clientRequestIdRules()), $this->movementValidationMessages());
 
         $input = $validated;
         $input['mvtime'] = $validated['mvtime'] ?? date('H:i:s');
         $input['mvdate'] = $validated['mvdate'] ?? date('Y-m-d');
+        $input['automatic'] = true;
         $input['createdby_id'] = $this->resolveCreatedbyId($request, $validated['createdby_id'] ?? null);
-        Movements::create($input);
 
-        DB::table('employees')->where('id', $validated['emp_id'])->update([
-            'updated_at'=>now()
-        ]);
-        
-          return response()->json(array('success'=>true));
+        $result = $this->createMovement($input);
+
+        if ($result['duplicate']) {
+            return response()->json(['success' => true, 'duplicate' => true]);
+        }
+
+        return response()->json(['success' => true]);
 }
 
 public function syncOffline(Request $request)
@@ -201,11 +268,6 @@ public function syncOffline(Request $request)
 
     foreach ($request->items as $item) {
         $clientRequestId = $item['client_request_id'];
-
-        if (Movements::where('client_request_id', $clientRequestId)->exists()) {
-            $results[] = ['client_request_id' => $clientRequestId, 'status' => 'duplicate'];
-            continue;
-        }
 
         try {
             $empId = $item['emp_id'] ?? null;
@@ -226,7 +288,7 @@ public function syncOffline(Request $request)
             $mvdate = $item['mvdate'] ?? date('Y-m-d', strtotime($item['queued_at'] ?? 'now'));
             $mvtime = $item['mvtime'] ?? date('H:i:s', strtotime($item['queued_at'] ?? 'now'));
 
-            Movements::create([
+            $result = $this->createMovement([
                 'client_request_id' => $clientRequestId,
                 'emp_id' => $empId,
                 'mvtype' => $item['mvtype'],
@@ -239,9 +301,10 @@ public function syncOffline(Request $request)
                 'createdby_id' => $this->resolveCreatedbyId($request, isset($item['createdby_id']) ? (int) $item['createdby_id'] : null),
             ]);
 
-            DB::table('employees')->where('id', $empId)->update(['updated_at' => now()]);
-
-            $results[] = ['client_request_id' => $clientRequestId, 'status' => 'synced'];
+            $results[] = [
+                'client_request_id' => $clientRequestId,
+                'status' => $result['duplicate'] ? 'duplicate' : 'synced',
+            ];
         } catch (\Throwable $e) {
             $results[] = [
                 'client_request_id' => $clientRequestId,
@@ -263,7 +326,7 @@ public function syncOffline(Request $request)
             ->limit(10)
             ->get()
             ->map(fn (Movements $movement) => array_merge($movement->toArray(), [
-                'operator_name' => $movement->operatorLabel(),
+                'operator_name' => $movement->createdby_id ? $movement->operatorLabel() : null,
             ]));
 
         return response()->json($movements);

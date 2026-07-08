@@ -33,11 +33,25 @@ export function fetchGuest(id) {
 }
 
 export function createEmployee(data) {
-    return api.post('/api/employees', data);
+    return api.post('/api/employees', data, {
+        transformRequest: [(payload, headers) => {
+            if (payload instanceof FormData) {
+                delete headers['Content-Type'];
+            }
+            return payload;
+        }],
+    });
 }
 
 export function updateEmployee(data) {
-    return api.post('/api/employees/update', data);
+    return api.post('/api/employees/update', data, {
+        transformRequest: [(payload, headers) => {
+            if (payload instanceof FormData) {
+                delete headers['Content-Type'];
+            }
+            return payload;
+        }],
+    });
 }
 
 export function deleteEmployee(data) {
@@ -130,6 +144,13 @@ export function fetchBadgePreview(id) {
 
 export function fetchBadgeBackPreview(id) {
     return api.get(`/api/badges2/${id}/preview`);
+}
+
+export function fetchBulkBadgePreview({ guestIds, sides = ['front', 'back'] }) {
+    return api.post('/api/badges/bulk-preview', {
+        guest_ids: guestIds,
+        sides,
+    });
 }
 
 export function fetchCheckTimes(id, params) {

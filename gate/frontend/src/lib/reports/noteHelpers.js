@@ -13,26 +13,50 @@ const MONTH_MAP = {
   Dec: '12',
 };
 
-/** Normalize guest note day strings (e.g. "Mon, Jul 2 2026") to YYYY-MM-DD for the API. */
+/** Normalize guest note day strings to YYYY-MM-DD for the API. */
 export function formatNoteDay(dateString) {
   if (!dateString) {
     return '';
   }
 
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
-    return dateString;
+  const str = String(dateString).trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+    return str;
   }
 
-  const normalized = String(dateString).replace(',', '').trim();
+  // Backend guestInfo uses date('d M, Y') → "07 Jul, 2026"
+  const dmyMatch = str.match(/^(\d{1,2})\s+([A-Za-z]{3}),?\s+(\d{4})/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = MONTH_MAP[dmyMatch[2]] ?? dmyMatch[2];
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const normalized = str.replace(',', '').trim();
   const parts = normalized.split(/\s+/);
 
-  if (parts.length < 3) {
-    return dateString;
+  // "Mon Jul 2 2026" (weekday + month + day + year)
+  if (parts.length >= 4 && MONTH_MAP[parts[1]]) {
+    const month = MONTH_MAP[parts[1]];
+    const day = parts[2].padStart(2, '0');
+    const year = parts[3];
+    return `${year}-${month}-${day}`;
   }
 
-  const month = MONTH_MAP[parts[0]] ?? parts[0];
-  const day = parts[1].padStart(2, '0');
-  const year = parts[2];
+  // "Jul 2 2026" (month + day + year)
+  if (parts.length >= 3 && MONTH_MAP[parts[0]]) {
+    const month = MONTH_MAP[parts[0]];
+    const day = parts[1].padStart(2, '0');
+    const year = parts[2];
+    return `${year}-${month}-${day}`;
+  }
 
-  return `${year}-${month}-${day}`;
+  const parsed = new Date(str);
+  if (!Number.isNaN(parsed.getTime())) {
+    return parsed.toISOString().slice(0, 10);
+  }
+
+  return str;
 }

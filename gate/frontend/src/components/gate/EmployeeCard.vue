@@ -103,7 +103,8 @@
       <div class="grid grid-cols-2 gap-2">
         <button
           type="button"
-          class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-md transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200 focus:ring-offset-2"
+          class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-emerald-600 text-base font-bold text-white shadow-md transition hover:bg-emerald-700 focus:outline-none focus:ring-4 focus:ring-emerald-200 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="submitting"
           @click="$emit('submit', 'Check-In')"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -113,7 +114,8 @@
         </button>
         <button
           type="button"
-          class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-rose-600 text-base font-bold text-white shadow-md transition hover:bg-rose-700 focus:outline-none focus:ring-4 focus:ring-rose-200 focus:ring-offset-2"
+          class="flex h-14 items-center justify-center gap-2 rounded-2xl bg-rose-600 text-base font-bold text-white shadow-md transition hover:bg-rose-700 focus:outline-none focus:ring-4 focus:ring-rose-200 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="submitting"
           @click="$emit('submit', 'Check-Out')"
         >
           <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -158,6 +160,7 @@ export default {
     expiry: { type: Boolean, default: false },
     checked: { type: Boolean, default: false },
     showSubmit: { type: Boolean, default: false },
+    submitting: { type: Boolean, default: false },
     manualMode: { type: Boolean, default: false },
     mvdate: { type: String, default: '' },
     mvtime: { type: String, default: '' },

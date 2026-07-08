@@ -34,6 +34,7 @@ Route::middleware('auth:sanctum')->group(function () use ($readEmployees, $write
 
     Route::get('/badges/{id}', [EmployeeController::class, 'badgeInfo'])->middleware($readEmployees);
     Route::post('/badges/update', [EmployeeController::class, 'updateBadge'])->middleware($writeEmployees);
+    Route::post('/badges/bulk-preview', [EmployeeController::class, 'bulkGuestBadgePreview'])->middleware($readEmployees);
     Route::get('/badges/{id}/preview', [EmployeeController::class, 'guestBadge'])->middleware($readEmployees);
     Route::get('/badges2/{id}', [EmployeeController::class, 'badge2Info'])->middleware($readEmployees);
     Route::post('/badges2/update', [EmployeeController::class, 'updateBadge2'])->middleware($writeEmployees);

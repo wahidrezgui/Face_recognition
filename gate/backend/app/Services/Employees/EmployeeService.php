@@ -3,6 +3,7 @@
 namespace App\Services\Employees;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
@@ -23,6 +24,7 @@ use App\Models\Movements;
 use App\Models\Zones;
 use App\Models\BadgeLog;
 use App\Support\EmployeeStatus;
+use App\Support\EmployeePhotoSupport;
 use App\Support\Tree\DepartmentTreeService;
 use App\Support\Tree\RankTreeService;
 
@@ -127,25 +129,21 @@ class EmployeeService
             ];
 
             //check if dep_id is QAF All employees
-            $departmentIds = $this->departmentTree->getAllChildrenDepartmentIds($request->dep_id);
+            $departmentIds = $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds((int) $request->dep_id);
             if($request->dep_id==1)
             {   $baseQuery = Employees::query()
                 ->select(DB::raw("COUNT(*) as count"), DB::raw("status"))
                 ->where('employees.active', 1);
+                $this->applyEmployeeCompanyScope($baseQuery, $request);
                  
             }
             else
-            /*{
-                $baseQuery = Employees::query()
-                ->select(DB::raw("COUNT(*) as count"), DB::raw("status"))
-                ->where('employees.active', 1)
-                ->where('dep_parent_id', $request->dep_id);
-            }*/
             {//under the QAF user
                 $baseQuery = Employees::query()
                 ->select(DB::raw("COUNT(*) as count"), DB::raw("status"))
                 ->where('employees.active', 1)
                 ->whereIn('dep_id', $departmentIds);
+                $this->applyEmployeeCompanyScope($baseQuery, $request);
             }
 
                 $this->applyEmployeeListFilters($baseQuery, $request);
@@ -155,7 +153,7 @@ class EmployeeService
                     ->get()
                     ->keyBy('status');
 
-                $departmentScopeIds = $this->departmentTree->getAllChildrenDepartmentIds($request->dep_id);
+                $departmentScopeIds = $this->departmentTree->getDepartmentAndAllChildrenDepartmentIds((int) $request->dep_id);
                 $perPage = $request->input('per_page', 25);
                 $page = $request->input('page', 1);
 
@@ -174,11 +172,13 @@ class EmployeeService
                     $listQuery = Employees::query()
                         ->where('employees.active', 1)
                         ->whereIn('status', EmployeeStatus::cardStatusIds());
+                    $this->applyEmployeeCompanyScope($listQuery, $request);
                 } else {
                     $listQuery = Employees::query()
                         ->where('employees.active', 1)
                         ->whereIn('status', EmployeeStatus::cardStatusIds())
                         ->whereIn('dep_id', $departmentScopeIds);
+                    $this->applyEmployeeCompanyScope($listQuery, $request);
                 }
 
                 if ($request->filled('status')) {
@@ -300,24 +300,26 @@ class EmployeeService
             $item->selectedZones = $z;
     
             // Employee movement history (all dates) for the database panel
-            $movements = Movements::where('emp_id', $item->id)
+            $movements = Movements::with(['base', 'gate', 'createdBy'])
+                ->where('emp_id', $item->id)
                 ->orderBy('mvdate', 'desc')
                 ->orderBy('mvtime', 'desc')
                 ->get();
             $m = [];
             foreach ($movements as $movement) {
-                $base = Bases::find($movement->base_id);
-                $gate = Gates::find($movement->gate_id);
                 $mvtype_ar = $movement->mvtype === 'Check-In'
                     ? 'دخول'
                     : ($movement->mvtype === 'Check-Out' ? 'خروج' : $movement->mvtype);
 
                 $m[] = [
                     'mvtype' => $mvtype_ar,
+                    'mvtype_raw' => $movement->mvtype,
                     'mvtime' => $movement->mvtime,
                     'mvdate' => $movement->mvdate,
-                    'base_name_ar' => $base->name_ar ?? '',
-                    'gate_name_ar' => $gate->name_ar ?? '',
+                    'base_name_ar' => $movement->base->name_ar ?? '',
+                    'gate_name_ar' => $movement->gate->name_ar ?? '',
+                    'createdby_id' => $movement->createdby_id,
+                    'created_by_name' => $movement->createdby_id ? $movement->operatorLabel() : null,
                 ];
             }
             $item->movements = $m;
@@ -367,7 +369,7 @@ class EmployeeService
                         'mvtype'=>$mov->mvtype,
                         'created_at'=>date('d M, Y H:i:s', strtotime($mov->created_at)),
                         'createdby_id'=>$mov->createdby_id,
-                        'operator_name'=>$mov->operatorLabel(),
+                        'operator_name'=>$mov->createdby_id ? $mov->operatorLabel() : null,
                     );
                 }
 
@@ -384,7 +386,7 @@ class EmployeeService
                         'mvtime'=>$mov->mvtime,
                         'created_at'=>date('d M, Y H:i:s', strtotime($mov->created_at)),
                         'createdby_id'=>$mov->createdby_id,
-                        'operator_name'=>$mov->operatorLabel(),
+                        'operator_name'=>$mov->createdby_id ? $mov->operatorLabel() : null,
                     );
                 }
 
@@ -497,6 +499,17 @@ class EmployeeService
         $input['dep_parent_id'] = $input['dep_id'];
     }
 
+    private function applyEmployeeCompanyScope($query, Request $request): void
+    {
+        if ($request->boolean('company_only')) {
+            $query->whereHas('department', static fn ($department) => $department->where('is_company', 1));
+
+            return;
+        }
+
+        $query->whereHas('department', static fn ($department) => $department->where('is_company', 0));
+    }
+
     private function applyEmployeeListFilters($query, Request $request): bool
     {
         $carSearch = false;
@@ -550,19 +563,15 @@ class EmployeeService
         $this->applyEmployeeDepartmentIds($input);
 
         if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            $filename = time() . '.' . $photo->getClientOriginalExtension();
-            $filepath = 'uploads/'.$filename;
-            move_uploaded_file($photo, $filepath);
-            $input['photo']=$filepath;
+            $input['photo'] = EmployeePhotoSupport::storeUploadedPhoto($request->file('photo'));
         }
-
-        $input['qrcode']=uniqid();
+        $input['qrcode'] = uniqid();
         $input['active']=1;
 
         unset($input['zoning'], $input['zones']);
 
-        $employee=Employees::create($input);
+        $payload = collect($input)->only((new Employees())->getFillable())->all();
+        $employee=Employees::create($payload);
         $id=$employee->id;
 
         if ($request->has('zoning')) {
@@ -593,20 +602,23 @@ class EmployeeService
 
     public function editemployee(Request $request){
 
-        $input=$request->all();
-        $employee=Employees::findOrFail($request->id);
+        $input = $request->all();
+        $employee = Employees::findOrFail($request->id);
         $this->applyEmployeeDepartmentIds($input, $employee);
-        if ($request->hasFile('photo')) {
-            $photo = $request->file('photo');
-            $filename = time() . '.' . $photo->getClientOriginalExtension();
-            $filepath = 'uploads/'.$filename;
-            move_uploaded_file($photo, $filepath);
-            $input['photo']=$filepath;
+
+        $payload = collect($input)->only($employee->getFillable())->all();
+
+        $photoUploaded = false;
+        if ($request->hasFile('photo') && $request->file('photo')->isValid()) {
+            $payload['photo'] = EmployeePhotoSupport::storeUploadedPhoto($request->file('photo'));
+            $photoUploaded = true;
+        } else {
+            unset($payload['photo']);
         }
 
-        unset($input['zoning'], $input['zones']);
+        unset($payload['zoning'], $payload['zones']);
 
-        $employee->update($input);
+        $employee->update($payload);
 
         if($request->zoning){
            EmployeeZones::where('emp_id',$request->id)->delete();
@@ -632,6 +644,13 @@ class EmployeeService
             'created_at' =>now(),
             'updated_at' =>now(),
           ]);
+
+        return response()->json([
+            'success' => true,
+            'id' => $employee->id,
+            'photo' => $employee->fresh()->photo,
+            'photo_uploaded' => $photoUploaded,
+        ]);
         
     }
 
@@ -668,20 +687,31 @@ class EmployeeService
                 $baseName = $base->name_en ?? '';
             }
     
-            // 4. Zones (FIXED using relationship)
-            $zoneText = EmployeeZones::where('emp_id', $item)
+            // 4. Zones — summarize when many to fit logs.task (varchar 255)
+            $zoneNames = EmployeeZones::where('emp_id', $item)
                 ->with('zone')
                 ->get()
                 ->pluck('zone.name_en')
                 ->filter()
-                ->implode(', ');
-    
-            $zoneText = $zoneText ?: 'None';
-    
+                ->values();
+
+            $zoneCount = $zoneNames->count();
+            if ($zoneCount === 0) {
+                $zoneText = 'None';
+            } elseif ($zoneCount <= 3) {
+                $zoneText = $zoneNames->implode(', ');
+            } else {
+                $zoneText = $zoneCount . ' zones';
+            }
+
             // 5. Build task text
-            $task = EmployeeStatus::logLabel($status);
-            $task .= ' | Base: ' . ($baseName ?: 'None');
-            $task .= ' | Zones: ' . $zoneText;
+            $task = Str::limit(
+                EmployeeStatus::logLabel($status)
+                    . ' | Base: ' . ($baseName ?: 'None')
+                    . ' | Zones: ' . $zoneText,
+                255,
+                '…'
+            );
     
             // 6. Insert log
             DB::table('logs')->insert([
@@ -701,6 +731,8 @@ class EmployeeService
                 ]);
             }
         }
+
+        return response()->json(['success' => true]);
     }
 
     private function formatBadgeLogs(int $empId): array
@@ -971,35 +1003,67 @@ class EmployeeService
 
       public function guestbadge($id)
       {
+          return response()->json($this->buildGuestBadgeFrontPayload((int) $id));
+      }
+
+      public function bulkGuestBadgePreview(Request $request)
+      {
+          $validated = $request->validate([
+              'guest_ids' => ['required', 'array', 'min:1', 'max:100'],
+              'guest_ids.*' => ['integer', 'distinct', 'exists:employees,id'],
+              'sides' => ['sometimes', 'array'],
+              'sides.*' => ['in:front,back'],
+          ]);
+
+          $guestIds = array_values(array_unique(array_map('intval', $validated['guest_ids'])));
+          $sides = $validated['sides'] ?? ['front', 'back'];
+
+          $payload = [];
+          if (in_array('front', $sides, true)) {
+              $payload['front'] = [];
+          }
+          if (in_array('back', $sides, true)) {
+              $payload['back'] = [];
+          }
+
+          foreach ($guestIds as $guestId) {
+              if (isset($payload['front'])) {
+                  $payload['front'][(string) $guestId] = $this->buildGuestBadgeFrontPayload($guestId);
+              }
+              if (isset($payload['back'])) {
+                  $payload['back'][(string) $guestId] = $this->buildGuestBadgeBackPayload($guestId);
+              }
+          }
+
+          return response()->json($payload);
+      }
+
+      private function buildGuestBadgeFrontPayload(int $id): array
+      {
           $guest = Employees::where('id', $id)->firstOrFail();
-          $Job_Arabic =Employees::find($guest->Job_Arabic);
-          $Job_En =Employees::find($guest->Job_En);
           $base = Bases::find($guest->default_base);
-          $photo = Employees::find($guest->photo);
           $dep = Departments::find($guest->dep_parent_id);
           $rank = Ranks::find($guest->rank_id);
-          $ranke = Ranks::find($guest->rank_id);
           $badge2 = Badges::where('dep_id', $guest->dep_parent_id)->first();
-      
+
           $zones = EmployeeZones::where('emp_id', $guest->id)->get();
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
               $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
-      
-          // Retrieve the associated EmployeeCars
+
           $empCars = EmployeeCars::where('emp_id', $id)->get();
           $plateNumbers = $empCars->pluck('plate_number')->toArray();
-      
+
           $info = [
               'qrcode' => $guest->qrcode,
               'status' => $guest->status,
               'idguest' => $guest->id,
               'military_number' => $guest->military_number,
               'dep_id' => $guest->dep_id,
-              'photo' => $guest->photo, // Maintain employee photo retrieval
-              'photot' => $guest->photot, 
+              'photo' => $guest->photo,
+              'photot' => $guest->photot,
               'fullname_en' => $guest->fullname_en,
               'fullname_ar' => $guest->fullname_ar,
               'Job_Arabic' => $guest->Job_Arabic ?: '',
@@ -1011,17 +1075,16 @@ class EmployeeService
               'default_base' => $base->name_ar,
               'badge2' => $badge2,
               'ZoneColor' => $ZoneColors,
-              'expiry_date' => $guest->expiry_date ?: '', // Replace null with empty string
-              'plate_numbers' => $plateNumbers, // Include all plate numbers
-              'base_photo' => null, // Initialize base_photo to null
+              'expiry_date' => $guest->expiry_date ?: '',
+              'plate_numbers' => $plateNumbers,
+              'base_photo' => null,
           ];
-      
-          // Check if employee's base has photo
+
           if ($guest->default_base && isset($base->base_photo)) {
               $info['base_photo'] = $base->base_photo;
           }
-      
-          return response()->json($info);
+
+          return $info;
       }
 
      /*  public function guestbadge($id)
@@ -1118,72 +1181,67 @@ class EmployeeService
 
       public function guestbadge2($id)
       {
+          return response()->json($this->buildGuestBadgeBackPayload((int) $id));
+      }
+
+      private function buildGuestBadgeBackPayload(int $id): array
+      {
           $guest = Employees::where('id', $id)->firstOrFail();
           $base = Bases::find($guest->default_base);
           $dep = Departments::find($guest->dep_parent_id);
           $dep2 = Departments::find($guest->dep_id);
           $dep3 = Departments::find($guest->dep_id);
-          $StartTime = Employees::find($guest->StartTime);
-          $EndTime = Employees::find($guest->EndTime);
-          $Escort = Employees::find($guest->Escort);
-          $device = Employees::find($guest->device);
           $rank = Ranks::find($guest->rank_id);
           $badge2 = Badges2::where('dep_id', $guest->dep_parent_id)->first();
           $badge23 = Badges2::where('dep_id', $guest->dep_id)->first();
           $nationality = Nationalities::find($guest->nationality_id);
-          $nationalitye = Nationalities::find($guest->nationality_id);
           $zones = EmployeeZones::where('emp_id', $guest->id)->get();
           $ZoneColors = [];
           foreach ($zones as $zone) {
               $z = Zones::find($zone->zone_id);
               $ZoneColors[] = \App\Support\Zone\ZoneStyleSupport::colorPayload($z);
           }
-      
-          // Retrieve the associated EmployeeCars
+
           $empCars = EmployeeCars::where('emp_id', $id)->get();
           $plateNumbers = $empCars->pluck('plate_number')->toArray();
-      
-          $info = [
 
-            
+          $info = [
               'qrcode' => $guest->qrcode,
               'status' => $guest->status,
               'idguest' => $guest->id,
               'dep_id' => $guest->dep_id,
               'military_number' => $guest->military_number,
               'bloodtype' => $guest->bloodtype ?: '',
-              'dep_id' => $guest->dep_id,
-              'dep_name' => $dep2->name_ar, 
-              'dep3' => $dep3->name_en, 
-              'photo' => $guest->photo, // Maintain employee photo retrieval
-              'photot' => $guest->photot, 
+              'dep_name' => $dep2->name_ar,
+              'dep3' => $dep3->name_en,
+              'photo' => $guest->photo,
+              'photot' => $guest->photot,
               'fullname_en' => $guest->fullname_en,
               'fullname_ar' => $guest->fullname_ar,
               'Job_Arabic' => $guest->Job_Arabic,
               'Job_En' => $guest->Job_En ?: '',
               'device' => $guest->device,
               'Escort' => $guest->Escort,
-              'StartTime'  =>  $guest->StartTime,
-              'EndTime'  => $guest->EndTime,
+              'StartTime' => $guest->StartTime,
+              'EndTime' => $guest->EndTime,
               'department' => $dep->name_ar,
               'rank' => $rank->name_ar,
               'default_base' => $base->name_ar,
               'badge2' => $badge2,
-             'badge23' =>  $badge23,
+              'badge23' => $badge23,
               'ZoneColor' => $ZoneColors,
-              'expiry_date' => $guest->expiry_date ?: '', // Replace null with empty string
-              'plate_numbers' => $plateNumbers, // Include all plate numbers
-              'base_photo' => null, // Initialize base_photo to null
+              'expiry_date' => $guest->expiry_date ?: '',
+              'plate_numbers' => $plateNumbers,
+              'base_photo' => null,
               'nationality' => $nationality ? $nationality->name_ar : null,
-              'nationalitye' => $nationality->name_en,
+              'nationalitye' => $nationality?->name_en,
           ];
-      
-          // Check if employee's base has photo
+
           if ($guest->default_base && isset($base->base_photo)) {
               $info['base_photo'] = $base->base_photo;
           }
-      
-          return response()->json($info);
+
+          return $info;
       }
 
 

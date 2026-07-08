@@ -178,7 +178,6 @@
                 <input
                   v-model="formData.activate_sso"
                   type="checkbox"
-                  class="h-4 w-4 rounded border-amber-300 text-brand focus:ring-brand/20"
                   @change="clearValidationError('dep_id')"
                 />
                 <span>تفعيل حساب مرسال</span>

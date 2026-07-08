@@ -21,14 +21,81 @@
     border-color: #6E1029;
 }
 
-.p-checkbox .p-checkbox-box.p-highlight {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
+/* ── PrimeVue Checkbox (app-wide) ───────────────────────────────────────── */
+.p-checkbox {
+    width: var(--app-check-size);
+    height: var(--app-check-size);
+    flex-shrink: 0;
 }
 
-.p-radiobutton .p-radiobutton-box.p-highlight {
-    background: var(--primary-color);
-    border-color: var(--primary-color);
+.p-checkbox .p-checkbox-input {
+    width: var(--app-check-size);
+    height: var(--app-check-size);
+}
+
+.p-checkbox .p-checkbox-box {
+    width: var(--app-check-size);
+    height: var(--app-check-size);
+    border: 2px solid var(--app-check-border);
+    border-radius: var(--app-check-radius);
+    background: var(--app-check-bg);
+    color: #fff;
+    transition:
+        background-color 0.15s ease,
+        border-color 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+.p-checkbox:not(.p-checkbox-disabled):hover .p-checkbox-box {
+    border-color: var(--app-check-border-hover);
+}
+
+.p-checkbox .p-checkbox-box.p-highlight,
+.p-checkbox .p-checkbox-box.p-highlight:hover {
+    background: var(--app-check-checked-bg) !important;
+    border-color: var(--app-check-checked-border) !important;
+}
+
+.p-checkbox .p-checkbox-box .p-checkbox-icon {
+    color: #fff !important;
+    font-size: 0.7rem;
+    font-weight: 800;
+}
+
+.p-checkbox:not(.p-checkbox-disabled) .p-checkbox-box.p-focus {
+    outline: none;
+    box-shadow: var(--app-check-focus-ring);
+    border-color: var(--app-check-checked-border);
+}
+
+.p-checkbox.p-checkbox-disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.p-checkbox.p-checkbox-disabled .p-checkbox-box {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+/* ── PrimeVue Radio (match checkbox family) ───────────────────────────── */
+.p-radiobutton .p-radiobutton-box {
+    width: var(--app-check-size);
+    height: var(--app-check-size);
+    border: 2px solid var(--app-check-border);
+    background: var(--app-check-bg);
+}
+
+.p-radiobutton .p-radiobutton-box.p-highlight,
+.p-radiobutton .p-radiobutton-box.p-highlight:hover {
+    background: var(--app-check-checked-bg) !important;
+    border-color: var(--app-check-checked-border) !important;
+}
+
+.p-radiobutton .p-radiobutton-box .p-radiobutton-icon {
+    background-color: #fff;
+    width: 0.5rem;
+    height: 0.5rem;
 }
 
 .p-inputtext:enabled:focus,

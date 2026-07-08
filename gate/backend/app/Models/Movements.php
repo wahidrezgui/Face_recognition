@@ -46,14 +46,14 @@ public function createdBy()
 }
 
 /**
- * Display label for the operator. Prefer linked user; fall back to legacy backfill column.
+ * Display name from users table via createdby_id only (ignores legacy created_byname).
  */
 public function operatorLabel(): ?string
 {
-    if ($this->createdBy) {
-        return trim("{$this->createdBy->firstname} {$this->createdBy->lastname}") ?: null;
+    if (!$this->createdby_id || !$this->createdBy) {
+        return null;
     }
 
-    return $this->created_byname;
+    return trim("{$this->createdBy->firstname} {$this->createdBy->lastname}") ?: null;
 }
 }

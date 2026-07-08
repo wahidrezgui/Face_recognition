@@ -140,6 +140,11 @@ class EmployeeController extends Controller
         return $this->employees->guestbadge($id);
     }
 
+    public function bulkGuestBadgePreview(Request $request)
+    {
+        return $this->employees->bulkGuestBadgePreview($request);
+    }
+
     public function badge2Info(int $id)
     {
         return $this->employees->badge2Info($id);

@@ -122,7 +122,6 @@
                                         id="excuse"
                                         type="checkbox"
                                         :checked="withExcuse"
-                                        class="notes-header__checkbox"
                                         @change="$emit('update:withExcuse', $event.target.checked)"
                                     />
                                     <span>ملاحظات بعذر</span>
@@ -796,12 +795,6 @@ export default {
     font-weight: 700;
     color: var(--panel-ink);
     cursor: pointer;
-}
-
-.notes-header__checkbox {
-    width: 1rem;
-    height: 1rem;
-    accent-color: var(--panel-accent);
 }
 
 .notes-display-wrap {
