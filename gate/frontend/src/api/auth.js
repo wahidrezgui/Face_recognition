@@ -37,9 +37,12 @@ export async function logout() {
     }
 }
 
+const AUTH_ME_TIMEOUT_MS = 5000;
+
 export async function fetchMe() {
     const response = await api.get('/api/auth/me', {
         validateStatus: (status) => status === 200 || status === 401,
+        timeout: AUTH_ME_TIMEOUT_MS,
     });
 
     if (response.status === 401) {

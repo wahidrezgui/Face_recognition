@@ -119,6 +119,37 @@ class MovementCheckTest extends TestCase
         );
     }
 
+    public function test_sync_offline_batch_creates_movements(): void
+    {
+        $this->actingAsGateUser();
+        ['employee' => $employee, 'base' => $base, 'gate' => $gate] = $this->movementFixtures();
+        $datetime = $this->uniqueMovementDatetime();
+        $clientRequestId = (string) Str::uuid();
+
+        $response = $this->postJson('/api/movements/sync', [
+            'items' => [[
+                'client_request_id' => $clientRequestId,
+                'emp_id' => $employee->id,
+                'mvtype' => 'Check-In',
+                'base_id' => $base->id,
+                'gate_id' => $gate->id,
+                'mvdate' => $datetime['mvdate'],
+                'mvtime' => $datetime['mvtime'],
+                'mode' => 'auto',
+                'queued_at' => now()->toIso8601String(),
+            ]],
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('results.0.client_request_id', $clientRequestId)
+            ->assertJsonPath('results.0.status', 'synced');
+
+        $this->assertSame(
+            1,
+            Movements::where('client_request_id', $clientRequestId)->count()
+        );
+    }
+
     public function test_check_manual_returns_duplicate_for_same_client_request_id(): void
     {
         $this->actingAsGateUser();

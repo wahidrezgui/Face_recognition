@@ -1,9 +1,6 @@
-import Dexie from 'dexie';
 import MiniSearch from 'minisearch';
 import { fetchGateDirectory } from '../api/employees';
-
-const DB_NAME = 'gate-employee-directory';
-const META_KEY = 'sync';
+import { gateDb, META_KEY, ensureGateDbMigrated } from './gate-offline/gate-db';
 
 let searchIndex = null;
 let directoryStatus = {
@@ -13,31 +10,33 @@ let directoryStatus = {
     version: null,
 };
 
-const db = new Dexie(DB_NAME);
-db.version(1).stores({
-    employees: 'id, military_number, fullname_ar, fullname_en',
-    meta: 'key',
-});
-
 function normalizeEmployee(employee) {
     return {
         id: employee.id,
         military_number: employee.military_number ?? '',
+        qrcode: employee.qrcode ?? '',
         fullname_ar: employee.fullname_ar ?? '',
         fullname_en: employee.fullname_en ?? '',
         photo: employee.photo ?? null,
         department: employee.department ?? '',
         rank_name_ar: employee.rank_name_ar ?? '',
+        expiry_date: employee.expiry_date ?? null,
+        remarks: employee.remarks ?? '',
+        last_movement_type: employee.last_movement_type ?? null,
+        is_expired: Boolean(employee.is_expired),
+        alerts: employee.alerts ?? [],
+        cached_at: employee.cached_at ?? null,
         empl: employee.fullname_ar || employee.fullname_en || '',
     };
 }
 
 function buildSearchIndex(employees) {
     const index = new MiniSearch({
-        fields: ['military_number', 'fullname_ar', 'fullname_en'],
+        fields: ['military_number', 'fullname_ar', 'fullname_en', 'qrcode'],
         storeFields: [
             'id',
             'military_number',
+            'qrcode',
             'fullname_ar',
             'fullname_en',
             'photo',
@@ -65,8 +64,9 @@ function buildSearchIndex(employees) {
 }
 
 async function loadFromDatabase() {
-    const employees = await db.employees.toArray();
-    const meta = await db.meta.get(META_KEY);
+    await ensureGateDbMigrated();
+    const employees = await gateDb.employees.toArray();
+    const meta = await gateDb.meta.get(META_KEY);
 
     if (!employees.length || !meta) {
         directoryStatus = { ready: false, count: 0, syncedAt: null, version: null };
@@ -104,13 +104,16 @@ export async function initEmployeeDirectory() {
 
 export async function syncEmployeeDirectory() {
     const { data } = await fetchGateDirectory();
-    const employees = (data.employees || []).map(normalizeEmployee);
     const syncedAt = new Date().toISOString();
+    const employees = (data.employees || []).map((employee) =>
+        normalizeEmployee({ ...employee, cached_at: syncedAt })
+    );
 
-    await db.transaction('rw', db.employees, db.meta, async () => {
-        await db.employees.clear();
-        await db.employees.bulkPut(employees);
-        await db.meta.put({
+    await ensureGateDbMigrated();
+    await gateDb.transaction('rw', gateDb.employees, gateDb.meta, async () => {
+        await gateDb.employees.clear();
+        await gateDb.employees.bulkPut(employees);
+        await gateDb.meta.put({
             key: META_KEY,
             version: data.version ?? syncedAt,
             count: data.count ?? employees.length,
@@ -130,9 +133,10 @@ export async function syncEmployeeDirectory() {
 }
 
 export async function clearEmployeeDirectory() {
-    await db.transaction('rw', db.employees, db.meta, async () => {
-        await db.employees.clear();
-        await db.meta.clear();
+    await ensureGateDbMigrated();
+    await gateDb.transaction('rw', gateDb.employees, gateDb.meta, async () => {
+        await gateDb.employees.clear();
+        await gateDb.meta.clear();
     });
 
     searchIndex = null;

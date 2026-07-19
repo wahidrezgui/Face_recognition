@@ -8,6 +8,7 @@ import {
     clearLegacyStorage,
 } from '../api/auth';
 import { AUTH_QUERY_KEY } from '../lib/auth-session';
+import { saveKioskSession, clearKioskSession } from '../lib/gate-offline/kiosk-session';
 import { useEmployeeDirectory } from './useEmployeeDirectory';
 
 export function useAuth() {
@@ -24,6 +25,7 @@ export function useAuth() {
         queryFn: async () => {
             const me = await fetchMe();
             syncLegacyStorage(me);
+            await saveKioskSession(me);
             return me;
         },
         retry: false,
@@ -39,6 +41,7 @@ export function useAuth() {
 
             queryClient.setQueryData(AUTH_QUERY_KEY, data.user);
             syncLegacyStorage(data.user);
+            saveKioskSession(data.user).catch(() => { });
 
             // Defer directory sync until the session cookie is committed
             window.setTimeout(() => {
@@ -54,6 +57,7 @@ export function useAuth() {
         onSettled: () => {
             queryClient.setQueryData(AUTH_QUERY_KEY, null);
             clearLegacyStorage();
+            clearKioskSession().catch(() => { });
             clearDirectory().catch((err) => {
                 console.error('Employee directory clear failed:', err);
             });
@@ -87,6 +91,7 @@ export function useAuth() {
         } catch {
             queryClient.setQueryData(AUTH_QUERY_KEY, null);
             clearLegacyStorage();
+            clearKioskSession().catch(() => { });
             clearDirectory().catch((err) => {
                 console.error('Employee directory clear failed:', err);
             });

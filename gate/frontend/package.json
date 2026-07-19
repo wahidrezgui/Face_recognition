@@ -2,9 +2,10 @@
     "private": true,
     "type": "module",
     "scripts": {
-        "dev": "vite --host --port 8080",
+        "dev": "vite --host --port 8081",
         "build": "vite build",
-        "postbuild": "node scripts/copy-vite-manifest.cjs"
+        "postbuild": "node scripts/copy-vite-manifest.cjs && node scripts/patch-pwa-manifest.cjs",
+        "test:unit": "vitest run"
     },
     "devDependencies": {
         "@popperjs/core": "^2.11.6",
@@ -12,10 +13,13 @@
         "autoprefixer": "^10.4.16",
         "axios": "^1.6.0",
         "bootstrap": "^5.2.3",
-        "laravel-vite-plugin": "^0.8.0",
+        "fake-indexeddb": "^6.0.0",
+        "laravel-vite-plugin": "^1.0.0",
         "postcss": "^8.4.31",
         "tailwindcss": "^3.3.5",
         "vite": "^5.2.11",
+        "vite-plugin-pwa": "^0.21.1",
+        "vitest": "^3.0.5",
         "vue": "^3.2.36"
     },
     "dependencies": {

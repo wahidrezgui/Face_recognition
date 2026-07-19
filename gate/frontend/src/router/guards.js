@@ -1,12 +1,16 @@
-import { getRedirectPathForUser } from '../api/auth';
 import {
     ensureAuthUser,
     getAuthUser,
     isAuthenticated,
-    getAuthRoleName,
+    AUTH_QUERY_KEY,
 } from '../lib/auth-session';
 import { pathToRouteKey } from '../lib/access';
 import { userCanAccessRoute } from '../lib/auth-roles';
+import { isApiReachable } from '../lib/offline-queue';
+import { getKioskSession } from '../lib/gate-offline/kiosk-session';
+import { isBrowserOnline } from '../lib/gate-offline/connectivity';
+import { queryClient } from '../plugins/query';
+import { getRedirectPathForUser, syncLegacyStorage } from '../api/auth';
 
 export function registerRouterGuards(router) {
     router.beforeEach(async (to, from, next) => {
@@ -16,20 +20,36 @@ export function registerRouterGuards(router) {
             await ensureAuthUser();
         }
 
-        const user = getAuthUser();
+        let user = getAuthUser();
 
         if (to.meta.guest && isAuthenticated(user)) {
             return next(getRedirectPathForUser(user));
         }
 
         if (to.meta.requiresAuth && !isAuthenticated(user)) {
-            return next('/');
+            const routeKey = to.meta.routeKey ?? pathToRouteKey(to.path);
+            const offlineGate = routeKey === 'gate' && !isBrowserOnline();
+            const unreachableGate = routeKey === 'gate' && !(await isApiReachable());
+            if (offlineGate || unreachableGate) {
+                const kioskUser = await getKioskSession();
+                if (kioskUser) {
+                    queryClient.setQueryData(AUTH_QUERY_KEY, kioskUser);
+                    syncLegacyStorage(kioskUser);
+                    user = kioskUser;
+                }
+            }
+            if (!isAuthenticated(user)) {
+                return next('/');
+            }
         }
 
         const routeKey = to.meta.routeKey ?? pathToRouteKey(to.path);
 
         if (routeKey) {
-            if (userCanAccessRoute(routeKey, user)) {
+            const kioskUser = routeKey === 'gate' && !isBrowserOnline()
+                ? await getKioskSession()
+                : null;
+            if (kioskUser || userCanAccessRoute(routeKey, user)) {
                 return next();
             }
             return next('/permission-denied');

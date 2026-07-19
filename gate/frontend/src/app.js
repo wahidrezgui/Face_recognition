@@ -36,4 +36,19 @@ installDialog(app);
 app.use(VueSidePanel);
 app.use(VueHtmlToPaper);
 
+if (import.meta.env.PROD) {
+    import('workbox-window').then(({ Workbox }) => {
+        const wb = new Workbox('/build/sw.js', { scope: '/', type: 'classic' });
+        wb.addEventListener('installed', (event) => {
+            if (!event.isUpdate) {
+                return;
+            }
+            window.location.reload();
+        });
+        wb.register().catch(() => {
+            // SW optional — gate still works without install
+        });
+    });
+}
+
 app.mount('#app');

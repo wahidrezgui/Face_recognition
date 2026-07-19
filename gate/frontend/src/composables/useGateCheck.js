@@ -1,41 +1,63 @@
 import { reactive, onMounted, onUnmounted } from 'vue';
-import { useMutation, useQueryClient } from '@tanstack/vue-query';
-import { checkMovement, checkManual, submitMovement } from '../api/movements';
-import { countPendingMovements, isOnline, onConnectivityChange } from '../lib/offline-queue';
+import { checkMovement } from '../api/movements';
+import { submitMovementWithOffline } from '../lib/sync-movements';
+import {
+    countPendingMovements,
+    onConnectivityChange,
+    onConnectionStateChange,
+    startConnectivityHeartbeat,
+    stopConnectivityHeartbeat,
+    isApiReachable,
+} from '../lib/offline-queue';
 import { syncPendingMovements } from '../lib/sync-movements';
 import { createRequestId } from '../lib/uuid';
+import {
+    setConnectionStateSyncing,
+    restoreConnectionStateAfterSync,
+} from '../lib/gate-offline/connectivity';
 
 export function useGateCheck() {
-    const queryClient = useQueryClient();
-
-    const submitMutation = useMutation({
-        mutationFn: async (payload) => {
-            const response = await submitMovement(payload);
-            return response.data;
-        },
-        onSuccess: (result) => {
-            if (!result.queued) {
-                queryClient.invalidateQueries({ queryKey: ['movements'] });
-            }
-            gate.pendingCount = countPendingMovements();
-        },
-    });
-
     const gate = reactive({
         loading: false,
         error: false,
         data: null,
-        offline: !isOnline(),
-        pendingCount: countPendingMovements(),
+        connectionState: 'online',
+        offline: false,
+        pendingCount: 0,
         isSubmitting: false,
+        lastSyncAt: null,
+        lastSyncResult: null,
+        syncError: null,
+
+        async refreshPendingCount() {
+            gate.pendingCount = await countPendingMovements();
+        },
 
         async flushQueue() {
-            if (!isOnline() || gate.pendingCount === 0) {
+            if (!(await isApiReachable(true)) || gate.pendingCount === 0) {
                 return null;
             }
-            const result = await syncPendingMovements();
-            gate.pendingCount = countPendingMovements();
-            return result;
+
+            setConnectionStateSyncing();
+            gate.connectionState = 'syncing';
+            gate.syncError = null;
+
+            try {
+                const result = await syncPendingMovements();
+                gate.lastSyncResult = result;
+                gate.lastSyncAt = result.syncedAt;
+                if (result.failed?.length) {
+                    gate.syncError = `${result.failed.length} failed`;
+                }
+                gate.pendingCount = await countPendingMovements();
+                return result;
+            } catch (error) {
+                gate.syncError = error?.message ?? 'Sync failed';
+                throw error;
+            } finally {
+                restoreConnectionStateAfterSync();
+                gate.connectionState = gate.offline ? 'offline' : 'online';
+            }
         },
 
         async check(payload) {
@@ -54,44 +76,51 @@ export function useGateCheck() {
         },
 
         async checkManualEntry(payload) {
-            gate.isSubmitting = true;
-            try {
-                const response = await checkManual({
-                    ...payload,
-                    client_request_id: payload.client_request_id ?? createRequestId(),
-                });
-                return response.data;
-            } finally {
-                gate.isSubmitting = false;
-            }
+            const body = {
+                ...payload,
+                client_request_id: payload.client_request_id ?? createRequestId(),
+            };
+            return submitMovementWithOffline(body);
         },
 
         async submit(payload) {
-            gate.isSubmitting = true;
-            try {
-                return await submitMutation.mutateAsync(payload);
-            } finally {
-                gate.isSubmitting = false;
-            }
+            const body = {
+                ...payload,
+                client_request_id: payload.client_request_id ?? createRequestId(),
+            };
+            return submitMovementWithOffline(body);
         },
     });
 
     let stopConnectivityListener = null;
+    let stopStateListener = null;
 
-    onMounted(() => {
+    function applyConnectionState(state) {
+        gate.connectionState = state;
+        gate.offline = state === 'offline';
+    }
+
+    onMounted(async () => {
+        await gate.refreshPendingCount();
+        startConnectivityHeartbeat();
+
+        stopStateListener = onConnectionStateChange(applyConnectionState);
+
         stopConnectivityListener = onConnectivityChange(async () => {
-            gate.offline = !isOnline();
-            if (isOnline()) {
+            if (gate.connectionState !== 'offline' && gate.pendingCount > 0) {
                 await gate.flushQueue();
             }
         });
-        if (isOnline() && gate.pendingCount > 0) {
+
+        if (gate.connectionState !== 'offline' && gate.pendingCount > 0) {
             gate.flushQueue();
         }
     });
 
     onUnmounted(() => {
         stopConnectivityListener?.();
+        stopStateListener?.();
+        stopConnectivityHeartbeat();
     });
 
     return gate;

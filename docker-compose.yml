@@ -14,7 +14,7 @@ services:
     volumes:
       - postgres_gatevision_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U gatevision -d gatevision"]
+      test: [ "CMD-SHELL", "pg_isready -U gatevision -d gatevision" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -41,7 +41,7 @@ services:
     networks:
       - devnet
     restart: unless-stopped
- 
+
   # ── Test: MySQL + phpMyAdmin ────────────────────────────────
   mysql-test:
     image: mysql:8.0
@@ -52,7 +52,7 @@ services:
       MYSQL_USER: testuser
       MYSQL_PASSWORD: testpass
     ports:
-      - "3306:3306"
+      - "3308:3306"
     networks:
       - devnet
     volumes:

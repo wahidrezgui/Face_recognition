@@ -5,6 +5,12 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
         <link rel="icon" href="data:,">
+        @unless (app()->environment('local'))
+        <link rel="manifest" href="/build/manifest.webmanifest">
+        <meta name="theme-color" content="#0f766e">
+        <meta name="mobile-web-app-capable" content="yes">
+        <link rel="apple-touch-icon" href="/pwa-icon.svg">
+        @endunless
         <title>Gate</title>
 
         <!-- Fonts -->

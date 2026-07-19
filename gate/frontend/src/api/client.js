@@ -68,8 +68,12 @@ api.interceptors.response.use(
         }
 
         const onLoginPage = window.location.pathname === '/' || window.location.pathname === '';
+        const onGatePage = window.location.pathname.startsWith('/gate');
         const isAuthMe = error.config?.url?.includes('/api/auth/me');
         if (error.response?.status === 401 && !onLoginPage && !isAuthMe) {
+            if (onGatePage && typeof navigator !== 'undefined' && !navigator.onLine) {
+                return Promise.reject(error);
+            }
             window.location.href = '/';
         }
         return Promise.reject(error);
@@ -77,7 +81,11 @@ api.interceptors.response.use(
 );
 
 export function isNetworkError(error) {
-    return !error.response && (error.code === 'ERR_NETWORK' || error.message === 'Network Error');
+    return !error.response && (
+        error.code === 'ERR_NETWORK'
+        || error.code === 'ECONNABORTED'
+        || error.message === 'Network Error'
+    );
 }
 
 export default api;

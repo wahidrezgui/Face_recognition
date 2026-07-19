@@ -1,9 +1,13 @@
 <template>
   <div class="gate-kiosk flex h-dvh flex-col overflow-hidden" dir="rtl">
-  <div v-if="gate.offline || gate.pendingCount > 0" class="shrink-0 border-b border-amber-300 bg-amber-50 px-4 py-1.5 text-center text-xs text-amber-900">
-    <span v-if="gate.offline">وضع عدم الاتصال — سيتم مزامنة التسجيلات عند عودة الشبكة.</span>
-    <span v-else>تسجيلات بانتظار المزامنة: {{ gate.pendingCount }}</span>
-  </div>
+  <GateConnectivityBar
+    :connection-state="gate.connectionState"
+    :pending-count="gate.pendingCount"
+    :last-sync-at="gate.lastSyncAt"
+    :last-sync-result="gate.lastSyncResult"
+    :sync-error="gate.syncError"
+    :offline-cached="offlineCachedSession"
+  />
 
   <div v-if="directorySyncing && !directoryReady" class="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-1.5 text-center text-xs text-sky-900">
     جاري تحميل قائمة الموظفين...
@@ -251,7 +255,8 @@
             :checked="checked"
             :show-submit="shouldShowSubmitButton"
             :manual-mode="inputMode === 'military'"
-            :submitting="registrationInFlight || gate.isSubmitting"
+            :submitting="registrationInFlight"
+            :submitting-type="manualSubmittingType"
             :mvdate="formDataManuel.mvdate"
             :mvtime="formDataManuel.mvtime"
             :max-date="getCurrentDate()"
@@ -321,6 +326,7 @@
 
 <script>
 import EmployeeCard from '../../components/gate/EmployeeCard.vue';
+import GateConnectivityBar from '../../components/gate/GateConnectivityBar.vue';
 import MilitarySearchPicker from '../../components/gate/MilitarySearchPicker.vue';
 import AppButton from '../../components/ui/AppButton.vue';
 import { useGateCheck } from '../../composables/useGateCheck';
@@ -337,6 +343,14 @@ import {
     playKharoojSound,
 } from '../../lib/gate-audio';
 import { isDirectoryReady } from '../../lib/employee-directory';
+import { isApiReachable } from '../../lib/offline-queue';
+import {
+    lookupGateCardByQrcode,
+    lookupGateCardByEmployeeId,
+    saveGateConfig,
+    loadGateConfig,
+} from '../../lib/gate-offline/gate-cache';
+import { getKioskSession } from '../../lib/gate-offline/kiosk-session';
 import {
     formatGateError,
     plateTooLongMessage,
@@ -348,7 +362,7 @@ const SCAN_SUBMIT_DELAY_MS = 400;
 
 export default {
   name: 'GateKiosk',
-  components: { EmployeeCard, MilitarySearchPicker, AppButton },
+  components: { EmployeeCard, GateConnectivityBar, MilitarySearchPicker, AppButton },
   setup() {
     const gate = useGateCheck();
     const { logout } = useAuth();
@@ -410,6 +424,7 @@ export default {
       lastKeyAt: 0,
       hwScanTimer: null,
       registrationInFlight: false,
+      manualSubmittingType: null,
       toast: {
         visible: false,
         title: '',
@@ -417,6 +432,7 @@ export default {
         type: 'success',
       },
       toastTimer: null,
+      offlineCachedSession: false,
     };
   },
   computed: {
@@ -433,6 +449,21 @@ export default {
     this.fetchData();
     this.initAudio();
     this.initEmployeeDirectoryCache();
+    this.initOfflineSessionFlag();
+    this._syncUnwatch = this.$watch(
+      () => this.gate.lastSyncResult,
+      (result) => {
+        if (!result) return;
+        const synced = (result.synced?.length ?? 0) + (result.duplicates?.length ?? 0);
+        const failed = result.failed?.length ?? 0;
+        if (synced > 0) {
+          this.showToast(`تمت مزامنة ${synced} تسجيل`, 'success');
+        }
+        if (failed > 0) {
+          this.showToast(`فشل مزامنة ${failed} تسجيل — ستُعاد المحاولة`, 'error');
+        }
+      }
+    );
     this.formDataManuel.mvdate = this.getCurrentDate();
     this.formDataManuel.mvtime = this.getCurrentTime();
     this._onDocPointerDown = (event) => {
@@ -467,10 +498,34 @@ export default {
     clearTimeout(this.militarySearchTimer);
     clearTimeout(this.hwScanTimer);
     clearTimeout(this.toastTimer);
+    if (this._syncUnwatch) {
+      this._syncUnwatch();
+    }
   },
   methods: {
     initAudio() {
       unlockGateAudio();
+    },
+
+    async initOfflineSessionFlag() {
+      try {
+        const session = await getKioskSession();
+        this.offlineCachedSession = this.gate.offline && Boolean(session);
+      } catch {
+        this.offlineCachedSession = false;
+      }
+    },
+
+    applyGateConfig(cached) {
+      this.base = cached.base_name ?? '';
+      this.formData.base_id = Number(cached.base_id) || null;
+      this.formDataManuel.base_id = Number(cached.base_id) || null;
+      this.gates = cached.gates ?? [];
+      if (this.gates.length > 0) {
+        const gateId = Number(cached.gate_id ?? this.gates[0].id);
+        this.formData.gate_id = gateId;
+        this.formDataManuel.gate_id = gateId;
+      }
     },
 
     async initEmployeeDirectoryCache() {
@@ -832,16 +887,35 @@ export default {
     buildManualPayload() {
       this.syncManuelFields();
       this.syncPlateFields();
+      const mvtime = this.normalizeMvtime(this.formDataManuel.mvtime);
       return {
         empl_id: Number(this.formDataManuel.empl_id),
         mvtype: this.formDataManuel.mvtype,
         base_id: Number(this.formDataManuel.base_id),
-        gate_id: Number(this.formDataManuel.gate_id),
+        gate_id: Number(this.formDataManuel.gate_id || this.formData.gate_id),
         mvdate: this.formDataManuel.mvdate,
-        mvtime: this.formDataManuel.mvtime,
+        mvtime,
         platenumber: this.formDataManuel.platenumber || '',
         createdby_id: this.formDataManuel.createdby_id || this.accountId,
       };
+    },
+
+    normalizeMvtime(value) {
+      const raw = String(value ?? '').trim();
+      if (/^\d{2}:\d{2}$/.test(raw)) {
+        return `${raw}:00`;
+      }
+      return raw;
+    },
+
+    parseManualDateTime(mvdate, mvtime) {
+      const date = String(mvdate ?? '').trim();
+      const time = this.normalizeMvtime(mvtime);
+      if (!date || !time) {
+        return null;
+      }
+      const selected = new Date(`${date}T${time}`);
+      return Number.isNaN(selected.getTime()) ? null : selected;
     },
 
     resetCardState() {
@@ -898,10 +972,19 @@ export default {
     },
 
     async loadEmployeePreview(employeeId) {
-      const { data } = await fetchGatePreview(employeeId, {
-        base_id: this.formData.base_id,
-      });
-      this.applyEmployeeCard(data);
+      if (await isApiReachable()) {
+        const { data } = await fetchGatePreview(employeeId, {
+          base_id: this.formData.base_id,
+        });
+        this.applyEmployeeCard(data);
+        return;
+      }
+
+      const card = await lookupGateCardByEmployeeId(employeeId);
+      if (!card) {
+        throw new Error('Employee not in offline cache');
+      }
+      this.applyEmployeeCard(card);
     },
 
     clearMilitarySearch() {
@@ -924,6 +1007,14 @@ export default {
     async fetchData() {
       this.loadingBase = true;
       try {
+        if (!(await isApiReachable())) {
+          const cached = await loadGateConfig();
+          if (cached) {
+            this.applyGateConfig(cached);
+            return;
+          }
+        }
+
         const storedBaseId = localStorage.getItem('base_default');
         let baseResponse;
 
@@ -938,19 +1029,37 @@ export default {
         }
 
         const baseData = baseResponse.data;
+        const rawGates = baseData.gates || baseData.Gates || [];
+        const plainGates = rawGates.map((gate) => ({
+          id: Number(gate.id),
+          name_ar: gate.name_ar ?? gate.name ?? '',
+        }));
+
         this.base = baseData.name_ar;
         this.formData.base_id = Number(baseData.id);
         this.formDataManuel.base_id = Number(baseData.id);
-        this.gates = baseData.gates || baseData.Gates || [];
+        this.gates = plainGates;
         if (this.gates.length > 0) {
           this.formData.gate_id = Number(this.gates[0].id);
           this.formDataManuel.gate_id = Number(this.gates[0].id);
         } else {
           this.showToast('لا توجد بوابات مرتبطة بهذه القاعدة', 'error');
         }
+
+        await saveGateConfig({
+          base_id: Number(baseData.id),
+          base_name: String(baseData.name_ar ?? ''),
+          gates: plainGates,
+          gate_id: this.formData.gate_id,
+        });
       } catch (err) {
         console.error('Failed to load base/gates:', err);
-        this.showToast('تعذر تحميل القاعدة والبوابات', 'error');
+        const cached = await loadGateConfig();
+        if (cached) {
+          this.applyGateConfig(cached);
+        } else {
+          this.showToast('تعذر تحميل القاعدة والبوابات', 'error');
+        }
       } finally {
         this.loadingBase = false;
       }
@@ -1076,14 +1185,6 @@ export default {
     },
 
     async check(fromScanner = false) {
-      if (this.gate.offline) {
-        this.error = true;
-        this.playErrorSound();
-        this.showToast('لا يوجد اتصال — التحقق من البطاقة يتطلب شبكة', 'error');
-        this.formData.qrcode = '';
-        return;
-      }
-
       if (!fromScanner && this.inputMode === 'barcode') {
         return;
       }
@@ -1095,7 +1196,22 @@ export default {
         this.checked = false;
         this.error = false;
 
-        const responseData = await this.gate.check(this.formData);
+        let responseData;
+        if (await isApiReachable()) {
+          responseData = await this.gate.check(this.formData);
+        } else {
+          responseData = await lookupGateCardByQrcode(this.formData.qrcode);
+          if (!responseData) {
+            this.error = true;
+            this.playErrorSound();
+            this.showToast(
+              'البطاقة غير موجودة في البيانات المحلية — يلزم الاتصال بالشبكة مرة واحدة',
+              'error'
+            );
+            this.formData.qrcode = '';
+            return;
+          }
+        }
         this.applyEmployeeCard(responseData);
 
         if (this.expiry) {
@@ -1133,6 +1249,7 @@ export default {
         const response = await this.gate.submit(payload);
         if (response.success) {
           this.checked = true;
+          await this.gate.refreshPendingCount();
           this.playSuccessSound();
           this.showToast(
             response.queued ? 'تم حفظ التسجيل بدون شبكة — سيتم المزامنة لاحقاً' : 'تم تسجيل البيانات بنجاح',
@@ -1151,7 +1268,10 @@ export default {
     },
 
     async submitManual(mvtype) {
-      if (this.registrationInFlight || this.gate.isSubmitting) return;
+      if (this.registrationInFlight || this.manualSubmittingType) {
+        this.showToast('جاري معالجة الطلب السابق...', 'error');
+        return;
+      }
       if (!this.validatePlateBeforeSubmit()) return;
       if (mvtype) {
         this.formData.mvtype = mvtype;
@@ -1162,35 +1282,54 @@ export default {
         this.showToast('يرجى اختيار رقم عسكري', 'error');
         return;
       }
-      if (!this.formDataManuel.base_id || !this.formData.gate_id) {
+      const gateId = Number(this.formDataManuel.gate_id || this.formData.gate_id);
+      if (!this.formDataManuel.base_id || !gateId) {
         this.playErrorSound();
         this.showToast('يرجى اختيار القاعدة والبوابة', 'error');
         return;
       }
+      this.formData.gate_id = gateId;
+      this.formDataManuel.gate_id = gateId;
       if (!this.formDataManuel.mvdate || !this.formDataManuel.mvtime) {
         this.playErrorSound();
         this.showToast('يرجى تحديد التاريخ والوقت', 'error');
         return;
       }
 
-      const selected = new Date(`${this.formDataManuel.mvdate}T${this.formDataManuel.mvtime}`);
+      const selected = this.parseManualDateTime(
+        this.formDataManuel.mvdate,
+        this.formDataManuel.mvtime
+      );
+      if (!selected) {
+        this.playErrorSound();
+        this.showToast('صيغة التاريخ أو الوقت غير صحيحة', 'error');
+        return;
+      }
       if (selected > new Date()) {
         this.playErrorSound();
         this.showToast('التاريخ والوقت يجب أن يكونا في الماضي أو الحاضر', 'error');
         return;
       }
 
+      this.manualSubmittingType = mvtype;
       try {
-        await this.gate.checkManualEntry(this.buildManualPayload());
+        const response = await this.gate.checkManualEntry(this.buildManualPayload());
         this.checked = true;
+        await this.gate.refreshPendingCount();
         this.playSuccessSound();
-        this.showToast('تم تسجيل البيانات بنجاح', 'success');
+        this.showToast(
+          response?.queued ? 'تم حفظ التسجيل بدون شبكة — سيتم المزامنة لاحقاً' : 'تم تسجيل البيانات بنجاح',
+          'success'
+        );
         this.resetScanState();
         this.clearRegistrationPlate();
         this.focusMilitaryInput();
       } catch (err) {
+        console.error('Manual submit failed:', err);
         this.playErrorSound();
         this.showToast(formatGateError(err), 'error');
+      } finally {
+        this.manualSubmittingType = null;
       }
     },
 
