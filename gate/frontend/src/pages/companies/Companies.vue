@@ -131,7 +131,7 @@
                                 <div class="flex flex-shrink-0 gap-1 opacity-0 transition group-hover:opacity-100">
                                     <AppButton variant="ghost" size="sm" class="!p-1 text-brand" @click.stop="editDep(comp.id)" title="تعديل"><i class="pi pi-pencil text-xs" /></AppButton>
                                     <AppButton variant="ghost" size="sm" class="!p-1 text-emerald-600 hover:text-emerald-700" @click.stop="infoComp(comp.id)" title="عرض"><i class="pi pi-eye text-xs" /></AppButton>
-                                   
+
                                 </div>
                             </div>
                             <div v-if="pagedDepartments.length === 0" class="py-8 text-center text-sm text-slate-400">
@@ -383,7 +383,7 @@
         :departments="departments"
         :ranks="ranks"
         :bases="bases"
-        :user-name="userName"
+        :account-id="accountId"
         :dep-id="depId"
         :field-validity="fieldValidity"
         lock-department
@@ -403,7 +403,7 @@
         :departments="departments"
         :ranks="ranks"
         :bases="bases"
-        :user-name="userName"
+        :account-id="accountId"
         :dep-id="depId"
         :read-only="!canMutate"
         show-print-button
@@ -514,7 +514,8 @@ export default {
         return {
             departments: [],
             depId: localStorage.getItem('dep_id'),
-            userName: localStorage.getItem('user_name'),
+            userFullName: localStorage.getItem('user_fullname'),
+            accountId: Number(localStorage.getItem('account_id')) || null,
             formDataDep: {
                 name_en: '',
                 name_ar: '',
@@ -1232,7 +1233,7 @@ export default {
                 confirmVariant: dialog.confirmVariant,
                 accept: () => {
                     const guestIds = this.getSelectedEmployeeIds();
-                    api.post('/api/employees/approve', { guests: guestIds, by: this.userName, status })
+                    api.post('/api/employees/approve', { guests: guestIds, created_by_id: this.accountId, status })
                         .then(() => {
                             this.clearSelection();
                             this.loadCompanyEmployees();

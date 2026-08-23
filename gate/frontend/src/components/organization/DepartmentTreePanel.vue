@@ -1,6 +1,6 @@
 <template>
   <div class="dept-tree-panel">
-    <AppLoader v-if="loading" variant="inline" label="جاري تحميل الوحدات…" />
+    <AppLoader v-if="loading" variant="inline" :label="t('departments.tree.loading')" />
 
     <AppCard
       v-else-if="departments.length === 0"
@@ -8,7 +8,7 @@
     >
       <div class="rounded-xl border border-dashed border-slate-200 p-10 text-center text-sm text-slate-500">
         <i class="pi pi-sitemap mb-2 block text-3xl text-slate-300" aria-hidden="true" />
-        {{ emptyMessage }}
+        {{ emptyMessage || t('departments.tree.emptyMessage') }}
       </div>
     </AppCard>
 
@@ -29,7 +29,7 @@
           @click="activeRootKey = rootKey(root)"
         >
           <i class="pi pi-sitemap" aria-hidden="true" />
-          <span class="dept-tree-panel__tab-label">{{ nodeLabel(root) }}</span>
+          <span class="dept-tree-panel__tab-label">{{ nodeLabel(root, locale) }}</span>
           <span v-if="rootChildCount(root)" class="dept-tree-panel__tab-count">
             {{ rootChildCount(root) }}
           </span>
@@ -52,6 +52,7 @@
 </template>
 
 <script>
+import { useI18n } from 'vue-i18n';
 import AppCard from '../ui/AppCard.vue';
 import AppLoader from '../shared/AppLoader.vue';
 import DepartmentHierarchySectionCard from './DepartmentHierarchySectionCard.vue';
@@ -69,13 +70,17 @@ export default {
     loading: { type: Boolean, default: false },
     canDelete: { type: Boolean, default: false },
     canManage: { type: Boolean, default: true },
-    emptyMessage: { type: String, default: 'لا توجد وحدات لعرضها.' },
+    emptyMessage: { type: String, default: '' },
   },
   emits: [
     'create-child',
     'edit',
     'delete',
   ],
+  setup() {
+    const { t, locale } = useI18n();
+    return { t, locale };
+  },
   data() {
     return {
       activeRootKey: null,

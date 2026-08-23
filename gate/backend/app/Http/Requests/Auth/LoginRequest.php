@@ -14,8 +14,8 @@ class LoginRequest extends FormRequest
     public function rules(): array
     {
         return [
-            // Legacy DB stores military username in the email column (not always a valid email).
-            'email' => ['required', 'string', 'max:255'],
+            // Generic identifier — often a military ID, not necessarily an email address.
+            'username' => ['required', 'string', 'max:255'],
             'password' => ['required', 'string'],
         ];
     }

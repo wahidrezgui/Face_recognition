@@ -93,7 +93,7 @@ class EmployeeDirectoryTest extends TestCase
                 'dep_id' => $depId,
                 'firstname' => 'Test',
                 'lastname' => 'User',
-                'email' => 'directory-test-'.Str::uuid().'@test.local',
+                'username' => 'directory-test-'.Str::uuid(),
                 'password' => bcrypt('password'),
                 'created_at' => now(),
                 'updated_at' => now(),

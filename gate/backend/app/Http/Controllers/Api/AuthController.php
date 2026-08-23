@@ -20,7 +20,7 @@ class AuthController extends Controller
 
     public function login(LoginRequest $request): JsonResponse
     {
-        $result = $this->authService->login($request->only('email', 'password'));
+        $result = $this->authService->login($request->only('username', 'password'));
 
         if ($result['status'] === 'error') {
             return response()->json([

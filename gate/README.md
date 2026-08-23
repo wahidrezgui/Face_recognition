@@ -57,8 +57,6 @@ KEYCLOAK_PROMPT=login
 KEYCLOAK_VERIFY_ID_TOKEN=true
 ```
 
-Login page labels (`LOGIN_*`) are optional and served via `GET /api/auth/providers`.
-
 Set `KEYCLOAK_VERIFY_ID_TOKEN=false` only for local debugging without JWKS access.
 
 ### 2. Keycloak client

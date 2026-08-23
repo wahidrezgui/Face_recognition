@@ -127,7 +127,7 @@
                                 <td class="px-3 py-2 text-sm text-slate-800">
                                     {{ user.firstname }} {{ user.lastname }}
                                 </td>
-                                <td class="px-3 py-2 text-sm text-slate-600">{{ user.email }}</td>
+                                <td class="px-3 py-2 text-sm text-slate-600">{{ user.username }}</td>
                                 <td class="px-3 py-2 text-end">
                                     <AppButton
                                         v-if="!roleDetail.locked"
@@ -245,7 +245,7 @@ export default {
             return this.allUsers
                 .filter((user) => !assignedIds.has(user.id))
                 .map((user) => ({
-                    label: `${user.firstname} ${user.lastname} (${user.email})`,
+                    label: `${user.firstname} ${user.lastname} (${user.username})`,
                     value: user.id,
                 }));
         },

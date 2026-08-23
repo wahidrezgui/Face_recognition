@@ -1,0 +1,38 @@
+@import 'tailwindcss';
+@import 'primeicons/primeicons.css';
+
+@plugin 'tailwindcss-primeui';
+
+/* Tailwind v4's `dark:` variant defaults to `prefers-color-scheme`. This app's
+   dark mode is a user toggle (useColorMode.ts sets `.dark` on <html>, matching
+   PrimeVue's `darkModeSelector: '.dark'`), so `dark:` must key off that class
+   instead of the OS preference. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
+@source '../../storage/framework/views/*.php';
+
+@theme inline {
+    --font-sans:
+        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
+        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
+        'Noto Color Emoji';
+}
+
+@layer base, primevue;
+
+/* TreeSelect's overlay panel has no width cap by default, so a deep tree with
+   long, non-wrapping department labels grows to its max-content width. Near
+   the right-docked employee side panel that pushes the overlay wide enough
+   to trip PrimeVue's collision flip, sending it far past the panel's own
+   left edge to stay on-screen and spilling over the page behind it. Capping
+   the width lets long labels wrap instead, keeping the overlay anchored
+   near the field it belongs to. Left unlayered so it always wins over
+   PrimeVue's own layered CSS. */
+.p-treeselect-overlay {
+    max-width: min(26rem, 92vw);
+}
+
+.p-treeselect-overlay .p-tree-node-label {
+    overflow-wrap: anywhere;
+}

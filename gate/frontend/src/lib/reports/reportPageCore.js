@@ -38,7 +38,7 @@ export function createDefaultNote() {
     emp_id: null,
     day: null,
     notes: null,
-    created_by: localStorage.getItem('user_name'),
+    created_by_id: Number(localStorage.getItem('account_id')) || null,
   };
 }
 
@@ -271,7 +271,7 @@ export function createReportPageActions(state, { getReportGrid, printHtml }) {
     deleteEmployeeNote({
       emp_id: state.note.emp_id,
       day: formattedDate,
-      created_by: localStorage.getItem('user_name'),
+      created_by_id: Number(localStorage.getItem('account_id')) || null,
     }).then(() => {
       state.guest.notes = '';
       getEmployees();

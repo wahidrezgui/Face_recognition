@@ -29,7 +29,7 @@ export function createBadgePrintMixin({
 
                 try {
                     await printCombinedBadges(guestIds, {
-                        userName: this.userName,
+                        accountId: this.accountId,
                         ...combinedPrintOptions,
                         onRefresh: (guestIds) => onAfterBulkPrint?.(this, guestIds),
                     });
@@ -52,7 +52,7 @@ export function createBadgePrintMixin({
 
                 try {
                     await printFrontBadges(guestIds, {
-                        userName: this.userName,
+                        accountId: this.accountId,
                         plateSeparator: ' (2) ',
                         onRefresh: (guestIds) => onAfterBulkPrint?.(this, guestIds),
                     });
@@ -75,7 +75,7 @@ export function createBadgePrintMixin({
 
                 try {
                     await printBackBadges(guestIds, {
-                        userName: this.userName,
+                        accountId: this.accountId,
                         onRefresh: (guestIds) => onAfterBulkPrint?.(this, guestIds),
                     });
                 } catch (error) {
@@ -96,7 +96,7 @@ export function createBadgePrintMixin({
 
                 try {
                     await printSingleCombinedBadge(employeeId, {
-                        userName: this.userName,
+                        accountId: this.accountId,
                     });
                     onAfterSinglePrint?.(this, employeeId);
                 } catch (error) {

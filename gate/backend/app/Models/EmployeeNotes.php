@@ -12,6 +12,24 @@ class EmployeeNotes extends Model
         'emp_id',
         'mvdate',
         'notes',
-        'created_by'
+        'created_by_id',
+        'created_by_legacy',
     ];
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_id');
+    }
+
+    /**
+     * Display name from users table via created_by_id only (ignores legacy created_by_legacy).
+     */
+    public function createdByName(): ?string
+    {
+        if (!$this->created_by_id || !$this->createdBy) {
+            return null;
+        }
+
+        return trim("{$this->createdBy->firstname} {$this->createdBy->lastname}") ?: null;
+    }
 }

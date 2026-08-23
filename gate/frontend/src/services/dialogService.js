@@ -1,12 +1,13 @@
 import { reactive } from 'vue';
+import i18n from '../i18n';
 
 const DEFAULTS = {
     visible: false,
     type: 'info',
     title: '',
     message: '',
-    confirmLabel: 'موافق',
-    cancelLabel: 'إلغاء',
+    confirmLabel: '',
+    cancelLabel: '',
     showCancel: true,
     showClose: true,
     showActions: true,
@@ -65,8 +66,8 @@ function open(options = {}) {
             type: inferType(options),
             title: options.title || options.header || '',
             message: options.message || '',
-            confirmLabel: options.confirmLabel || options.acceptLabel || 'موافق',
-            cancelLabel: options.cancelLabel || options.rejectLabel || 'إلغاء',
+            confirmLabel: options.confirmLabel || options.acceptLabel || i18n.global.t('common.confirm'),
+            cancelLabel: options.cancelLabel || options.rejectLabel || i18n.global.t('common.cancel'),
             showCancel: options.showCancel !== false,
             showClose: options.showClose !== false,
             showActions: options.showActions !== false,
@@ -81,7 +82,7 @@ function alert(options = {}) {
     return open({
         ...options,
         showCancel: false,
-        confirmLabel: options.confirmLabel || options.acceptLabel || 'حسناً',
+        confirmLabel: options.confirmLabel || options.acceptLabel || i18n.global.t('common.ok'),
     });
 }
 

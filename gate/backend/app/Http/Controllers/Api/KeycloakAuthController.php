@@ -30,16 +30,6 @@ class KeycloakAuthController extends Controller
                     ? url('/api/auth/keycloak/redirect')
                     : null,
             ],
-            'login' => [
-                'title' => config('login.title'),
-                'welcome' => config('login.welcome'),
-                'username_label' => config('login.username_label'),
-                'password_label' => config('login.password_label'),
-                'submit_label' => config('login.submit_label'),
-                'sso_button_label' => config('login.sso_button_label'),
-                'sso_help_text' => config('login.sso_help_text'),
-                'divider_label' => config('login.divider_label'),
-            ],
         ]);
     }
 

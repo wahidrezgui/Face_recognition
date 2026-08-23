@@ -21,7 +21,7 @@ class AdminSeeder extends Seeder
             'lastname' => 'User',
             'dep_id'=>1,
             'default_base'=>0,
-            'email' => env('GATE_ADMIN_EMAIL', 'admin@gate.local'),
+            'username' => env('GATE_ADMIN_USERNAME', 'admin'),
             'password' => bcrypt(env('GATE_ADMIN_PASSWORD', 'password')),
         ]);
       

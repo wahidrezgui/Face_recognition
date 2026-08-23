@@ -1,5 +1,5 @@
 <template>
-  <DepartmentPageShell empty-message="لا توجد وحدات لعرضها." />
+  <DepartmentPageShell />
 </template>
 
 <script>

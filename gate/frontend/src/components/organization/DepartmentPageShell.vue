@@ -15,20 +15,14 @@
       :create-open="isOpenedC"
       :edit-open="isOpenedE"
       :panel-width="panelWidth"
-      :create-form="formDataDep"
-      :edit-form="formEditDep"
+      :create-form="createForm"
+      :edit-form="editForm"
       :bases="bases"
       :parent-department-options="parentDepartmentOptions"
       :edit-parent-department-options="editParentDepartmentOptions"
-      :validation-errors="validationErrors"
       :is-submitting="isSubmitting"
-      :input-class="inputClass"
-      :clear-error="clearValidationError"
       @update:create-open="isOpenedC = $event"
       @update:edit-open="isOpenedE = $event"
-      @reset-create="resetCreateForm"
-      @create="addDepartment"
-      @update="editDepartment"
     />
   </PageContainer>
 </template>
@@ -53,7 +47,7 @@ export default {
     },
     emptyMessage: {
       type: String,
-      default: 'لا توجد وحدات لعرضها.',
+      default: '',
     },
   },
   setup() {

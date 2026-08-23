@@ -9,7 +9,7 @@ class AuthLoginTest extends TestCase
     public function test_login_returns_401_with_invalid_credentials(): void
     {
         $response = $this->postJson('/api/auth/login', [
-            'email' => 'nonexistent@test.local',
+            'username' => 'nonexistent-user',
             'password' => 'wrong-password',
         ]);
 
@@ -20,17 +20,17 @@ class AuthLoginTest extends TestCase
     public function test_login_endpoint_accepts_json_post(): void
     {
         $response = $this->postJson('/api/auth/login', [
-            'email' => '',
+            'username' => '',
             'password' => '',
         ]);
 
         $this->assertContains($response->status(), [401, 422]);
     }
 
-    public function test_login_accepts_legacy_username_in_email_field(): void
+    public function test_login_accepts_plain_username(): void
     {
         $response = $this->postJson('/api/auth/login', [
-            'email' => 'a116876',
+            'username' => 'a116876',
             'password' => 'wrong-password',
         ]);
 

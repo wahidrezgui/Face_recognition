@@ -454,7 +454,7 @@ class EmployeeService
 
                $note=EmployeeNotes::where('emp_id',$item->id)->where('mvdate',$day)->first();
                if($note)
-               {$notes=$note->notes.'<br><b>by : </b> '.$note->created_by.' <b>at : </b> '.date('d M, Y H:i:s', strtotime($note->created_at));}
+               {$notes=$note->notes.'<br><b>by : </b> '.($note->createdByName() ?? '—').' <b>at : </b> '.date('d M, Y H:i:s', strtotime($note->created_at));}
                else
                {$notes='';}
 
@@ -592,7 +592,7 @@ class EmployeeService
         DB::table('logs')->insert([
             'emp_id' => $id,
             'task' =>'Registration',
-            'created_by' =>$request->created_by,
+            'created_by_id' =>$request->user()?->id,
             'created_at' =>now(),
             'updated_at' =>now(),
           ]);
@@ -640,7 +640,7 @@ class EmployeeService
         DB::table('logs')->insert([
             'emp_id' => $request->id,
             'task' =>'Edit Information',
-            'created_by' =>$request->created_by,
+            'created_by_id' =>$request->user()?->id,
             'created_at' =>now(),
             'updated_at' =>now(),
           ]);
@@ -717,7 +717,7 @@ class EmployeeService
             DB::table('logs')->insert([
                 'emp_id' => $item,
                 'task' => $task,
-                'created_by' => $request->by,
+                'created_by_id' => $printerId,
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
@@ -768,7 +768,7 @@ class EmployeeService
         $data = $request->getContent(); 
         $jsonData = json_decode($data, true);
       
-        $dep_id=$_GET['dep_id']; $by=$_GET['by']; 
+        $dep_id=$_GET['dep_id']; $by=$_GET['created_by_id'] ?? $_GET['by'] ?? null;
       
         $labels=array("fullname_en","fullname_ar","remarks","bloodtype","military_number","phone_number","rank_id","nationality_id","qid","dep_parent_id","gender_id","qrcode");
       
@@ -828,7 +828,7 @@ class EmployeeService
                   DB::table('logs')->insert([
                     'task' =>'Import Data',
                     'emp_id' =>$guestId,
-                    'created_by'=>$by,
+                    'created_by_id'=>$request->user()?->id,
                     'created_at' =>now(),
                     'updated_at' =>now()
                   ]);
@@ -868,6 +868,8 @@ class EmployeeService
         $input = $request->all();
         $day=$request->day;
         $input['mvdate']=date('Y-m-d', strtotime(str_replace(',',' ',$day)));
+        unset($input['created_by'], $input['created_by_id'], $input['created_by_legacy']);
+        $input['created_by_id'] = $request->user()?->id;
         EmployeeNotes::create($input);
     }
 
@@ -908,7 +910,7 @@ class EmployeeService
             'emp_id' => $empId,
             //'task' => 'Deleted Note: ' . '"' . $noteContent . '"' . ' - Note Date: ' . $day,
             'task' => 'Deleted ' . $day . ' Note: ' . '"' . $noteContent . '"',
-            'created_by' => $request->created_by, // Make sure to send created_by in the request
+            'created_by_id' => $request->user()?->id,
             'created_at' => now(),
             'updated_at' => now(),
         ]);

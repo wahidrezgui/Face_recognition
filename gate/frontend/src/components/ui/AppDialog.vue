@@ -20,7 +20,7 @@
                 />
 
                 <div
-                    dir="rtl"
+                    :dir="locale === 'ar' ? 'rtl' : 'ltr'"
                     class="relative w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-xl transition duration-200 ease-out"
                     role="dialog"
                     aria-modal="true"
@@ -43,7 +43,7 @@
                             v-if="showClose"
                             type="button"
                             class="shrink-0 rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
-                            aria-label="إغلاق"
+                            :aria-label="t('common.close')"
                             @click="emitClose"
                         >
                             <i class="pi pi-times text-lg" aria-hidden="true" />
@@ -69,7 +69,7 @@
                             @click="$emit('confirm')"
                         >
                             <i v-if="loading" class="pi pi-spin pi-spinner ms-2" aria-hidden="true" />
-                            {{ confirmLabel }}
+                            {{ confirmLabel || t('common.confirm') }}
                         </button>
                         <button
                             v-if="showCancel"
@@ -78,7 +78,7 @@
                             :disabled="loading"
                             @click="emitClose"
                         >
-                            {{ cancelLabel }}
+                            {{ cancelLabel || t('common.cancel') }}
                         </button>
                     </div>
                 </div>
@@ -88,6 +88,8 @@
 </template>
 
 <script>
+import { useI18n } from 'vue-i18n';
+
 const TYPE_STYLES = {
     error: {
         icon: 'pi pi-times-circle',
@@ -128,11 +130,11 @@ export default {
         },
         confirmLabel: {
             type: String,
-            default: 'موافق',
+            default: '',
         },
         cancelLabel: {
             type: String,
-            default: 'إلغاء',
+            default: '',
         },
         showCancel: {
             type: Boolean,
@@ -161,6 +163,10 @@ export default {
         },
     },
     emits: ['update:modelValue', 'confirm', 'cancel'],
+    setup() {
+        const { t, locale } = useI18n();
+        return { t, locale };
+    },
     computed: {
         titleId() {
             return `app-dialog-title-${this.$.uid}`;

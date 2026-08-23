@@ -1,3 +1,5 @@
+import { nodeLabel } from './organization/departmentTreeHelpers';
+
 export function toTreeSelectValue(depId) {
   if (depId === null || depId === undefined || depId === '' || Number(depId) === 0) {
     return null;
@@ -22,7 +24,7 @@ export function extractDeptKey(value) {
   return String(value);
 }
 
-export function normalizeDepartmentTree(nodes) {
+export function normalizeDepartmentTree(nodes, locale = 'ar') {
   if (!Array.isArray(nodes)) {
     return [];
   }
@@ -30,12 +32,12 @@ export function normalizeDepartmentTree(nodes) {
   return nodes.map((node) => {
     const normalized = {
       key: String(node.key),
-      label: node.label || '',
+      label: nodeLabel(node, locale),
       icon: node.icon || 'pi pi-server',
     };
 
     if (Array.isArray(node.children) && node.children.length > 0) {
-      normalized.children = normalizeDepartmentTree(node.children);
+      normalized.children = normalizeDepartmentTree(node.children, locale);
     }
 
     return normalized;

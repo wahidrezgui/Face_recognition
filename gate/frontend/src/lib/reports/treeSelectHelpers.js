@@ -50,7 +50,7 @@ export function buildReportSearchParams({
         fullname_ar: employeeName,
         gender: selectedGender,
         mvtype: selectedType,
-        userName: localStorage.getItem('user_name'),
+        userFullName: localStorage.getItem('user_fullname'),
     };
 
     if (date) {

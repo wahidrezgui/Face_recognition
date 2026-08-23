@@ -35,7 +35,7 @@ class UserAdminService
                 'id',
                 'firstname',
                 'lastname',
-                'email',
+                'username',
                 'dep_id',
                 'default_base',
                 'created_at',
@@ -123,7 +123,7 @@ class UserAdminService
                 'id' => $user->id,
                 'firstname' => $user->firstname,
                 'lastname' => $user->lastname,
-                'email' => $user->email,
+                'username' => $user->username,
                 'dep_id' => $user->dep_id,
                 'default_base' => $baseId > 0 ? $baseId : null,
                 'base' => $baseId > 0 ? ($bases[$baseId] ?? $emptyBase) : $emptyBase,
@@ -152,7 +152,7 @@ class UserAdminService
             'id' => $user->id,
             'firstname' => $user->firstname,
             'lastname' => $user->lastname,
-            'email' => $user->email,
+            'username' => $user->username,
             'dep_id' => $user->dep_id,
             'default_base' => ((int) $user->default_base) > 0 ? (int) $user->default_base : null,
             'base' => ((int) $user->default_base) > 0
@@ -213,7 +213,7 @@ class UserAdminService
         $updates = [
             'firstname' => $request->input('firstname', $item->firstname),
             'lastname' => $request->input('lastname', $item->lastname),
-            'email' => $request->input('email', $item->email),
+            'username' => $request->input('username', $item->username),
             'default_base' => $request->has('default_base')
                 ? $this->normalizeDefaultBase($request->input('default_base'))
                 : (int) ($item->default_base ?? 0),

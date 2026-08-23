@@ -89,7 +89,7 @@
     :departments="departments"
     :ranks="ranks"
     :bases="bases"
-    :user-name="userName"
+    :account-id="accountId"
     :dep-id="depId"
     :field-validity="fieldValidity"
     @create="createguest"
@@ -107,7 +107,7 @@
     :departments="departments"
     :ranks="ranks"
     :bases="bases"
-    :user-name="userName"
+    :account-id="accountId"
     :dep-id="depId"
     :read-only="!canMutate"
     show-print-button
@@ -122,7 +122,7 @@
   <EmployeeImportPanel
     v-model:open="dataimport"
     :dep-id="depId"
-    :user-name="userName"
+    :account-id="accountId"
     @imported="handleImport"
   />
 
@@ -209,7 +209,8 @@ export default {
       plate_number: '',
       activeTab: 10,
       depId: localStorage.getItem('dep_id'),
-      userName: localStorage.getItem('user_name'),
+      userFullName: localStorage.getItem('user_fullname'),
+      accountId: Number(localStorage.getItem('account_id')) || null,
       ColumnsDef: [],
       RawData: [],
       RawDataStatus: [],
@@ -748,7 +749,7 @@ export default {
         confirmVariant: dialog.confirmVariant,
         accept: () => {
           const guestIds = this.getSelectedEmployeeIds();
-          api.post('/api/employees/approve', { guests: guestIds, by: this.userName, status })
+          api.post('/api/employees/approve', { guests: guestIds, created_by_id: this.accountId, status })
             .then(() => {
               this.clearSelection();
               this.getEmployees();

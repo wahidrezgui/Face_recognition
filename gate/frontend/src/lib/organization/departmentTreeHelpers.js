@@ -9,7 +9,10 @@ export function countTreeNodes(nodes) {
   }, 0);
 }
 
-export function nodeLabel(node) {
+export function nodeLabel(node, locale = 'ar') {
+  if (locale === 'en') {
+    return node?.name_en || node?.label || node?.name_ar || '—';
+  }
   return node?.name_ar || node?.label || node?.name_en || '—';
 }
 
@@ -21,7 +24,85 @@ export function nodeId(node) {
   return node?.id ?? node?.key ?? null;
 }
 
-export function baseLabel(base) {
+/** Recursively find a node by id/key anywhere in the (possibly multi-root) forest. */
+export function findDepartmentNodeById(nodes, id) {
+  if (!Array.isArray(nodes) || id === null || id === undefined) {
+    return null;
+  }
+
+  const targetId = Number(id);
+
+  for (const node of nodes) {
+    if (Number(node.id ?? node.key) === targetId) {
+      return node;
+    }
+
+    if (Array.isArray(node.children) && node.children.length) {
+      const found = findDepartmentNodeById(node.children, id);
+      if (found) {
+        return found;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Recursively find and splice out the node with this id (subtree stays attached). Mutates in place. */
+export function removeDepartmentNodeById(nodes, id) {
+  if (!Array.isArray(nodes) || id === null || id === undefined) {
+    return null;
+  }
+
+  const targetId = Number(id);
+  const idx = nodes.findIndex((node) => Number(node.id ?? node.key) === targetId);
+
+  if (idx !== -1) {
+    const [removed] = nodes.splice(idx, 1);
+    return removed;
+  }
+
+  for (const node of nodes) {
+    if (Array.isArray(node.children) && node.children.length) {
+      const removed = removeDepartmentNodeById(node.children, id);
+      if (removed) {
+        return removed;
+      }
+    }
+  }
+
+  return null;
+}
+
+/** Find the parent by id anywhere in the forest and push `node` onto its children. Mutates in place. */
+export function insertDepartmentNodeUnderParentId(nodes, parentId, node) {
+  const parent = findDepartmentNodeById(nodes, parentId);
+  if (!parent) {
+    return false;
+  }
+
+  if (!Array.isArray(parent.children)) {
+    parent.children = [];
+  }
+  parent.children.push(node);
+  return true;
+}
+
+/** Find a node by id and merge `patch` onto it in place (no reparenting). */
+export function updateDepartmentNodeFields(nodes, id, patch) {
+  const node = findDepartmentNodeById(nodes, id);
+  if (!node) {
+    return false;
+  }
+
+  Object.assign(node, patch);
+  return true;
+}
+
+export function baseLabel(base, locale = 'ar') {
+  if (locale === 'en') {
+    return base?.name_en || base?.name_ar || '—';
+  }
   return base?.name_ar || base?.name_en || '—';
 }
 
@@ -57,13 +138,13 @@ export function resolveCardVariant(node) {
   return 'department';
 }
 
-export function decorateDepartmentNode(node, depth = 0) {
+export function decorateDepartmentNode(node, depth = 0, locale = 'ar') {
   if (!node) {
     return null;
   }
 
   const children = (node.children || [])
-    .map((child) => decorateDepartmentNode(child, depth + 1))
+    .map((child) => decorateDepartmentNode(child, depth + 1, locale))
     .filter(Boolean);
 
   const childCount = countTreeNodes(children);
@@ -75,7 +156,7 @@ export function decorateDepartmentNode(node, depth = 0) {
     id: node.id ?? node.key,
     parent_id: parentId,
     is_company: Number(node.is_company ?? 0),
-    label: nodeLabel(node),
+    label: nodeLabel(node, locale),
     name_ar: node.name_ar || node.label || '',
     name_en: node.name_en || '',
     depth,
@@ -144,14 +225,14 @@ export function collectCompanyRootsUnderDepartment(node) {
   return companies;
 }
 
-export function buildCompanyChartUnderRoot(deptRoot) {
+export function buildCompanyChartUnderRoot(deptRoot, locale = 'ar') {
   if (!deptRoot) {
     return null;
   }
 
   if (isCompanyNode(deptRoot)) {
     const tree = buildCompanyOnlyTree(deptRoot);
-    return tree ? decorateDepartmentNode(tree, 0) : null;
+    return tree ? decorateDepartmentNode(tree, 0, locale) : null;
   }
 
   const companyRoots = collectCompanyRootsUnderDepartment(deptRoot);
@@ -161,31 +242,33 @@ export function buildCompanyChartUnderRoot(deptRoot) {
   }
 
   const decorated = companyRoots
-    .map((node) => decorateDepartmentNode(node, 0))
+    .map((node) => decorateDepartmentNode(node, 0, locale))
     .filter(Boolean);
 
   if (decorated.length === 1) {
     return decorated[0];
   }
 
-  const label = `شركات — ${nodeLabel(deptRoot)}`;
+  const rootLabel = nodeLabel(deptRoot, locale);
+  const nameAr = `شركات — ${nodeLabel(deptRoot, 'ar')}`;
+  const nameEn = `Companies — ${deptRoot.name_en || nodeLabel(deptRoot, 'en')}`;
 
   return decorateDepartmentNode({
     key: `company-virtual-${deptRoot.id ?? deptRoot.key}`,
     id: `company-virtual-${deptRoot.id ?? deptRoot.key}`,
-    label,
-    name_ar: label,
-    name_en: `Companies — ${deptRoot.name_en || nodeLabel(deptRoot)}`,
+    label: rootLabel,
+    name_ar: nameAr,
+    name_en: nameEn,
     type: 'root',
     parent_id: deptRoot.id ?? deptRoot.key,
     is_company: 0,
     children: companyRoots,
-  }, 0);
+  }, 0, locale);
 }
 
-export function buildDepartmentChartForRoot(rootNode) {
+export function buildDepartmentChartForRoot(rootNode, locale = 'ar') {
   const stripped = stripCompaniesFromNode({ ...rootNode });
-  return stripped ? decorateDepartmentNode(stripped, 0) : null;
+  return stripped ? decorateDepartmentNode(stripped, 0, locale) : null;
 }
 
 /** Top-level org roots — one card per parent_id=0 department (no companies). */
@@ -208,7 +291,7 @@ export function extractOrganizationRoots(departments) {
 /**
  * Split each top-level root into department-only charts.
  */
-export function buildHierarchySections(departments, { includeCompanies = false } = {}) {
+export function buildHierarchySections(departments, { includeCompanies = false, locale = 'ar' } = {}) {
   if (!Array.isArray(departments) || departments.length === 0) {
     return [];
   }
@@ -220,9 +303,9 @@ export function buildHierarchySections(departments, { includeCompanies = false }
       return {
         key: `section-${id}`,
         id,
-        label: nodeLabel(root),
-        departmentChart: buildDepartmentChartForRoot(root),
-        companyChart: includeCompanies ? buildCompanyChartUnderRoot(root) : null,
+        label: nodeLabel(root, locale),
+        departmentChart: buildDepartmentChartForRoot(root, locale),
+        companyChart: includeCompanies ? buildCompanyChartUnderRoot(root, locale) : null,
       };
     })
     .filter((section) => section.departmentChart || section.companyChart);

@@ -17,44 +17,44 @@
             <div class="mt-6 grid grid-cols-1 gap-4" :class="chartGridClass">
                 <AppCard
                     v-if="showPresenceChart"
-                    title="الحضور — آخر 7 أيام"
-                    subtitle="عدد الدخول والخروج اليومي"
+                    :title="t('dashboard.charts.presenceTitle')"
+                    :subtitle="t('dashboard.charts.presenceSubtitle')"
                     padding="lg"
                 >
                     <Chart v-if="chartHasData(chartPresence)" type="bar" :data="chartPresence" :options="barChartOptions" />
-                    <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات حضور لهذه الفترة.</p>
+                    <p v-else class="py-10 text-center text-sm text-slate-500">{{ t('dashboard.charts.presenceEmpty') }}</p>
                 </AppCard>
 
                 <AppCard
                     v-if="showIssuesByDepartmentChart"
-                    title="مخالفات اليوم حسب الوحدة"
-                    subtitle="تأخر الدخول وخروج مبكر لكل وحدة"
+                    :title="t('dashboard.charts.issuesByDeptTitle')"
+                    :subtitle="t('dashboard.charts.issuesByDeptSubtitle')"
                     padding="lg"
                 >
                     <Chart v-if="chartHasData(chartIssuesByDepartment)" type="bar" :data="chartIssuesByDepartment" :options="barChartOptions" />
-                    <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد مخالفات مسجلة اليوم.</p>
+                    <p v-else class="py-10 text-center text-sm text-slate-500">{{ t('dashboard.charts.issuesByDeptEmpty') }}</p>
                 </AppCard>
 
                 <AppCard
                     v-if="showRegistrationChart"
-                    title="التسجيل — آخر 7 أيام"
-                    subtitle="الموظفون المسجلون حديثاً"
+                    :title="t('dashboard.charts.registrationTitle')"
+                    :subtitle="t('dashboard.charts.registrationSubtitle')"
                     padding="lg"
                 >
                     <Chart v-if="chartHasData(chartRegistration)" type="bar" :data="chartRegistration" :options="barChartOptions" />
-                    <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات تسجيل لهذه الفترة.</p>
+                    <p v-else class="py-10 text-center text-sm text-slate-500">{{ t('dashboard.charts.registrationEmpty') }}</p>
                 </AppCard>
             </div>
 
             <AppCard
                 v-if="showIssuesTrendChart"
                 class="mt-6"
-                title="اتجاه المخالفات — آخر 7 أيام"
-                subtitle="تطور تأخر الدخول والخروج المبكر"
+                :title="t('dashboard.charts.issuesTrendTitle')"
+                :subtitle="t('dashboard.charts.issuesTrendSubtitle')"
                 padding="lg"
             >
                 <Chart v-if="chartHasData(chartIssuesTrend)" type="line" :data="chartIssuesTrend" :options="lineChartOptions" />
-                <p v-else class="py-10 text-center text-sm text-slate-500">لا توجد بيانات مخالفات لهذه الفترة.</p>
+                <p v-else class="py-10 text-center text-sm text-slate-500">{{ t('dashboard.charts.issuesTrendEmpty') }}</p>
             </AppCard>
         </PageContainer>
     </QueryState>
@@ -62,6 +62,7 @@
 
 <script>
 import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import Chart from 'primevue/chart';
 import QueryState from '../../components/shared/QueryState.vue';
 import PageContainer from '../../components/ui/PageContainer.vue';
@@ -83,7 +84,7 @@ const emptyLineChart = {
 const STAT_CARDS = [
     {
         id: 'employees',
-        title: 'الموظفون',
+        titleKey: 'dashboard.stats.employees',
         field: 'employees',
         icon: 'pi-users',
         iconColor: 'bg-slate-100 text-slate-700',
@@ -92,7 +93,7 @@ const STAT_CARDS = [
     },
     {
         id: 'checkInsToday',
-        title: 'دخول اليوم',
+        titleKey: 'dashboard.stats.checkInsToday',
         field: 'checkInsToday',
         icon: 'pi-sign-in',
         iconColor: 'bg-emerald-700 text-white',
@@ -101,7 +102,7 @@ const STAT_CARDS = [
     },
     {
         id: 'checkOutsToday',
-        title: 'خروج اليوم',
+        titleKey: 'dashboard.stats.checkOutsToday',
         field: 'checkOutsToday',
         icon: 'pi-sign-out',
         iconColor: 'bg-red-700 text-white',
@@ -110,7 +111,7 @@ const STAT_CARDS = [
     },
     {
         id: 'pending',
-        title: 'قيد الانتظار',
+        titleKey: 'dashboard.stats.pending',
         field: 'pending',
         icon: 'pi-user',
         iconColor: 'bg-orange-100 text-orange-700',
@@ -119,7 +120,7 @@ const STAT_CARDS = [
     },
     {
         id: 'printed',
-        title: 'مطبوع',
+        titleKey: 'dashboard.stats.printed',
         field: 'printed',
         icon: 'pi-print',
         iconColor: 'bg-blue-100 text-blue-700',
@@ -128,7 +129,7 @@ const STAT_CARDS = [
     },
     {
         id: 'collected',
-        title: 'مستلم',
+        titleKey: 'dashboard.stats.collected',
         field: 'collected',
         icon: 'pi-thumbs-up',
         iconColor: 'bg-green-100 text-green-700',
@@ -137,7 +138,7 @@ const STAT_CARDS = [
     },
     {
         id: 'departments',
-        title: 'الأقسام',
+        titleKey: 'dashboard.stats.departments',
         field: 'departments',
         icon: 'pi-sitemap',
         iconColor: 'bg-blue-100 text-blue-700',
@@ -146,7 +147,7 @@ const STAT_CARDS = [
     },
     {
         id: 'bases',
-        title: 'القواعد',
+        titleKey: 'dashboard.stats.bases',
         field: 'bases',
         icon: 'pi-map-marker',
         iconColor: 'bg-green-100 text-green-700',
@@ -155,7 +156,7 @@ const STAT_CARDS = [
     },
     {
         id: 'gates',
-        title: 'البوابات',
+        titleKey: 'dashboard.stats.gates',
         field: 'gates',
         icon: 'pi-qrcode',
         iconColor: 'bg-indigo-500 text-white',
@@ -164,7 +165,7 @@ const STAT_CARDS = [
     },
     {
         id: 'zones',
-        title: 'المناطق',
+        titleKey: 'dashboard.stats.zones',
         field: 'zones',
         icon: 'pi-stop-circle',
         iconColor: 'bg-red-400 text-white',
@@ -261,6 +262,7 @@ export default {
         AppCard,
     },
     setup() {
+        const { t } = useI18n();
         const {
             stats,
             reports,
@@ -270,9 +272,11 @@ export default {
             isGlobalDashboard,
         } = useDashboard();
 
-        const pageTitle = computed(() => (isGlobalDashboard.value ? 'لوحة الإدارة' : 'لوحة التحكم'));
+        const pageTitle = computed(() => (
+            isGlobalDashboard.value ? t('dashboard.pageTitleGlobal') : t('dashboard.pageTitleScoped')
+        ));
         const loadingLabel = computed(() => (
-            isGlobalDashboard.value ? 'جاري تحميل لوحة الإدارة…' : 'جاري تحميل لوحة التحكم…'
+            isGlobalDashboard.value ? t('dashboard.loadingGlobal') : t('dashboard.loadingScoped')
         ));
 
         const visibleStatCards = computed(() => {
@@ -282,7 +286,7 @@ export default {
                     return isGlobalDashboard.value && card.visible(user);
                 }
                 return card.visible(user);
-            });
+            }).map((card) => ({ ...card, title: t(card.titleKey) }));
         });
 
         const showPresenceChart = computed(() => canReadResource('reports', getAuthUser()));
@@ -322,13 +326,13 @@ export default {
                 labels: presence.dayIn,
                 datasets: [
                     {
-                        label: 'دخول',
+                        label: t('dashboard.charts.checkIn'),
                         backgroundColor: root.getPropertyValue('--green-600'),
                         borderColor: root.getPropertyValue('--green-600'),
                         data: presence.nbIn,
                     },
                     {
-                        label: 'خروج',
+                        label: t('dashboard.charts.checkOut'),
                         backgroundColor: root.getPropertyValue('--red-600'),
                         borderColor: root.getPropertyValue('--red-600'),
                         data: presence.nbOut,
@@ -349,7 +353,7 @@ export default {
                 labels: registration.day,
                 datasets: [
                     {
-                        label: 'تسجيل جديد',
+                        label: t('dashboard.charts.newRegistration'),
                         backgroundColor: root.getPropertyValue('--blue-600'),
                         borderColor: root.getPropertyValue('--blue-600'),
                         data: registration.nb,
@@ -370,13 +374,13 @@ export default {
                 labels: issues.labels,
                 datasets: [
                     {
-                        label: 'تأخر دخول',
+                        label: t('dashboard.charts.lateEntry'),
                         backgroundColor: root.getPropertyValue('--orange-500'),
                         borderColor: root.getPropertyValue('--orange-500'),
                         data: issues.lateEntry,
                     },
                     {
-                        label: 'خروج مبكر',
+                        label: t('dashboard.charts.earlyExit'),
                         backgroundColor: root.getPropertyValue('--yellow-500'),
                         borderColor: root.getPropertyValue('--yellow-500'),
                         data: issues.earlyExit,
@@ -397,7 +401,7 @@ export default {
                 labels: trend.days,
                 datasets: [
                     {
-                        label: 'تأخر دخول',
+                        label: t('dashboard.charts.lateEntry'),
                         data: trend.lateEntry,
                         borderColor: root.getPropertyValue('--orange-500'),
                         backgroundColor: root.getPropertyValue('--orange-500'),
@@ -405,7 +409,7 @@ export default {
                         fill: false,
                     },
                     {
-                        label: 'خروج مبكر',
+                        label: t('dashboard.charts.earlyExit'),
                         data: trend.earlyExit,
                         borderColor: root.getPropertyValue('--yellow-500'),
                         backgroundColor: root.getPropertyValue('--yellow-500'),
@@ -417,6 +421,7 @@ export default {
         });
 
         return {
+            t,
             stats,
             pending,
             errorMessage,

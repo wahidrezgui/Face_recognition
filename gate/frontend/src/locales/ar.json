@@ -1,0 +1,197 @@
+{
+    "app": {
+        "titleSuffix": "  -   [القوات المسلحة القطرية - نظــام الدخـول والخـروج]"
+    },
+    "routes": {
+        "login": "تسجيل الدخول",
+        "authCallback": "جاري تسجيل الدخول",
+        "accountPending": "تفعيل الحساب",
+        "gate": "البوابة - دخول / خروج",
+        "gatePlateSearch": "بحث بالسيارة العسكرية",
+        "permissionDenied": "غير مصرح بالدخول",
+        "companiesReporting": "تقارير الشركات",
+        "companiesIssues": "مشاكل الشركات",
+        "reports": "التقارير",
+        "issues": "المشاكل",
+        "exportReports": "تصدير التقارير",
+        "unjustified": "غير مبرر",
+        "justified": "مبرر"
+    },
+    "departments": {
+        "validation": {
+            "nameEnRequired": "الاسم بالإنجليزية مطلوب"
+        },
+        "page": {
+            "titleGlobal": "إدارة الوحدات",
+            "titleScoped": "الوحدات",
+            "descriptionGlobal": "عرض وإدارة جميع الوحدات",
+            "descriptionSelf": "عرض وإدارة وحدتك فقط",
+            "descriptionScoped": "عرض وإدارة وحدتك والوحدات الفرعية"
+        },
+        "tree": {
+            "loading": "جاري تحميل الوحدات…",
+            "emptyMessage": "لا توجد وحدات لعرضها.",
+            "emptyGlobal": "إدارة جميع وحدات المنظمة",
+            "emptySelfNone": "لا توجد وحدة مرتبطة بحسابك",
+            "emptyScoped": "إدارة الوحدات الفرعية ضمن نطاق وحدتك",
+            "countGlobal": "إدارة {count} وحدة على مستوى المنظمة",
+            "countSelf": "وحدة واحدة ({count} عقدة)",
+            "countScoped": "إدارة {count} وحدة ضمن هيكل وحدتك"
+        },
+        "hierarchy": {
+            "expandAll": "توسيع الكل",
+            "collapseAll": "طي الكل",
+            "noResults": "لا توجد نتائج مطابقة.",
+            "searchPlaceholder": "ابحث..."
+        },
+        "row": {
+            "collapse": "طي",
+            "expand": "توسيع",
+            "addChild": "إضافة وحدة فرعية",
+            "editTitle": "تعديل",
+            "editLabel": "تعديل الوحدة",
+            "deleteTitle": "حذف",
+            "deleteLabel": "حذف الوحدة",
+            "rootBadge": "وحدة رئيسية",
+            "companyBadge": "شركة",
+            "childCount": "{count} فرع"
+        },
+        "form": {
+            "createTitle": "إضافة وحدة",
+            "createSubtitle": "إنشاء وحدة فرعية وربط القواعد",
+            "editTitle": "تعديل وحدة",
+            "editSubtitle": "تحديث بيانات الوحدة والقواعد المرتبطة",
+            "parentLabel": "الوحدة الأم",
+            "parentPlaceholder": "اختر الوحدة الأم",
+            "parentFilterPlaceholder": "ابحث في الوحدات...",
+            "nameEnLabel": "الاسم بالإنجليزية",
+            "nameEnPlaceholder": "Unit name",
+            "nameArLabel": "الاسم بالعربية",
+            "nameArPlaceholder": "اسم الوحدة",
+            "linkedBases": "القواعد المرتبطة",
+            "noBases": "لا توجد قواعد متاحة.",
+            "cancel": "إلغاء",
+            "save": "حفظ",
+            "saving": "جاري الحفظ…",
+            "update": "تحديث"
+        },
+        "toast": {
+            "errorTitle": "خطأ",
+            "successTitle": "تم بنجاح",
+            "loadListFailed": "تعذر تحميل الوحدات",
+            "createSuccess": "تم إنشاء الوحدة",
+            "createFailed": "تعذر إنشاء الوحدة",
+            "invalidId": "معرّف الوحدة غير صالح",
+            "loadOneFailed": "تعذر تحميل بيانات الوحدة",
+            "updateSuccess": "تم تحديث الوحدة",
+            "updateFailed": "تعذر تحديث الوحدة",
+            "deleteFailed": "تعذر حذف الوحدة",
+            "deleteConfirmMessage": "هل تريد حذف هذه الوحدة؟",
+            "deleteConfirmHeader": "تأكيد الحذف",
+            "deleteConfirmedTitle": "تم التأكيد",
+            "deleteSuccess": "تم الحذف بنجاح"
+        }
+    },
+    "login": {
+        "title": "نظام الدخول والخروج",
+        "welcome": "السلام عليكم ورحمة الله وبركاته 👋",
+        "usernameLabel": "اسم المستخدم",
+        "passwordLabel": "كلمة المرور",
+        "submitLabel": "تسجيل الدخول",
+        "ssoButtonLabel": "تسجيل الدخول عبر حساب مرسال",
+        "ssoHelpText": "للموظفين المسجلين في نظام مرسال",
+        "dividerLabel": "أو",
+        "logoAlt": "وزارة الدفاع",
+        "usernamePlaceholder": "اسم المستخدم هنا",
+        "passwordPlaceholder": "كلمة المرور هنا",
+        "showPassword": "إظهار كلمة المرور",
+        "hidePassword": "إخفاء كلمة المرور",
+        "signingIn": "جاري الدخول...",
+        "redirectingToSso": "جاري التحويل إلى مرسال...",
+        "usernameRequired": "اسم المستخدم مطلوب.",
+        "passwordRequired": "كلمة المرور مطلوبة.",
+        "invalidCredentials": "خطأ في اسم المستخدم أو كلمة المرور."
+    },
+    "common": {
+        "language": "اللغة",
+        "arabic": "العربية",
+        "english": "الإنجليزية",
+        "confirm": "موافق",
+        "cancel": "إلغاء",
+        "ok": "حسناً",
+        "close": "إغلاق"
+    },
+    "dashboard": {
+        "pageTitleGlobal": "لوحة الإدارة",
+        "pageTitleScoped": "لوحة التحكم",
+        "loadingGlobal": "جاري تحميل لوحة الإدارة…",
+        "loadingScoped": "جاري تحميل لوحة التحكم…",
+        "stats": {
+            "employees": "الموظفون",
+            "checkInsToday": "دخول اليوم",
+            "checkOutsToday": "خروج اليوم",
+            "pending": "قيد الانتظار",
+            "printed": "مطبوع",
+            "collected": "مستلم",
+            "departments": "الأقسام",
+            "bases": "القواعد",
+            "gates": "البوابات",
+            "zones": "المناطق"
+        },
+        "charts": {
+            "presenceTitle": "الحضور — آخر 7 أيام",
+            "presenceSubtitle": "عدد الدخول والخروج اليومي",
+            "presenceEmpty": "لا توجد بيانات حضور لهذه الفترة.",
+            "issuesByDeptTitle": "مخالفات اليوم حسب الوحدة",
+            "issuesByDeptSubtitle": "تأخر الدخول وخروج مبكر لكل وحدة",
+            "issuesByDeptEmpty": "لا توجد مخالفات مسجلة اليوم.",
+            "registrationTitle": "التسجيل — آخر 7 أيام",
+            "registrationSubtitle": "الموظفون المسجلون حديثاً",
+            "registrationEmpty": "لا توجد بيانات تسجيل لهذه الفترة.",
+            "issuesTrendTitle": "اتجاه المخالفات — آخر 7 أيام",
+            "issuesTrendSubtitle": "تطور تأخر الدخول والخروج المبكر",
+            "issuesTrendEmpty": "لا توجد بيانات مخالفات لهذه الفترة.",
+            "checkIn": "دخول",
+            "checkOut": "خروج",
+            "newRegistration": "تسجيل جديد",
+            "lateEntry": "تأخر دخول",
+            "earlyExit": "خروج مبكر"
+        }
+    },
+    "sidebar": {
+        "navLabel": "القائمة الجانبية",
+        "collapse": "طي القائمة",
+        "expand": "توسيع القائمة",
+        "close": "إغلاق القائمة"
+    },
+    "nav": {
+        "dashboard": "لوحة التحكم",
+        "departments": "الوحدات",
+        "users": "إدارة المستخدمين",
+        "bases": "القواعد والبوابات",
+        "employees": "الموظفين",
+        "companies": "الشركات",
+        "individual_report": "التقارير",
+        "settings": "إعدادات التوقيت",
+        "badge": "بطاقة الدخول",
+        "role_permissions": "صلاحيات الأدوار"
+    },
+    "header": {
+        "openMenu": "فتح القائمة",
+        "appTitle": "نظام الدخول والخروج",
+        "alerts": "تنبيهات",
+        "fullscreen": "ملء الشاشة",
+        "accountMenu": "حساب المستخدم",
+        "changePassword": "تغيير كلمة المرور",
+        "newPasswordLabel": "كلمة المرور الجديدة",
+        "confirmPasswordLabel": "تأكيد كلمة المرور",
+        "cancel": "إلغاء",
+        "save": "حفظ",
+        "logout": "تسجيل الخروج",
+        "errorTitle": "خطأ",
+        "successTitle": "تم",
+        "passwordMismatch": "كلمتا المرور غير متطابقتين",
+        "passwordChanged": "تم تغيير كلمة المرور بنجاح",
+        "passwordChangeFailed": "فشل تغيير كلمة المرور"
+    }
+}

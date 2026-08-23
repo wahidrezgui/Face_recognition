@@ -2,7 +2,7 @@
     <PageContainer title="Advanced Report" description="تقرير متقدم">
 
             <div class="wrapper-card grid lg:grid-cols-6 grid-cols-1 md:grid-cols-2 gap-2 mb-5"  >
-              
+
             <router-link to="/reports" ><div  class="bg-white border-b-2 card w-full cursor-pointer rounded-md border flex" >
             <div class="p-2 max-w-sm">
             <div class="bg-neutral-500 text-center rounded-full w-14 h-14 text-lg p-3 text-white mx-auto" >
@@ -31,7 +31,7 @@
             </div>
             </div></router-link>
 
-            
+
             <div  class="text-green-900 border-green-500 bg-green-200 border-b-2 card w-full cursor-pointer rounded-md border flex" >
             <div class="p-2 max-w-sm">
             <div class="bg-neutral-500 text-center rounded-full w-14 h-14 text-lg p-3 text-white mx-auto" >
@@ -72,7 +72,7 @@
 
                     <TreeSelect v-model="advanced.dep_id" :options="departments" placeholder="Select Department" showClear class="w-full md:w-14rem border border-dark-200" />
 
-                    
+
                 </div>
                 </div>
                 </div>
@@ -186,11 +186,11 @@
     <div class="p-5" id="printMe">
         <div class="md:flex no-wrap md:-mx-2 ">
             <div class="w-full md:w-3/12 md:mx-2">
-                <img v-if="guest.photo ==null" src="/uploads/nopic.png" class="object-cover w-40 mb-2" /> 
-                <img v-else :src="'/uploads/'+guest.photo" class="object-cover w-40 mb-2" /> 
+                <img v-if="guest.photo ==null" src="/uploads/nopic.png" class="object-cover w-40 mb-2" />
+                <img v-else :src="'/uploads/'+guest.photo" class="object-cover w-40 mb-2" />
             </div>
             <div class="w-full md:w-9/12 mx-2">
-                
+
                 <!-- About Section -->
                 <div class="bg-white p-3 ">
                     <div class="flex items-center space-x-2 font-semibold text-gray-900 leading-8">
@@ -229,7 +229,7 @@
                                 <div class="py-2 font-semibold">Rank</div>
                                 <div class="px-4 py-2">{{guest.rank}}</div>
                             </div>
-                            
+
                         </div>
                     </div>
                 </div>
@@ -284,7 +284,7 @@
                     <div class="text-gray-700">
                         <div class=" text-sm">
                                         <table class="min-w-full divide-y divide-gray-200">
-                                            
+
                                             <thead class="bg-gray-50">
                                             <tr>
                                             <th scope="col" class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -303,7 +303,7 @@
                                             </thead>
 
                                             <tbody v-for="data in guest.history" :key="data.id" class="bg-white">
-                                            
+
                                             <tr>
                                             <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-500">
                                             {{data.created_at}}
@@ -327,13 +327,13 @@
                 </div>
                 <!-- End of History section -->
 
-    </div>  
+    </div>
 </div>
 
 <div v-show="activeTab === 11" role="tabpanel">
             <div class="align-middle inline-block min-w-full">
                                         <table class="min-w-full divide-y divide-gray-200">
-                                            
+
                                             <thead class="bg-gray-50">
                                             <tr>
                                             <th scope="col" class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -355,7 +355,7 @@
                                             </thead>
 
                                             <tbody v-for="(data, index) in guest.all_movements || []" :key="`movement-${index}`" class="bg-white">
-                                            
+
                                             <tr>
                                             <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-500">
                                             {{data.created_at}}
@@ -394,8 +394,8 @@ import { fetchBases, fetchBase, fetchDepartment } from '../../api/organization';
 import { fetchRanks } from '../../api/lookups';
 import { fetchEmployee } from '../../api/employees';
 import { submitAdvancedReport } from '../../api/reports';
-import { AgGridVue } from "ag-grid-vue3"; 
-import "ag-grid-community/styles/ag-grid.css"; 
+import { AgGridVue } from "ag-grid-vue3";
+import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
 import { ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
@@ -413,15 +413,15 @@ const gridApi = ref();
 function customCellRendererIn(params) {
     var cellValue = params.value;
      if(cellValue!='' && (cellValue.indexOf('Check-In') > -1))
-     {return '<span class="font-bold text-red p-4">'+params.value+'</span>';} 
+     {return '<span class="font-bold text-red p-4">'+params.value+'</span>';}
      else
-     {return '<span class="font-bold p-4">'+params.value+'</span>';} 
+     {return '<span class="font-bold p-4">'+params.value+'</span>';}
 }
 
 function customCellRendererOut(params) {
     var cellValue = params.value;
     if(cellValue!='' && (cellValue.indexOf('Check-Out') > -1))
-     {return '<span class="font-bold text-red p-4">'+params.value+'</span>';} 
+     {return '<span class="font-bold text-red p-4">'+params.value+'</span>';}
      else
      {return '<span class="font-bold p-4">'+params.value+'</span>';}
 }
@@ -447,7 +447,7 @@ export default {
                 isdata:false,
                 day:'',
                 depId: localStorage.getItem('dep_id'),
-                userName: localStorage.getItem('user_name'),
+                userFullName: localStorage.getItem('user_fullname'),
                 ColumnsDef:[],
                 RawData:[],
                 blokGuest:false,
@@ -514,13 +514,13 @@ export default {
                     if(this.advanced.days[1]!=null){
                        const endDate=new Date(this.advanced.days[1]) ;
                     endDate.setDate(endDate.getDate()+1)
-                    this.advanced.endDate=endDate.toISOString().split('T')[0]; 
+                    this.advanced.endDate=endDate.toISOString().split('T')[0];
                     }
-                    
-                    
+
+
                     submitAdvancedReport(this.advanced)
                     .then(response => {
-                       
+
                         this.ColumnsDef = response.data.columns;
                         this.RawData = response.data.data;
                         this.isdata=true;
@@ -539,19 +539,19 @@ export default {
                     this.toolbar=true;
                     this.toolbar2=false;
 
-                    fetchDepartment(this.depId) 
+                    fetchDepartment(this.depId)
                     .then(response => {
                         this.departments = response.data.departments;
                     }).catch(error => {
                         console.error(error);
                     });
 
-                    fetchBases() 
+                    fetchBases()
                     .then(response => {
                         this.bases = response.data;
                     });
 
-                    fetchRanks() 
+                    fetchRanks()
                     .then(response => {
                         this.ranks = response.data;
                     });
@@ -585,7 +585,7 @@ export default {
                         var id = event.data.id;
                         this.activeTab=10;
 
-                        fetchEmployee(id, { day: this.advanced.startDate }) 
+                        fetchEmployee(id, { day: this.advanced.startDate })
                         .then(response => {
                         this.guest = response.data[0];
                         });

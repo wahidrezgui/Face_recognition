@@ -64,7 +64,7 @@ export default {
   props: {
     open: { type: Boolean, default: false },
     depId: { type: [String, Number], default: '' },
-    userName: { type: String, default: '' },
+    accountId: { type: [String, Number], default: '' },
   },
   emits: ['update:open', 'imported'],
   computed: {
@@ -78,7 +78,7 @@ export default {
       };
     },
     importUrl() {
-      return `/api/employees/import?dep_id=${this.depId}&by=${this.userName}`;
+      return `/api/employees/import?dep_id=${this.depId}&created_by_id=${encodeURIComponent(this.accountId ?? '')}`;
     },
   },
 };

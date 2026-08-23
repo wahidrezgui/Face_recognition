@@ -2,7 +2,7 @@
     <PageContainer title="Reports Dashboard" description="Overview and daily movement reports">
 
             <div class="wrapper-card grid lg:grid-cols-6 grid-cols-1 md:grid-cols-2 gap-2 mb-5"  >
-            
+
             <div class="text-green-900 border-green-500 bg-green-200 border-b-2 card w-full cursor-pointer rounded-md border flex">
                 <div class="p-2 max-w-sm">
                     <div class="bg-neutral-500 text-center rounded-full w-14 h-14 text-lg p-3 text-white mx-auto">
@@ -57,9 +57,9 @@
                     <h5 class="font-normal text-gray-400 text-md mt-1">بدون عذر</h5>
                 </div>
             </div>
-             </router-link> 
-          
-            
+             </router-link>
+
+
 
             </div>
 
@@ -73,7 +73,7 @@
                      <button @click="onBtExport" type="button" class="inline-flex text-sm bg-purple-500 hover:bg-purple-700 text-white py-2 px-4 rounded">
                 <i class="pi pi-file-export pr-2"></i>
                 Export CSV Data
-                </button>   
+                </button>
                     -->
                 <input type="date" v-model="day" @change="fetchData" placeholder="Filter by date"  class="w-full h-12 rounded border border-gray-200"  />
                 </div>
@@ -83,7 +83,7 @@
             </div>
 
 
-           
+
             <ag-grid-vue
             id="ag-grid"
             ref="agGrid"
@@ -107,7 +107,7 @@
 
             <!-- <div>
                 <Paginator ref="myPaginator" :rows="perPage" :totalRecords="totalRows" @click="onPageChange">
-                   
+
                 </Paginator>
             </div> -->
 
@@ -136,11 +136,11 @@
     <div class="p-5" id="printMe">
         <div class="md:flex no-wrap md:-mx-2 ">
             <div class="w-full md:w-3/12 md:mx-2">
-                <img v-if="guest.photo ==null" src="/uploads/nopic.png" class="object-cover w-40 mb-2" /> 
-                <img v-else :src="'/'+guest.photo" class="object-cover w-40 mb-2" /> 
+                <img v-if="guest.photo ==null" src="/uploads/nopic.png" class="object-cover w-40 mb-2" />
+                <img v-else :src="'/'+guest.photo" class="object-cover w-40 mb-2" />
             </div>
             <div class="w-full md:w-9/12 mx-2">
-                
+
                 <!-- About Section -->
                 <div class="bg-white p-3 ">
                     <div class="flex items-center space-x-2 font-semibold text-gray-900 leading-8">
@@ -247,7 +247,7 @@
                     <div class="text-gray-700">
                         <div class=" text-sm">
                                         <table class="min-w-full divide-y divide-gray-200">
-                                            
+
                                             <thead class="bg-gray-50">
                                             <tr>
                                             <th scope="col" class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -266,7 +266,7 @@
                                             </thead>
 
                                             <tbody v-for="data in guest.history" :key="data.id" class="bg-white">
-                                            
+
                                             <tr>
                                             <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-500">
                                             {{data.created_at}}
@@ -290,13 +290,13 @@
                 </div>
                 <!-- End of History section -->
 
-    </div>  
+    </div>
 </div>
 
 <div v-show="activeTab === 11" role="tabpanel">
             <div class="align-middle inline-block min-w-full">
                                         <table class="min-w-full divide-y divide-gray-200">
-                                            
+
                                             <thead class="bg-gray-50">
                                             <tr>
                                             <th scope="col" class="p-4 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -318,7 +318,7 @@
                                             </thead>
 
                                             <tbody v-for="(data, index) in guest.all_movements || []" :key="`movement-${index}`" class="bg-white">
-                                            
+
                                             <tr>
                                             <td class="p-4 whitespace-nowrap text-sm font-normal text-gray-500">
                                             {{data.created_at}}
@@ -356,8 +356,8 @@
 <script>
 import api from '../../api/client';
 import { addEmployeeNote } from '../../api/employees';
-import { AgGridVue } from "ag-grid-vue3"; 
-import "ag-grid-community/styles/ag-grid.css"; 
+import { AgGridVue } from "ag-grid-vue3";
+import "ag-grid-community/styles/ag-grid.css";
 import "ag-grid-community/styles/ag-theme-material.css";
 import { ref } from 'vue';
 import Dropdown from 'primevue/dropdown';
@@ -372,7 +372,7 @@ const gridApi = ref();
 
 function customCellRendererIn(params) {
     var cellValue = params.value;
-    const isRed = params.data.hasEntryIssue; 
+    const isRed = params.data.hasEntryIssue;
     console.log(isRed);
     if (isRed) {
         return '<span class="font-bold text-red p-4">' + params.value + '</span>';
@@ -383,7 +383,7 @@ function customCellRendererIn(params) {
 
 function customCellRendererOut(params) {
     var cellValue = params.value;
-    const isRed = params.data.hasExitIssue; 
+    const isRed = params.data.hasExitIssue;
     console.log(isRed);
     if (isRed) {
         return '<span class="font-bold text-red p-4">' + params.value + '</span>';
@@ -410,7 +410,7 @@ export default {
                 activeTab:10,
                 day:new Date().toISOString().substr(0, 10),
                 depId: localStorage.getItem('dep_id'),
-                userName: localStorage.getItem('user_name'),
+                userFullName: localStorage.getItem('user_fullname'),
                 ColumnsDef:[],
                 RawData:[],
                 blokGuest:false,
@@ -420,7 +420,7 @@ export default {
                     emp_id:null,
                     day:null,
                     notes:null,
-                    created_by:localStorage.getItem('user_name')
+                    created_by_id:Number(localStorage.getItem('account_id')) || null
                 },
                 guest:{
                     fullname_en:'',
@@ -505,7 +505,7 @@ export default {
                         }
                         });
 
-                        
+
                 },
                 onBtExport(){
                         gridApi.value.exportDataAsCsv();
@@ -515,7 +515,7 @@ export default {
                         this.editguest=false;
                         this.activeTab=10;
 
-                        api.get('/api/employees/'+id+'?day='+this.day) 
+                        api.get('/api/employees/'+id+'?day='+this.day)
                         .then(response => {
                         this.guest = response.data[0];
                         this.note.emp_id=this.guest.id;

@@ -1,0 +1,187 @@
+.user-treeselect-panel {
+  border-radius: 0.625rem;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+  margin-top: 4px;
+  overflow: hidden;
+  max-width: min(100vw - 2rem, 28rem);
+}
+
+.user-treeselect-panel .p-tree {
+  padding: 0.25rem;
+}
+
+.user-treeselect-panel .p-tree-filter-container {
+  padding: 0.375rem 0.5rem 0.25rem;
+}
+
+.user-treeselect-panel .p-tree-filter {
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0.75rem 0.5rem 2.2rem;
+  font-size: 0.8125rem;
+  outline: none;
+  transition: all 0.15s ease;
+  background: #f8fafc;
+}
+
+.user-treeselect-panel .p-tree-filter:focus {
+  border-color: #8b1538;
+  box-shadow: 0 0 0 3px rgba(139, 21, 56, 0.08);
+  background: #fff;
+}
+
+.user-treeselect-panel .p-tree-filter-icon {
+  left: 1.2rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+.user-treeselect-panel .p-tree-container {
+  padding: 0;
+}
+
+.user-treeselect-panel .p-treenode {
+  padding: 0;
+}
+
+.user-treeselect-panel .p-tree-container > .p-treenode > .p-treenode-content {
+  padding-inline-start: 0.6rem !important;
+  border-inline-start: 3px solid #8b1538;
+}
+
+.user-treeselect-panel .p-tree-container > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-content {
+  padding-inline-start: 1.75rem !important;
+  border-inline-start: 3px solid #2563eb;
+}
+
+.user-treeselect-panel .p-tree-container > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-content {
+  padding-inline-start: 2.9rem !important;
+  border-inline-start: 3px solid #059669;
+}
+
+.user-treeselect-panel .p-tree-container > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-content {
+  padding-inline-start: 4.05rem !important;
+  border-inline-start: 3px solid #d97706;
+}
+
+.user-treeselect-panel .p-tree-container > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-children > .p-treenode > .p-treenode-content {
+  padding-inline-start: 5.2rem !important;
+  border-inline-start: 3px solid #64748b;
+}
+
+.user-treeselect-panel .p-treenode-children {
+  position: relative;
+  border-inline-start: 1px dashed #dbe3ee;
+  margin-inline-start: 0.6rem;
+  padding-inline-start: 0;
+}
+
+.user-treeselect-panel .p-treenode-content {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding-top: 0.3rem;
+  padding-bottom: 0.3rem;
+  padding-inline-end: 0.6rem;
+  border-radius: 0.4rem;
+  border: none;
+  transition: all 0.12s ease;
+  cursor: pointer;
+}
+
+.user-treeselect-panel .p-treenode-content:hover {
+  background: #f1f5f9;
+}
+
+.user-treeselect-panel .p-treenode-content.p-highlight {
+  background: rgba(139, 21, 56, 0.08);
+  color: #8b1538;
+}
+
+.user-treeselect-panel .p-tree-toggler {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  border-radius: 999px;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  color: #64748b;
+  font-size: 0.5rem;
+  transition: all 0.15s ease;
+}
+
+.user-treeselect-panel .p-tree-toggler:hover {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+  color: #334155;
+}
+
+.user-treeselect-panel .p-treenode-icon {
+  font-size: 0.8rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 0.35rem;
+}
+
+.user-treeselect-panel .p-treenode-icon.pi-sitemap {
+  background: rgba(139, 21, 56, 0.1);
+  color: #8b1538;
+}
+
+.user-treeselect-panel .p-treenode-icon.pi-building {
+  background: rgba(37, 99, 235, 0.1);
+  color: #2563eb;
+}
+
+.user-treeselect-panel .p-treenode-icon.pi-th-large {
+  background: rgba(5, 150, 105, 0.1);
+  color: #059669;
+}
+
+.user-treeselect-panel .p-treenode-icon.pi-box {
+  background: rgba(217, 119, 6, 0.1);
+  color: #d97706;
+}
+
+.user-treeselect-panel .p-treenode-icon.pi-circle {
+  background: rgba(100, 116, 139, 0.1);
+  color: #64748b;
+}
+
+.user-treeselect-panel .p-treenode-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #1e293b;
+  line-height: 1.4;
+}
+
+.user-treeselect-panel .p-treenode-content.p-highlight .p-treenode-label {
+  font-weight: 600;
+}
+
+.user-treeselect-panel .p-tree-wrapper {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.user-treeselect-panel .p-tree-wrapper::-webkit-scrollbar {
+  width: 5px;
+}
+
+.user-treeselect-panel .p-tree-wrapper::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.user-treeselect-panel .p-tree-wrapper::-webkit-scrollbar-track {
+  background: transparent;
+}

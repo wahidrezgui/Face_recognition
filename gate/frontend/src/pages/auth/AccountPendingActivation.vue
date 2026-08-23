@@ -137,7 +137,7 @@ export default {
         sub: this.profile?.sub ?? null,
         email: this.profile?.email ?? null,
         username: this.profile?.preferred_username ?? null,
-        login_email: this.profile?.login_email ?? null,
+        login_username: this.profile?.login_username ?? null,
       };
 
       return Object.fromEntries(

@@ -1,0 +1,59 @@
+.emp-grid-hint {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    margin: 0.75rem 0 0.5rem;
+    font-size: 0.8125rem;
+    color: #64748b;
+}
+
+.emp-grid-hint__item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.emp-grid-hint__sep {
+    color: #cbd5e1;
+}
+
+.emp-results-bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.875rem;
+    color: #475569;
+}
+
+.emp-results-bar__count {
+    font-weight: 600;
+    color: #0f172a;
+}
+
+.emp-results-bar__badge {
+    border-radius: 9999px;
+    background: #fef3c7;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: #b45309;
+}
+
+.companies-workspace {
+    width: 100%;
+}
+
+.companies-main {
+    min-width: 0;
+}
+
+.companies-employee-grid :deep(.app-data-grid),
+.companies-employee-grid :deep(.gate-data-grid) {
+    width: 100%;
+}
+
+.companies-main-header h3 {
+    max-width: 100%;
+}

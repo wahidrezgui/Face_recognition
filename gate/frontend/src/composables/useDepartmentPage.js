@@ -1,6 +1,9 @@
 import { computed, getCurrentInstance, onBeforeUnmount, onMounted, reactive, toRefs } from 'vue';
+import { useForm } from '@tanstack/vue-form';
+import { useI18n } from 'vue-i18n';
 import { useToast } from 'primevue/usetoast';
 import { countTreeNodes, createDepartmentPageActions, createDepartmentPageState } from '../lib/organization/departmentPageCore';
+import { emptyDepartmentFormValues } from '../lib/organization/departmentFormSchema';
 import { canWriteResource, getResourceScope, isGlobalScope } from '../lib/auth-roles';
 import {
   collectDescendantDeptIds,
@@ -10,13 +13,27 @@ import {
 
 export function useDepartmentPage() {
   const toast = useToast();
+  const { t, locale } = useI18n();
   const instance = getCurrentInstance();
   const dataScope = getResourceScope('departments');
   const state = reactive(createDepartmentPageState(dataScope));
 
+  const createForm = useForm({
+    defaultValues: emptyDepartmentFormValues(state.depId),
+    onSubmit: async ({ value }) => actions.submitCreate(value),
+  });
+
+  const editForm = useForm({
+    defaultValues: emptyDepartmentFormValues(state.depId),
+    onSubmit: async ({ value }) => actions.submitEdit(value),
+  });
+
   const actions = createDepartmentPageActions(state, {
     toast,
     confirm: instance?.proxy?.$confirm,
+    createForm,
+    editForm,
+    t,
   });
 
   onMounted(() => {
@@ -29,10 +46,11 @@ export function useDepartmentPage() {
   });
 
   const panelWidth = computed(() => (window.innerWidth < 640 ? '100%' : '600px'));
-  const parentDepartmentOptions = computed(() => normalizeDepartmentTree(state.departments || []));
+  const parentDepartmentOptions = computed(() => normalizeDepartmentTree(state.departments || [], locale.value));
+  const editingDepartmentId = editForm.useSelector((formState) => formState.values.id);
   const editParentDepartmentOptions = computed(() => {
     const normalized = parentDepartmentOptions.value;
-    const departmentId = state.formEditDep?.id;
+    const departmentId = editingDepartmentId.value;
 
     if (!departmentId) {
       return normalized;
@@ -43,28 +61,28 @@ export function useDepartmentPage() {
   });
 
   const pageTitle = computed(() => (
-    isGlobalScope('departments') ? 'إدارة الوحدات' : 'الوحدات'
+    isGlobalScope('departments') ? t('departments.page.titleGlobal') : t('departments.page.titleScoped')
   ));
 
   const pageDescription = computed(() => {
     if (isGlobalScope('departments')) {
-      return 'عرض وإدارة جميع وحدات المنظمة';
+      return t('departments.page.descriptionGlobal');
     }
     if (dataScope === 'self') {
-      return 'عرض وإدارة وحدتك فقط';
+      return t('departments.page.descriptionSelf');
     }
-    return 'عرض وإدارة وحدتك والوحدات الفرعية';
+    return t('departments.page.descriptionScoped');
   });
 
   const treeDescription = computed(() => {
     const count = countTreeNodes(state.departments);
     if (state.scope === 'global') {
-      return count ? `إدارة ${count} وحدة على مستوى المنظمة` : 'إدارة جميع وحدات المنظمة';
+      return count ? t('departments.tree.countGlobal', { count }) : t('departments.tree.emptyGlobal');
     }
     if (state.scope === 'self') {
-      return count ? `وحدة واحدة (${count} عقدة)` : 'لا توجد وحدة مرتبطة بحسابك';
+      return count ? t('departments.tree.countSelf', { count }) : t('departments.tree.emptySelfNone');
     }
-    return count ? `إدارة ${count} وحدة ضمن هيكل وحدتك` : 'إدارة الوحدات الفرعية ضمن نطاق وحدتك';
+    return count ? t('departments.tree.countScoped', { count }) : t('departments.tree.emptyScoped');
   });
 
   const canDelete = computed(() => state.scope === 'global' && canWriteResource('departments'));
@@ -72,6 +90,8 @@ export function useDepartmentPage() {
 
   return {
     ...toRefs(state),
+    createForm,
+    editForm,
     panelWidth,
     parentDepartmentOptions,
     editParentDepartmentOptions,

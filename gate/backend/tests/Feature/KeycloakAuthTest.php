@@ -21,8 +21,7 @@ class KeycloakAuthTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('keycloak.enabled', false)
-            ->assertJsonPath('keycloak.login_url', null)
-            ->assertJsonPath('login.title', config('login.title'));
+            ->assertJsonPath('keycloak.login_url', null);
     }
 
     public function test_providers_endpoint_exposes_login_url_when_enabled(): void
@@ -111,7 +110,7 @@ class KeycloakAuthTest extends TestCase
             'email' => 'wahidrezgui@gmail.com',
             'name' => 'Wahid Rezgui',
             'user_id' => null,
-            'login_email' => null,
+            'login_username' => null,
             'created' => false,
         ], $exception->pendingProfile());
     }
@@ -123,7 +122,7 @@ class KeycloakAuthTest extends TestCase
         $this->assertSame([
             'firstname' => 'Wahid',
             'lastname' => 'Rezgui',
-            'email' => 'aaa',
+            'username' => 'aaa',
         ], $service->buildPendingUserAttributes([
             'preferred_username' => 'aaa',
             'email' => 'wahidrezgui@gmail.com',

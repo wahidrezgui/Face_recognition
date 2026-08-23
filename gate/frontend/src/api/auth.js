@@ -65,8 +65,8 @@ export function syncLegacyStorage(user) {
         return;
     }
     const roleName = user.roles?.[0]?.name ?? '';
-    localStorage.setItem('user_email', user.email ?? '');
-    localStorage.setItem('user_name', `${user.firstname ?? ''} ${user.lastname ?? ''}`.trim());
+    localStorage.setItem('user_username', user.username ?? '');
+    localStorage.setItem('user_fullname', `${user.firstname ?? ''} ${user.lastname ?? ''}`.trim());
     localStorage.setItem('account_id', String(user.id ?? ''));
     localStorage.setItem('dep_id', String(user.dep_id ?? ''));
     localStorage.setItem('base_default', String(user.default_base ?? ''));
@@ -74,7 +74,7 @@ export function syncLegacyStorage(user) {
 }
 
 export function clearLegacyStorage() {
-    ['user_email', 'user_name', 'account_id', 'dep_id', 'base_default', 'roles'].forEach((key) => {
+    ['user_username', 'user_fullname', 'account_id', 'dep_id', 'base_default', 'roles'].forEach((key) => {
         localStorage.removeItem(key);
     });
 }

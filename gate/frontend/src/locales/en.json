@@ -1,0 +1,197 @@
+{
+    "app": {
+        "titleSuffix": " - [Qatar Armed Forces - Check-in / Check-out System]"
+    },
+    "routes": {
+        "login": "Login",
+        "authCallback": "Signing In",
+        "accountPending": "Account Activation",
+        "gate": "Gate - Check-in / Check-out",
+        "gatePlateSearch": "Military Vehicle Search",
+        "permissionDenied": "Permission Denied",
+        "companiesReporting": "Companies Reports",
+        "companiesIssues": "Companies Issues",
+        "reports": "Reports",
+        "issues": "Issues",
+        "exportReports": "Export Reports",
+        "unjustified": "Unjustified",
+        "justified": "Justified"
+    },
+    "departments": {
+        "validation": {
+            "nameEnRequired": "English name is required"
+        },
+        "page": {
+            "titleGlobal": "Departments Management",
+            "titleScoped": "Departments",
+            "descriptionGlobal": "View and manage all departments",
+            "descriptionSelf": "View and manage your department only",
+            "descriptionScoped": "View and manage your department and its sub-units"
+        },
+        "tree": {
+            "loading": "Loading departments…",
+            "emptyMessage": "No departments to display.",
+            "emptyGlobal": "Manage all organization departments",
+            "emptySelfNone": "No department linked to your account",
+            "emptyScoped": "Manage sub-units within your department",
+            "countGlobal": "Managing {count} departments organization-wide",
+            "countSelf": "One department ({count} nodes)",
+            "countScoped": "Managing {count} departments within your structure"
+        },
+        "hierarchy": {
+            "expandAll": "Expand all",
+            "collapseAll": "Collapse all",
+            "noResults": "No matching results.",
+            "searchPlaceholder": "Search..."
+        },
+        "row": {
+            "collapse": "Collapse",
+            "expand": "Expand",
+            "addChild": "Add sub-unit",
+            "editTitle": "Edit",
+            "editLabel": "Edit department",
+            "deleteTitle": "Delete",
+            "deleteLabel": "Delete department",
+            "rootBadge": "Main unit",
+            "companyBadge": "Company",
+            "childCount": "{count} branches"
+        },
+        "form": {
+            "createTitle": "Add Department",
+            "createSubtitle": "Create a sub-unit and link bases",
+            "editTitle": "Edit Department",
+            "editSubtitle": "Update department data and linked bases",
+            "parentLabel": "Parent Department",
+            "parentPlaceholder": "Select parent department",
+            "parentFilterPlaceholder": "Search departments...",
+            "nameEnLabel": "English Name",
+            "nameEnPlaceholder": "Unit name",
+            "nameArLabel": "Arabic Name",
+            "nameArPlaceholder": "Unit name in Arabic",
+            "linkedBases": "Linked Bases",
+            "noBases": "No bases available.",
+            "cancel": "Cancel",
+            "save": "Save",
+            "saving": "Saving…",
+            "update": "Update"
+        },
+        "toast": {
+            "errorTitle": "Error",
+            "successTitle": "Success",
+            "loadListFailed": "Failed to load departments",
+            "createSuccess": "Department created",
+            "createFailed": "Failed to create department",
+            "invalidId": "Invalid department ID",
+            "loadOneFailed": "Failed to load department data",
+            "updateSuccess": "Department updated",
+            "updateFailed": "Failed to update department",
+            "deleteFailed": "Failed to delete department",
+            "deleteConfirmMessage": "Do you want to delete this department?",
+            "deleteConfirmHeader": "Delete Confirmation",
+            "deleteConfirmedTitle": "Confirmed",
+            "deleteSuccess": "Deleted successfully"
+        }
+    },
+    "login": {
+        "title": "Gate Control System",
+        "welcome": "Welcome 👋",
+        "usernameLabel": "Username",
+        "passwordLabel": "Password",
+        "submitLabel": "Sign In",
+        "ssoButtonLabel": "Sign in with Mirsal",
+        "ssoHelpText": "For employees registered in the Mirsal system",
+        "dividerLabel": "or",
+        "logoAlt": "Ministry of Defense",
+        "usernamePlaceholder": "Enter your username",
+        "passwordPlaceholder": "Enter your password",
+        "showPassword": "Show password",
+        "hidePassword": "Hide password",
+        "signingIn": "Signing in...",
+        "redirectingToSso": "Redirecting to Mirsal...",
+        "usernameRequired": "Username is required.",
+        "passwordRequired": "Password is required.",
+        "invalidCredentials": "Incorrect username or password."
+    },
+    "common": {
+        "language": "Language",
+        "arabic": "Arabic",
+        "english": "English",
+        "confirm": "Confirm",
+        "cancel": "Cancel",
+        "ok": "OK",
+        "close": "Close"
+    },
+    "dashboard": {
+        "pageTitleGlobal": "Admin Dashboard",
+        "pageTitleScoped": "Dashboard",
+        "loadingGlobal": "Loading admin dashboard…",
+        "loadingScoped": "Loading dashboard…",
+        "stats": {
+            "employees": "Employees",
+            "checkInsToday": "Check-ins Today",
+            "checkOutsToday": "Check-outs Today",
+            "pending": "Pending",
+            "printed": "Printed",
+            "collected": "Collected",
+            "departments": "Departments",
+            "bases": "Bases",
+            "gates": "Gates",
+            "zones": "Zones"
+        },
+        "charts": {
+            "presenceTitle": "Attendance — Last 7 Days",
+            "presenceSubtitle": "Daily check-ins and check-outs",
+            "presenceEmpty": "No attendance data for this period.",
+            "issuesByDeptTitle": "Today's Issues by Department",
+            "issuesByDeptSubtitle": "Late entries and early exits per department",
+            "issuesByDeptEmpty": "No issues recorded today.",
+            "registrationTitle": "Registrations — Last 7 Days",
+            "registrationSubtitle": "Recently registered employees",
+            "registrationEmpty": "No registration data for this period.",
+            "issuesTrendTitle": "Issues Trend — Last 7 Days",
+            "issuesTrendSubtitle": "Late entry and early exit trend",
+            "issuesTrendEmpty": "No issue data for this period.",
+            "checkIn": "Check-in",
+            "checkOut": "Check-out",
+            "newRegistration": "New Registration",
+            "lateEntry": "Late Entry",
+            "earlyExit": "Early Exit"
+        }
+    },
+    "sidebar": {
+        "navLabel": "Sidebar navigation",
+        "collapse": "Collapse menu",
+        "expand": "Expand menu",
+        "close": "Close menu"
+    },
+    "nav": {
+        "dashboard": "Dashboard",
+        "departments": "Departments",
+        "users": "User Management",
+        "bases": "Bases & Gates",
+        "employees": "Employees",
+        "companies": "Companies",
+        "individual_report": "Reports",
+        "settings": "Time Settings",
+        "badge": "Access Badge",
+        "role_permissions": "Role Permissions"
+    },
+    "header": {
+        "openMenu": "Open menu",
+        "appTitle": "Gate System",
+        "alerts": "Alerts",
+        "fullscreen": "Fullscreen",
+        "accountMenu": "User account",
+        "changePassword": "Change Password",
+        "newPasswordLabel": "New Password",
+        "confirmPasswordLabel": "Confirm Password",
+        "cancel": "Cancel",
+        "save": "Save",
+        "logout": "Logout",
+        "errorTitle": "Error",
+        "successTitle": "Success",
+        "passwordMismatch": "Passwords do not match",
+        "passwordChanged": "Password changed successfully",
+        "passwordChangeFailed": "Failed to change password"
+    }
+}

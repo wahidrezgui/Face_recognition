@@ -68,7 +68,7 @@ export function createEmployeeWorkflowMixin({
                         const guestIds = getSelectedGuestIds(getGridApi);
                         bulkApproveEmployees({
                             guests: guestIds,
-                            by: this.userName,
+                            created_by_id: this.accountId,
                             status,
                         }).then(() => onRefresh?.(this));
 

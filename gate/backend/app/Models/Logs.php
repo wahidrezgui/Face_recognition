@@ -12,9 +12,15 @@ class Logs extends Model
     protected $fillable = [
         'emp_id',
         'task',
-        'created_by',
+        'created_by_id',
+        'created_by_legacy',
         'created_at',
         'updated_at',
     ];
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by_id');
+    }
 
 }

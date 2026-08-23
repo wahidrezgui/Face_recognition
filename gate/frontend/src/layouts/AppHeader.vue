@@ -7,14 +7,14 @@
                     class="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
                     :aria-expanded="isOpen"
                     aria-controls="app-sidebar"
-                    aria-label="فتح القائمة"
+                    :aria-label="t('header.openMenu')"
                     @click="toggleMobile"
                 >
                     <i class="pi pi-bars text-xl" />
                 </button>
                 <router-link :to="homeRoute" class="flex items-center gap-2 text-lg font-bold text-brand">
                     <i class="pi pi-qrcode text-xl" />
-                    <span class="hidden whitespace-nowrap sm:inline">نظام الدخول والخروج</span>
+                    <span class="hidden whitespace-nowrap sm:inline">{{ t('header.appTitle') }}</span>
                 </router-link>
                 <div class="hidden min-w-0 lg:block lg:ms-8">
                     <h2 class="truncate text-base font-bold text-slate-800">{{ pageTitle }}</h2>
@@ -23,10 +23,18 @@
 
             <div class="relative flex items-center gap-2">
                 <button
+                    type="button"
+                    class="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
+                    :aria-label="t('common.language')"
+                    @click="toggleLocale"
+                >
+                    <i class="pi pi-language" />
+                </button>
+                <button
                     v-if="hasIssues"
                     type="button"
                     class="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-red-200 bg-red-50 text-red-600"
-                    aria-label="تنبيهات"
+                    :aria-label="t('header.alerts')"
                     @click="$emit('toggle-issues')"
                 >
                     <i class="pi pi-exclamation-triangle" />
@@ -34,7 +42,7 @@
                 <button
                     type="button"
                     class="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                    aria-label="ملء الشاشة"
+                    :aria-label="t('header.fullscreen')"
                     @click="toggleFullScreen"
                 >
                     <i class="pi pi-arrows-alt" />
@@ -42,7 +50,7 @@
                 <button
                     type="button"
                     class="flex min-h-[44px] min-w-[44px] items-center justify-center rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100"
-                    aria-label="حساب المستخدم"
+                    :aria-label="t('header.accountMenu')"
                     @click="toggleDropdown"
                 >
                     <i class="pi pi-user" />
@@ -55,8 +63,8 @@
                     <div class="flex items-center gap-3 border-b border-slate-100 p-4">
                         <i class="pi pi-user text-3xl text-brand" />
                         <div class="min-w-0">
-                            <p class="truncate text-sm font-semibold text-slate-800">{{ username }}</p>
-                            <p class="truncate text-xs text-slate-500">{{ usermail }}</p>
+                            <p class="truncate text-sm font-semibold text-slate-800">{{ userFullname }}</p>
+                            <p class="truncate text-xs text-slate-500">{{ username }}</p>
                         </div>
                     </div>
                     <button
@@ -64,12 +72,12 @@
                         class="block w-full px-4 py-3 text-start text-sm text-slate-600 hover:bg-slate-50"
                         @click="toggleChangePasswordForm"
                     >
-                        تغيير كلمة المرور
+                        {{ t('header.changePassword') }}
                     </button>
                     <div v-show="showChangePasswordForm" class="border-b border-slate-100 px-4 py-3">
                         <form @submit.prevent="changePassword">
                             <label class="mb-2 block text-sm font-medium text-slate-700" for="newPassword">
-                                كلمة المرور الجديدة
+                                {{ t('header.newPasswordLabel') }}
                             </label>
                             <input
                                 id="newPassword"
@@ -79,7 +87,7 @@
                                 required
                             >
                             <label class="mb-2 block text-sm font-medium text-slate-700" for="confirmPassword">
-                                تأكيد كلمة المرور
+                                {{ t('header.confirmPasswordLabel') }}
                             </label>
                             <input
                                 id="confirmPassword"
@@ -90,10 +98,10 @@
                             >
                             <div class="flex justify-end gap-2">
                                 <AppButton variant="secondary" size="sm" type="button" @click="toggleChangePasswordForm">
-                                    إلغاء
+                                    {{ t('header.cancel') }}
                                 </AppButton>
                                 <AppButton size="sm" type="submit">
-                                    حفظ
+                                    {{ t('header.save') }}
                                 </AppButton>
                             </div>
                         </form>
@@ -103,7 +111,7 @@
                         class="block w-full px-4 py-3 text-start text-sm text-slate-600 hover:bg-slate-50"
                         @click="logout"
                     >
-                        تسجيل الخروج
+                        {{ t('header.logout') }}
                     </button>
                 </div>
             </div>
@@ -114,11 +122,13 @@
 <script>
 import { ref, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useToast } from 'primevue/usetoast';
 import AppButton from '../components/ui/AppButton.vue';
 import { useSidebar } from '../composables/useSidebar';
 import { useAuth } from '../composables/useAuth';
 import { changePassword as changePasswordApi } from '../api/auth';
+import { setLocale } from '../i18n';
 
 export default {
     name: 'AppHeader',
@@ -131,17 +141,22 @@ export default {
         const route = useRoute();
         const router = useRouter();
         const toast = useToast();
+        const { t, locale } = useI18n();
         const { logout: authLogout } = useAuth();
         const { isOpen, toggleMobile } = useSidebar();
+
+        function toggleLocale() {
+            setLocale(locale.value === 'ar' ? 'en' : 'ar');
+        }
 
         const isOpenDropdown = ref(false);
         const showChangePasswordForm = ref(false);
         const newPassword = ref('');
         const confirmPassword = ref('');
-        const username = ref(localStorage.getItem('user_name') || '');
-        const usermail = ref(localStorage.getItem('user_email') || '');
+        const username = ref(localStorage.getItem('user_username') || '');
+        const userFullname = ref(localStorage.getItem('user_fullname') || '');
 
-        const pageTitle = computed(() => route.meta?.title || '');
+        const pageTitle = computed(() => (route.meta?.titleKey ? t(route.meta.titleKey) : ''));
 
         const homeRoute = computed(() => '/dashboard');
 
@@ -164,8 +179,8 @@ export default {
         async function logout() {
             const result = await authLogout();
             localStorage.removeItem('default_base');
-            localStorage.removeItem('user_email');
-            localStorage.removeItem('user_name');
+            localStorage.removeItem('user_username');
+            localStorage.removeItem('user_fullname');
             localStorage.removeItem('account_id');
             localStorage.removeItem('dep_id');
             localStorage.removeItem('roles');
@@ -181,7 +196,7 @@ export default {
 
         async function changePassword() {
             if (newPassword.value !== confirmPassword.value) {
-                toast.add({ severity: 'error', summary: 'خطأ', detail: 'كلمتا المرور غير متطابقتين', life: 3000 });
+                toast.add({ severity: 'error', summary: t('header.errorTitle'), detail: t('header.passwordMismatch'), life: 3000 });
                 return;
             }
 
@@ -191,16 +206,18 @@ export default {
                     password: newPassword.value,
                     password_confirmation: confirmPassword.value,
                 });
-                toast.add({ severity: 'success', summary: 'تم', detail: 'تم تغيير كلمة المرور بنجاح', life: 3000 });
+                toast.add({ severity: 'success', summary: t('header.successTitle'), detail: t('header.passwordChanged'), life: 3000 });
                 toggleChangePasswordForm();
                 newPassword.value = '';
                 confirmPassword.value = '';
             } catch {
-                toast.add({ severity: 'error', summary: 'خطأ', detail: 'فشل تغيير كلمة المرور', life: 3000 });
+                toast.add({ severity: 'error', summary: t('header.errorTitle'), detail: t('header.passwordChangeFailed'), life: 3000 });
             }
         }
 
         return {
+            t,
+            toggleLocale,
             isOpen,
             toggleMobile,
             pageTitle,
@@ -210,7 +227,7 @@ export default {
             newPassword,
             confirmPassword,
             username,
-            usermail,
+            userFullname,
             toggleDropdown,
             toggleChangePasswordForm,
             toggleFullScreen,

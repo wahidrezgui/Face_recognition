@@ -99,7 +99,7 @@ export function buildReportParams(filters, preset, pagination = {}) {
         fullname_ar: '',
         gender: filters.selectedGender,
         mvtype: filters.selectedType,
-        userName: localStorage.getItem('user_name'),
+        userFullName: localStorage.getItem('user_fullname'),
         ...preset.extraParams,
     };
 

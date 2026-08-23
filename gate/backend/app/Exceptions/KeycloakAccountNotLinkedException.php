@@ -19,7 +19,7 @@ class KeycloakAccountNotLinkedException extends RuntimeException
     }
 
     /**
-     * @return array{sub: ?string, preferred_username: ?string, email: ?string, name: ?string, user_id: ?int, login_email: ?string}
+     * @return array{sub: ?string, preferred_username: ?string, email: ?string, name: ?string, user_id: ?int, login_username: ?string}
      */
     public function pendingProfile(): array
     {
@@ -44,7 +44,7 @@ class KeycloakAccountNotLinkedException extends RuntimeException
             'email' => isset($this->claims['email']) && is_string($this->claims['email']) ? $this->claims['email'] : null,
             'name' => $name,
             'user_id' => $this->pendingUser?->id,
-            'login_email' => $this->pendingUser?->email,
+            'login_username' => $this->pendingUser?->username,
             'created' => $this->pendingUser?->wasRecentlyCreated ?? false,
         ];
     }

@@ -32,7 +32,7 @@ class OrganizationService
             {
                 $list=Departments::where('is_superadmin',0)->where('parent_id',0)->with('children')->get();
                 return response()->json(array('name_en'=>'Super Admin','children'=>$list));
-            }            
+            }
         }
 
 
@@ -49,13 +49,13 @@ class OrganizationService
                     })->get()->first();
             if($user)
             {
-             $dep->user=$user;   
+             $dep->user=$user;
             }
             else
             {
-                $dep->user=array('firstname'=>'','lastname'=>'','email'=>'','password'=>'','id'=>0);
+                $dep->user=array('firstname'=>'','lastname'=>'','username'=>'','password'=>'','id'=>0);
             }
-            
+
             return response()->json($dep);
         }
 
@@ -176,21 +176,21 @@ class OrganizationService
                 <strong>{{idguest}}</strong></td>
                 </div>
                 </tr>
-                
-                
-                
+
+
+
                 <tr style="height: 16px; text-align: left;">
                 <td style="text-align: left; padding: 0px 15px; line-height: 1; height: 16px; width: 50%;"><span style="font-size: 8pt; padding: 0 8px;"><strong>{{Job_En}}</strong></span></td>
                 <td style="text-align: right; padding: 0px 15px; line-height: 1; height: 16px; width: 50%;"><span style="font-size: 8pt; padding: 0 8px;"><strong>{{Job_Arabic}}</strong></span></td>
                 </tr>
-                
+
                 <tr style="height: 16px; text-align: center;">
                 <td style="padding: 0px 15px; line-height: 1; height: 16px; width: 100%; white-space: nowrap;" colspan="2"><span style="font-size: 10pt;"><strong>{{fullname_ar}}</strong></span></td>
                 </tr>
                 <tr style="height: 16px; text-align: center;">
                 <td style="padding: 0px 15px; line-height: 1; height: 16px; width: 100%; white-space: nowrap;" colspan="2"><span style="font-size: 10pt;"><strong>{{fullname_en}}</strong></span></td>
                 </tr>
-                
+
                 </tbody>
                 </table>',
                 'dep_id'=>$id,
@@ -216,15 +216,15 @@ class OrganizationService
                                 padding-left: 10mm;
                                 padding-right: 0mm;
                                 padding-bottom: 0mm;
-                       
+
                             }
                             .box.large {
                                 height: 14mm;
                             }
                             .box.extra-large {
                                 height: 17mm;
-                    
-                            
+
+
                             }
                             .box2.small-height {
                                 height: 6.8mm; /* Reduced height for specific boxes */
@@ -242,7 +242,7 @@ class OrganizationService
                                 border: 0.5px solid #000;
                                 padding: 0.5mm;
                                 font-weight: bold;
-                               
+
                                 position: relative;
                                 display: flex;
                                 align-items: center;
@@ -255,7 +255,7 @@ class OrganizationService
                                 position: relative;
                                 display: flex;
                                 align-items: top;
-                                justify-content: space-between; 
+                                justify-content: space-between;
                             }
                             .box3:last-child {
                                 margin-bottom: 0;
@@ -298,7 +298,7 @@ class OrganizationService
                                 padding-right: 16.2px;
                                 border: 1px solid #000;
                                 height: 48%;
-                                
+
                                 display: flex;
                                 align-items: center;
                                 justify-content: center;
@@ -411,11 +411,11 @@ class OrganizationService
                             }
                             .small-labels .label {
                                 font-size: 8px;
-                              
+
                             }
                             .large-bloodtype {
                         font-size: 12px;
-                      text-align: top; 
+                      text-align: top;
                     }
                     .plate-number { font-size: 8.5px;
                     font-weight: bold;
@@ -444,7 +444,7 @@ class OrganizationService
                              <div class="content small large-bloodtype">{{Escort}}</div>
                                 <span class="label">: مرافق</span>
                             </div>
-                    
+
                             <div class="box2 small-labels small-height">
                                 <span class="label">Device Allowed :</span>
                              <div class="content small plate-number">{{device}}</div>
@@ -512,9 +512,9 @@ class OrganizationService
                 3 => 'Collected',
                 4 => 'Canceled',
             ];
-        
+
             return $statusMapping[$status] ?? 'unknown';
-          }    
+          }
 
         //columns
         $columns = [
@@ -534,15 +534,15 @@ class OrganizationService
             'sortable' => true,
             'width'=>90,
             ],
-          
-           
+
+
             [
             'headerName' => 'بطاقة شخصي',
             'field' => 'qid',
             'sortable' => true,
             'width'=>180
             ],
-         
+
             [
             'headerName' => 'اسم',
             'field' => 'fullname_ar',
@@ -573,8 +573,8 @@ class OrganizationService
                 ],
             ];
 
-            
-        
+
+
         return response()->json(array('info'=>$info,'columns'=>$columns,'guests'=>$data));
     }
 
@@ -616,13 +616,13 @@ class OrganizationService
             $query->select('base_id')
                 ->from('department_bases')
                 ->where('dep_id',$_GET['depId']);
-        })->with('Gates')->with('Zones')->get(); 
+        })->with('Gates')->with('Zones')->get();
         }
         else
         {
-        $list=Bases::with('Gates')->with('Zones')->get();    
+        $list=Bases::with('Gates')->with('Zones')->get();
         }
-        
+
         return response()->json($list);
     }
 
@@ -644,10 +644,10 @@ class OrganizationService
             move_uploaded_file($base_photo, $filepath); // Use $base_photo instead of $photo
             $input['base_photo'] = $filepath;
         }
-    
+
         Bases::create($input);
     }
-    
+
 
     public function editBase(Request $request)
     {
@@ -660,7 +660,7 @@ class OrganizationService
             move_uploaded_file($base_photo, $filepath);
             $input['base_photo'] = $filepath;
         }
-    
+
         $item->update($input);
     }
 

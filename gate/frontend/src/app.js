@@ -2,6 +2,7 @@ import './bootstrap';
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router/index.js';
+import i18n from './i18n.js';
 import PrimeVue from 'primevue/config';
 import 'primevue/resources/themes/lara-light-teal/theme.css';
 import 'primeicons/primeicons.css';
@@ -29,6 +30,7 @@ app.component('AppTableFilters', AppTableFilters);
 app.component('AppDialog', AppDialog);
 
 app.use(router);
+app.use(i18n);
 installQuery(app);
 app.use(PrimeVue);
 app.use(ToastService);

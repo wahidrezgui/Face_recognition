@@ -6,20 +6,20 @@ $app->make(Illuminate\Contracts\Console\Kernel::class)->bootstrap();
 
 use App\Models\User;
 
-$email = $argv[1] ?? null;
-if (! $email) {
-    echo "Usage: php scripts/check_user_permissions.php user@example.com\n";
+$username = $argv[1] ?? null;
+if (! $username) {
+    echo "Usage: php scripts/check_user_permissions.php <username>\n";
     exit(1);
 }
 
-$user = User::where('email', $email)->first();
+$user = User::where('username', $username)->first();
 if (! $user) {
-    echo "User not found: {$email}\n";
+    echo "User not found: {$username}\n";
     exit(1);
 }
 
 $user->load('roles');
-echo "User: {$user->email} (id {$user->id})\n";
+echo "User: {$user->username} (id {$user->id})\n";
 echo 'Roles: ' . $user->roles->pluck('name')->implode(', ') . "\n";
 
 $payload = $user->withAuthPayload();

@@ -11,10 +11,13 @@ import { getKioskSession } from '../lib/gate-offline/kiosk-session';
 import { isBrowserOnline } from '../lib/gate-offline/connectivity';
 import { queryClient } from '../plugins/query';
 import { getRedirectPathForUser, syncLegacyStorage } from '../api/auth';
+import i18n from '../i18n';
 
 export function registerRouterGuards(router) {
     router.beforeEach(async (to, from, next) => {
-        document.title = to.meta.title || 'Gate';
+        document.title = to.meta.titleKey
+            ? i18n.global.t(to.meta.titleKey) + i18n.global.t('app.titleSuffix')
+            : 'Gate';
 
         if (to.meta.requiresAuth || to.meta.guest) {
             await ensureAuthUser();

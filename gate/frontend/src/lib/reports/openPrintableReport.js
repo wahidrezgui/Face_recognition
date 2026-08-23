@@ -37,11 +37,11 @@ function buildPrintMetadataLines() {
   const currentDay = now.toLocaleDateString('ar-EG', { weekday: 'long' });
   const currentDate = now.toLocaleDateString('ar-EG');
   const currentTime = now.toLocaleTimeString('ar-EG');
-  const userName = localStorage.getItem('user_name');
+  const userFullName = localStorage.getItem('user_fullname');
 
   return [
     `تاريخ الطباعة: ${currentDay}, ${currentDate}, في ${currentTime}`,
-    `اسم المستخدم: ${userName}`,
+    `اسم المستخدم: ${userFullName}`,
   ];
 }
 

@@ -24,7 +24,7 @@
       </div>
       <div class="min-w-[4.5rem] text-left">
         <p class="text-xs text-slate-500">مرحباً</p>
-        <p class="truncate text-sm font-bold text-slate-800">{{ username }}</p>
+        <p class="truncate text-sm font-bold text-slate-800">{{ userFullName }}</p>
       </div>
     </div>
   </header>
@@ -218,7 +218,7 @@
             </svg>
           </button>
         </div>
-        
+
       </div>
 
       <p v-if="inputMode === 'barcode'" class="mb-2 text-center text-xs font-medium text-brand">
@@ -389,7 +389,7 @@ export default {
       result: false,
       error: false,
       expiry: false,
-      username: localStorage.getItem('user_name'),
+      userullName: localStorage.getItem('user_fullname'),
       accountId: Number(localStorage.getItem('account_id')) || null,
       base: '',
       gates: [],

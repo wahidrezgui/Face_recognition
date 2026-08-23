@@ -1,0 +1,39 @@
+.settings-treeselect-panel {
+    border-radius: 0.625rem;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+    margin-top: 4px;
+    overflow: hidden;
+    max-width: min(100vw - 2rem, 28rem);
+}
+
+.settings-treeselect-panel .p-tree {
+    padding: 0.25rem;
+}
+
+.settings-treeselect-panel .p-tree-filter-container {
+    padding: 0.375rem 0.5rem 0.25rem;
+}
+
+.settings-treeselect-panel .p-tree-filter {
+    width: 100%;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+    padding: 0.5rem 0.75rem 0.5rem 2.2rem;
+    font-size: 0.8125rem;
+    outline: none;
+    transition: all 0.15s ease;
+    background: #f8fafc;
+}
+
+.settings-treeselect-panel .p-tree-filter:focus {
+    border-color: #8b1538;
+    box-shadow: 0 0 0 3px rgba(139, 21, 56, 0.08);
+    background: #fff;
+}
+
+.settings-treeselect-panel .p-tree-filter-icon {
+    left: 1.2rem;
+    color: #94a3b8;
+    font-size: 0.8rem;
+}

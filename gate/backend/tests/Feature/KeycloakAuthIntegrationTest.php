@@ -34,7 +34,7 @@ class KeycloakAuthIntegrationTest extends TestCase
             'email' => 'wahid@example.com',
             'name' => 'Wahid Rezgui',
             'user_id' => 42,
-            'login_email' => 'aaa',
+            'login_username' => 'aaa',
         ];
 
         $response = $this->statefulApi()->withSession([
@@ -125,7 +125,7 @@ class KeycloakAuthIntegrationTest extends TestCase
                 'id_token' => $this->fakeJwt([
                     'sub' => '76226824-5424-4def-bbca-2839bb06e532',
                     'preferred_username' => 'sso-user-'.uniqid(),
-                    'email' => 'sso-user@example.com',
+                    'username' => 'sso-user-'.uniqid(),
                     'given_name' => 'SSO',
                     'family_name' => 'User',
                 ]),
@@ -167,7 +167,7 @@ class KeycloakAuthIntegrationTest extends TestCase
                 'id' => $user->id,
                 'firstname' => 'Pending',
                 'lastname' => 'User',
-                'email' => $user->email,
+                'username' => $user->username,
                 'activate_sso' => true,
             ]));
             $this->fail('Expected validation exception was not thrown.');
@@ -190,7 +190,7 @@ class KeycloakAuthIntegrationTest extends TestCase
         $linkedUser = $this->createUserRecord([
             'firstname' => 'Linked',
             'lastname' => 'User',
-            'email' => 'linked-'.uniqid().'@example.com',
+            'username' => 'linked-'.uniqid(),
             'keycloak_sub' => $duplicateSub,
         ]);
 
@@ -207,7 +207,7 @@ class KeycloakAuthIntegrationTest extends TestCase
                 'id' => $pendingUser->id,
                 'firstname' => 'Pending',
                 'lastname' => 'User',
-                'email' => $pendingUser->email,
+                'username' => $pendingUser->username,
                 'activate_sso' => true,
                 'role' => 'Reporting',
                 'dep_id' => 1,
@@ -257,7 +257,7 @@ class KeycloakAuthIntegrationTest extends TestCase
             return User::query()->create(array_merge([
                 'firstname' => 'Test',
                 'lastname' => 'User',
-                'email' => 'user-'.uniqid().'@example.com',
+                'username' => 'user-'.uniqid(),
             ], $overrides));
         } catch (\Throwable) {
             return null;
@@ -269,7 +269,7 @@ class KeycloakAuthIntegrationTest extends TestCase
         return $this->createUserRecord([
             'firstname' => 'Pending',
             'lastname' => 'User',
-            'email' => 'pending-sso-'.uniqid().'@example.com',
+            'username' => 'pending-sso-'.uniqid(),
             'keycloak_pending_sub' => $sub ?? '11111111-1111-1111-1111-111111111111',
         ]);
     }

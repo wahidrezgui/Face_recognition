@@ -111,7 +111,7 @@ class KeycloakAuthService
     public function provisionPendingUser(array $claims): User
     {
         $attributes = $this->buildPendingUserAttributes($claims);
-        $loginEmail = $attributes['email'];
+        $loginUsername = $attributes['username'];
         $pendingSub = $claims['sub'] ?? null;
 
         if (! is_string($pendingSub) || $pendingSub === '') {
@@ -119,7 +119,7 @@ class KeycloakAuthService
         }
 
         $existing = User::query()
-            ->whereRaw('LOWER(email) = ?', [mb_strtolower($loginEmail)])
+            ->whereRaw('LOWER(username) = ?', [mb_strtolower($loginUsername)])
             ->first();
 
         if ($existing) {
@@ -140,7 +140,7 @@ class KeycloakAuthService
         return User::query()->create([
             'firstname' => $attributes['firstname'],
             'lastname' => $attributes['lastname'],
-            'email' => $loginEmail,
+            'username' => $loginUsername,
             'cnx' => 0,
             'keycloak_pending_sub' => $pendingSub,
         ]);
@@ -148,21 +148,21 @@ class KeycloakAuthService
 
     /**
      * @param  array<string, mixed>  $claims
-     * @return array{firstname: string, lastname: string, email: string}
+     * @return array{firstname: string, lastname: string, username: string}
      */
     public function buildPendingUserAttributes(array $claims): array
     {
         [$firstname, $lastname] = $this->splitNameFromClaims($claims);
-        $loginEmail = $this->resolveLoginEmail($claims);
+        $loginUsername = $this->resolveLoginUsername($claims);
 
-        if ($loginEmail === null) {
+        if ($loginUsername === null) {
             throw new RuntimeException('Keycloak did not return a username or email for account provisioning.');
         }
 
         return [
             'firstname' => $firstname,
             'lastname' => $lastname,
-            'email' => $loginEmail,
+            'username' => $loginUsername,
         ];
     }
 
@@ -188,15 +188,15 @@ class KeycloakAuthService
             return [$firstname, $lastname];
         }
 
-        $loginEmail = $this->resolveLoginEmail($claims);
+        $loginUsername = $this->resolveLoginUsername($claims);
 
-        return [$loginEmail ?? 'Keycloak', 'User'];
+        return [$loginUsername ?? 'Keycloak', 'User'];
     }
 
     /**
      * @param  array<string, mixed>  $claims
      */
-    public function resolveLoginEmail(array $claims): ?string
+    public function resolveLoginUsername(array $claims): ?string
     {
         foreach (['preferred_username', 'username'] as $key) {
             if (! empty($claims[$key]) && is_string($claims[$key])) {

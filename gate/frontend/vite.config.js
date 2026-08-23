@@ -16,6 +16,7 @@ export default defineConfig({
     server: {
         port: 8081,
         strictPort: true,
+        host: '0.0.0.0',
         hmr: {
             host: 'localhost',
         },

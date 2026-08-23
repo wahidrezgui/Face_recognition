@@ -24,7 +24,7 @@
     --app-check-focus-ring: 0 0 0 3px rgb(138 21 56 / 0.22);
 }
 
-/* App shell: sidebar fixed on physical right, main content inset beside it */
+/* App shell: sidebar fixed on the inline-start edge (rtl: right, ltr: left), main content inset beside it */
 .app-sidebar {
     width: var(--sidebar-width);
     transition: width 0.2s ease;
@@ -37,16 +37,16 @@
 .app-shell-main {
     min-height: 100vh;
     padding-top: var(--header-height);
-    transition: padding-right 0.2s ease;
+    transition: padding-inline-start 0.2s ease;
 }
 
 @media (min-width: 1024px) {
     .app-shell-main {
-        padding-right: var(--sidebar-width);
+        padding-inline-start: var(--sidebar-width);
     }
 
     .app-shell-main.is-sidebar-collapsed {
-        padding-right: var(--sidebar-width-collapsed);
+        padding-inline-start: var(--sidebar-width-collapsed);
     }
 }
 

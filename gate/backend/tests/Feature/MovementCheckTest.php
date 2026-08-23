@@ -194,7 +194,7 @@ class MovementCheckTest extends TestCase
                 'dep_id' => $depId,
                 'firstname' => 'Test',
                 'lastname' => 'User',
-                'email' => 'movement-test-'.Str::uuid().'@test.local',
+                'username' => 'movement-test-'.Str::uuid().'@test.local',
                 'password' => bcrypt('password'),
                 'created_at' => now(),
                 'updated_at' => now(),

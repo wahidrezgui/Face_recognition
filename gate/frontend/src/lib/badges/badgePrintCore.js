@@ -103,7 +103,11 @@ async function printPreparedHtml(preparedHtml, pdfConfig = {}) {
 <style>
 @page { size: ${widthMm}mm ${heightMm}mm; margin: 0; }
 html, body { margin: 0; padding: 0; background: #fff; }
-body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+*, *::before, *::after {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+}
 img { max-width: 100%; height: auto; }
 table { border-collapse: collapse; }
 </style>
@@ -260,7 +264,7 @@ export async function openBadgePdf(html, pdfConfig) {
 }
 
 export async function printCombinedBadges(guestIds, {
-    userName,
+    accountId,
     markPrinted = true,
     plateSeparator = ' // ',
     frontPlateSeparator,
@@ -279,13 +283,13 @@ export async function printCombinedBadges(guestIds, {
     });
 
     if (markPrinted) {
-        await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
+        await bulkApproveEmployees({ guests: guestIds, created_by_id: accountId, status: 2 });
         await onRefresh?.(guestIds);
     }
 }
 
 export async function printFrontBadges(guestIds, {
-    userName,
+    accountId,
     markPrinted = true,
     plateSeparator = ' (2) ',
     onRefresh,
@@ -303,13 +307,13 @@ export async function printFrontBadges(guestIds, {
     });
 
     if (markPrinted) {
-        await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
+        await bulkApproveEmployees({ guests: guestIds, created_by_id: accountId, status: 2 });
         await onRefresh?.(guestIds);
     }
 }
 
 export async function printBackBadges(guestIds, {
-    userName,
+    accountId,
     markPrinted = true,
     plateSeparator = ' // ',
     onRefresh,
@@ -327,13 +331,13 @@ export async function printBackBadges(guestIds, {
     });
 
     if (markPrinted) {
-        await bulkApproveEmployees({ guests: guestIds, by: userName, status: 2 });
+        await bulkApproveEmployees({ guests: guestIds, created_by_id: accountId, status: 2 });
         await onRefresh?.(guestIds);
     }
 }
 
 export async function printSingleCombinedBadge(employeeId, {
-    userName,
+    accountId,
     markPrinted = true,
     plateSeparator = ' // ',
 } = {}) {
@@ -356,7 +360,7 @@ export async function printSingleCombinedBadge(employeeId, {
     });
 
     if (markPrinted) {
-        await bulkApproveEmployees({ guests: [employeeId], by: userName, status: 2 });
+        await bulkApproveEmployees({ guests: [employeeId], created_by_id: accountId, status: 2 });
     }
 }
 

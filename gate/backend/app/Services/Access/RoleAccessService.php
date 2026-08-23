@@ -69,7 +69,7 @@ class RoleAccessService
                 'id' => $user->id,
                 'firstname' => $user->firstname,
                 'lastname' => $user->lastname,
-                'email' => $user->email,
+                'username' => $user->username,
                 'dep_id' => $user->dep_id,
             ])->values()->all(),
             'locked' => $isSuperAdmin,
@@ -211,7 +211,7 @@ class RoleAccessService
     private function usersForRole(Role $role): Collection
     {
         return User::query()
-            ->select('id', 'firstname', 'lastname', 'email', 'dep_id')
+            ->select('id', 'firstname', 'lastname', 'username', 'dep_id')
             ->whereHas('roles', function ($query) use ($role) {
                 $query->where('roles.id', $role->id);
             })

@@ -28,6 +28,7 @@
         "@codemirror/state": "^6.7.1",
         "@codemirror/view": "^6.43.6",
         "@tailwindcss/forms": "^0.5.6",
+        "@tanstack/vue-form": "^1.33.2",
         "@tanstack/vue-query": "^5.101.2",
         "ag-grid-community": "^30.2.1",
         "ag-grid-vue3": "^30.2.1",
@@ -42,6 +43,7 @@
         "qrcode-generator": "^1.4.4",
         "vue-codemirror": "^6.1.1",
         "vue-csv-import": "^4.1.2",
+        "vue-i18n": "^9.14.5",
         "vue-router": "^4.2.5",
         "vue3-side-panel": "^1.2.0",
         "zod": "^4.4.3"

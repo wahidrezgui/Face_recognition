@@ -224,7 +224,7 @@
                 </div>
               </div>
 
-              <input type="hidden" name="created_by" :value="userName">
+              <input type="hidden" name="created_by_id" :value="accountId">
               <input v-if="isEdit" type="hidden" name="id" :value="guest.id">
               <input type="hidden" name="dep_parent_id" :value="guest.dep_parent_id || depId">
               <input v-if="isCreate" type="hidden" name="is_employee" :value="companyGuest ? 1 : 0">
@@ -453,7 +453,7 @@ export default {
     departments: { type: Array, default: () => [] },
     ranks: { type: Array, default: () => [] },
     bases: { type: Array, default: () => [] },
-    userName: { type: String, default: '' },
+    accountId: { type: [String, Number], default: '' },
     depId: { type: [String, Number], default: '' },
     readOnly: { type: Boolean, default: false },
     showPrintButton: { type: Boolean, default: false },
