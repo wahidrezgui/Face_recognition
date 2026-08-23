@@ -4,6 +4,7 @@ import { trans } from 'laravel-vue-i18n';
 import AppButton from '@/components/AppButton.vue';
 import { useColorMode } from '@/composables/useColorMode';
 import { useLocale } from '@/composables/useLocale';
+import { withBase } from '@/lib/basePath';
 import { cn } from '@/lib/utils';
 
 interface Props {
@@ -62,7 +63,7 @@ function toggleLocale() {
 
         <div class="text-center">
             <img
-                src="/armedforces.png"
+                :src="withBase('/armedforces.png')"
                 :alt="trans('login.logoAlt')"
                 class="mx-auto mt-2 w-28 sm:w-36"
             />

@@ -1,4 +1,5 @@
 import { trans } from 'laravel-vue-i18n';
+import { withBase } from '@/lib/basePath';
 
 export type TagSeverity = 'warn' | 'success' | 'info' | 'secondary' | 'danger';
 
@@ -53,12 +54,12 @@ export const EMPLOYEE_PHOTO_PLACEHOLDER = '/uploads/nopic.png';
 
 export function employeePhotoUrl(photo: string | null | undefined): string {
     if (!photo) {
-        return EMPLOYEE_PHOTO_PLACEHOLDER;
+        return withBase(EMPLOYEE_PHOTO_PLACEHOLDER);
     }
 
-    return photo.startsWith('http') || photo.startsWith('/')
+    return photo.startsWith('http')
         ? photo
-        : `/${photo}`;
+        : withBase(photo.startsWith('/') ? photo : `/${photo}`);
 }
 
 /**

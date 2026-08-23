@@ -17,9 +17,12 @@ class ProfileController extends Controller
 
     public function edit(Request $request): Response
     {
-        // Nothing beyond `auth.user`, already shared app-wide by
-        // HandleInertiaRequests — no extra props needed for this page.
-        return Inertia::render('profile/Edit');
+        $user = $request->user();
+
+        return Inertia::render('profile/Edit', [
+            'department' => $user->department()->select(['id', 'name_ar', 'name_en'])->first(),
+            'defaultBase' => $user->defaultBase()->select(['id', 'name_ar', 'name_en'])->first(),
+        ]);
     }
 
     public function update(UpdateProfileRequest $request): RedirectResponse

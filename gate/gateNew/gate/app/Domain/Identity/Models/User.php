@@ -4,6 +4,7 @@ namespace App\Domain\Identity\Models;
 
 use App\Domain\AccessControl\AccessCatalog;
 use App\Domain\AccessControl\DataScopeResolver;
+use App\Domain\Gate\Models\Base;
 use App\Domain\Personnel\Models\Department;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Casts\Attribute;
@@ -85,6 +86,14 @@ class User extends Authenticatable
     public function department(): BelongsTo
     {
         return $this->belongsTo(Department::class, 'dep_id');
+    }
+
+    /**
+     * @return BelongsTo<Base, $this>
+     */
+    public function defaultBase(): BelongsTo
+    {
+        return $this->belongsTo(Base::class, 'default_base');
     }
 
     public function displayName(): string

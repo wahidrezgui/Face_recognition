@@ -1,4 +1,5 @@
 import { trans } from 'laravel-vue-i18n';
+import { withBase } from '@/lib/basePath';
 import { BRAND_COLORS, STATUS_COLORS } from '@/theme/colors';
 import type { ReportPreset, ReportRow } from '@/types/reports';
 import { groupRowsByDepartmentThenEmployee } from './groupReportRows';
@@ -40,7 +41,9 @@ function buildGroupedBody(rows: ReportRow[], preset: ReportPreset): string {
                 .map((employee) => {
                     const employeeLabel = `${escapeHtml(trans('reports.columns.fullname'))}: ${escapeHtml(employee.fullname_ar ?? employee.fullname_en ?? '')} — ${escapeHtml(trans('reports.columns.militaryNumber'))}: ${escapeHtml(employee.military_number ?? '')}`;
                     const employeeHeader = `<tr class="group-employee"><td colspan="${colCount}">${employeeLabel}</td></tr>`;
-                    const dataRows = employee.rows.map((row) => buildRowHtml(row, preset)).join('');
+                    const dataRows = employee.rows
+                        .map((row) => buildRowHtml(row, preset))
+                        .join('');
 
                     return employeeHeader + dataRows;
                 })
@@ -95,7 +98,7 @@ export function printReport(
                 </style>
             </head>
             <body>
-                <div class="watermark"><img src="/armedforces.png" alt="" /></div>
+                <div class="watermark"><img src="${withBase('/armedforces.png')}" alt="" /></div>
                 <h1>${escapeHtml(trans(preset.titleKey))}</h1>
                 <p>${escapeHtml(dateRangeLabel)}</p>
                 <p>${escapeHtml(printedByLabel)}</p>

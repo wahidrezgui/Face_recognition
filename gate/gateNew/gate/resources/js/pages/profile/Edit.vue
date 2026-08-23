@@ -12,15 +12,43 @@ import AppButton from '@/components/AppButton.vue';
 import AppCard from '@/components/AppCard.vue';
 import FormField from '@/components/FormField.vue';
 import PageContainer from '@/components/PageContainer.vue';
+import { useLocale } from '@/composables/useLocale';
 import { useToast } from '@/composables/useToast';
 import AppLayout from '@/layouts/AppLayout.vue';
-
+import { localizedLabel } from '@/lib/employees/employeeFormUi';
 defineOptions({ layout: AppLayout });
+
+interface NamedRef {
+    id: number;
+    name_ar: string | null;
+    name_en: string | null;
+}
+
+interface ProfilePageProps {
+    department: NamedRef | null;
+    defaultBase: NamedRef | null;
+    [key: string]: unknown;
+}
+
+const props = defineProps<ProfilePageProps>();
 
 const page = usePage();
 const toast = useToast();
+const { locale } = useLocale();
 
 const currentUser = computed(() => page.props.auth.user);
+
+const departmentLabel = computed(() =>
+    props.department
+        ? localizedLabel(props.department, locale.value)
+        : trans('profile.info.unassigned'),
+);
+
+const baseLabel = computed(() =>
+    props.defaultBase
+        ? localizedLabel(props.defaultBase, locale.value)
+        : trans('profile.info.unassigned'),
+);
 
 const profileForm = useForm({
     firstname: currentUser.value?.firstname ?? '',
@@ -83,13 +111,13 @@ function submitPassword() {
     >
         <div class="mx-auto grid max-w-2xl grid-cols-1 gap-6">
             <AppCard
-                padding="md"
+                padding="sm"
                 :title="trans('profile.info.title')"
                 :subtitle="trans('profile.info.subtitle')"
             >
                 <form
                     novalidate
-                    class="space-y-4"
+                    class="space-y-1"
                     @submit.prevent="submitProfile"
                 >
                     <FormField
@@ -104,6 +132,36 @@ function submitPassword() {
                             disabled
                         />
                     </FormField>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <FormField
+                            :label="trans('profile.info.department')"
+                            v-slot="{ id }"
+                        >
+                            <InputText
+                                :id="id"
+                                :model-value="departmentLabel"
+                                fluid
+                                disabled
+                            />
+                        </FormField>
+                        <FormField
+                            :label="trans('profile.info.base')"
+                            v-slot="{ id }"
+                        >
+                            <InputText
+                                :id="id"
+                                :model-value="baseLabel"
+                                fluid
+                                disabled
+                            />
+                        </FormField>
+                    </div>
+                    <p
+                        class="-mt-1 text-xs text-surface-500 dark:text-surface-400"
+                    >
+                        {{ trans('profile.info.assignmentHint') }}
+                    </p>
 
                     <div class="grid grid-cols-2 gap-3">
                         <FormField
@@ -145,13 +203,13 @@ function submitPassword() {
             </AppCard>
 
             <AppCard
-                padding="md"
+                padding="sm"
                 :title="trans('profile.password.title')"
                 :subtitle="trans('profile.password.subtitle')"
             >
                 <form
                     novalidate
-                    class="space-y-4"
+                    class="space-y-1"
                     @submit.prevent="submitPassword"
                 >
                     <FormField
@@ -170,7 +228,7 @@ function submitPassword() {
                         />
                     </FormField>
 
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-2 gap-2">
                         <FormField
                             :label="trans('profile.password.new')"
                             required

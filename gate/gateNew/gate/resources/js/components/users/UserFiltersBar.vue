@@ -3,12 +3,11 @@ import { Search } from '@lucide/vue';
 import { trans } from 'laravel-vue-i18n';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
+import TreeSelect from 'primevue/treeselect';
 import { computed } from 'vue';
 import AppButton from '@/components/AppButton.vue';
 import AppCard from '@/components/AppCard.vue';
-import AppDepartmentTreeSelect from '@/components/AppDepartmentTreeSelect.vue';
 import AppFiltersBar from '@/components/AppFiltersBar.vue';
-import AppMilitaryNumberInput from '@/components/AppMilitaryNumberInput.vue';
 import { ssoStatusFilterOptions } from '@/lib/users/userFormUi';
 import type { TreeSelectOption } from '@/types';
 
@@ -49,9 +48,11 @@ const ssoStatusOptions = computed(() =>
 <template>
     <AppCard padding="md" class="mb-4">
         <AppFiltersBar>
-            <AppMilitaryNumberInput
+            <InputText
                 v-model="militaryNumber"
                 :placeholder="trans('users.filters.militaryNumber')"
+                fluid
+                inputmode="numeric"
             />
 
             <InputText
@@ -78,9 +79,12 @@ const ssoStatusOptions = computed(() =>
                 :placeholder="trans('users.filters.ssoStatus')"
             />
 
-            <AppDepartmentTreeSelect
+            <TreeSelect
                 :model-value="departmentTree"
                 :options="departmentOptions"
+                append-to="body"
+                filter
+                fluid
                 :placeholder="trans('users.filters.allDepartments')"
                 @update:model-value="
                     (value) =>

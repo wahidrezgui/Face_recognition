@@ -8,6 +8,7 @@ import {
     deleteNote as deleteNoteAction,
 } from '@/actions/App/Http/Controllers/Inertia/ReportController';
 import { reportPresets } from '@/config/reportPresets';
+import { withBase } from '@/lib/basePath';
 import { csrfDelete, csrfPost } from '@/lib/csrfFetch';
 import { exportReportCsv } from '@/lib/reports/exportCsv';
 import { printReport } from '@/lib/reports/printReport';
@@ -204,7 +205,9 @@ export function useReportPage(presetKey: ReportPresetKey) {
             // Streamed directly from the backend - no row-count ceiling, so no need to
             // pre-fetch or check `total` here.
             window.location.assign(
-                buildQueryUrl(exportCsvRoute.url(), currentFilterPayload()),
+                withBase(
+                    buildQueryUrl(exportCsvRoute.url(), currentFilterPayload()),
+                ),
             );
 
             return;
